@@ -1,0 +1,33 @@
+name: CI 基础检查
+
+# 触发条件：提交代码到任意分支、发起 Pull Request 时自动运行
+on: [push, pull_request]
+
+jobs:
+  check:
+    # 运行环境：最新版 Ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 拉取你的代码到 CI 环境
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 安装 Python（如果是其他语言，这里替换对应环境）
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 3. 安装代码检查工具（flake8 是 Python 风格检查工具）
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+
+      # 4. 代码风格检查（检查格式、命名、缩进等规范）
+      - name: Lint code with flake8
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      # 5. 代码编译/语法检查（验证代码没有语法错误）
+      - name: Check syntax
+        run: python -m py_compile $(find . -name "*.py" -not -path "./.git/*")
