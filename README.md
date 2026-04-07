@@ -4,7 +4,7 @@
 
 **Language / 语言**
 
-[**English**](README.md) |  [简体中文](README.zh-CN.md)
+[**English**](README.md) |  [简体中文](docs/README.zh-CN.md)
 
 </div>
 
