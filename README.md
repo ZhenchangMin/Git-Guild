@@ -8,7 +8,7 @@
 
 </div>
 
-> 🏫 Course project for SEC II
+>  Course project for SEC II
 
 **A gamified bounty platform where open-source beginners level up by completing real-world tasks.**
 
@@ -21,7 +21,7 @@ Git-Guild brings the Adventurer's Guild fantasy to open source. Project maintain
 
 ---
 
-## ✨ Features
+## Features
 
 ### For Adventurers (Beginner Developers)
 
@@ -44,7 +44,7 @@ Git-Guild brings the Adventurer's Guild fantasy to open source. Project maintain
 
 ---
 
-## 🛠️ Current Repo Shape
+## Current Repo Shape
 
 | Layer    | Technology                             |
 | -------- | -------------------------------------- |
@@ -55,7 +55,7 @@ Git-Guild brings the Adventurer's Guild fantasy to open source. Project maintain
 
 ---
 
-## 📁 Current Project Structure
+## Current Project Structure
 
 ```
 Git-Guild/
@@ -74,7 +74,7 @@ Git-Guild/
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Here's how to get started:
 
@@ -97,7 +97,7 @@ Please follow the existing code style and include tests for new features.
 
 ---
 
-## 👥 Team
+## Team
 
 |    Member    |       Role       |
 | :-----------: | :---------------: |
