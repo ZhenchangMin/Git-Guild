@@ -1,7 +1,7 @@
 # Git Guild
 <div align="center">
 
-**Language / 语言**
+<h3>Language / 语言</h3>
 
 [**English**](README.md) | [简体中文](docs/README.zh-CN.md)
 
