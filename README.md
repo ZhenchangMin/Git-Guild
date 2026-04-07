@@ -12,9 +12,6 @@
 
 **A gamified bounty platform where open-source beginners level up by completing real-world tasks.**
 
-
-**A gamified bounty platform where open-source beginners level up by completing real-world tasks.**
-
 Git-Guild brings the Adventurer's Guild fantasy to open source. Project maintainers post quests (tasks with bounties), beginners accept them, submit their work, and earn XP, levels, and badges — turning the intimidating "first contribution" into an RPG adventure.
 
 
