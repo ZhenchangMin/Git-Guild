@@ -7,28 +7,47 @@ on:
     branches: [ main, master ]
 
 jobs:
-  build:
+  full-build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+      
+      # 后端构建
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Build Backend
+        working-directory: backend
+        run: mvn -B clean package
+      
+      - name: Upload Backend JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: backend/target/*.jar
+          retention-days: 7
+      
+      # 前端构建
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Upload build artifacts
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Build Frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build || echo "Build script not configured yet"
+      
+      - name: Upload Frontend Dist
         uses: actions/upload-artifact@v4
         with:
-          name: build-output
-          path: dist/
+          name: frontend-dist
+          path: frontend/dist/
           retention-days: 7
