@@ -8,11 +8,12 @@
 
 </div>
 
->  Course project for SEC II
+> Course project for SEC II
 
-**A gamified bounty platform where open-source beginners level up by completing real-world tasks.**
+**A gamified code hosting and bounty collaboration platform where open-source beginners level up by completing real-world tasks.**
 
-Git-Guild brings the Adventurer's Guild fantasy to open source. Project maintainers post quests (tasks with bounties), beginners accept them, submit their work, and earn XP, levels, and badges — turning the intimidating "first contribution" into an RPG adventure.
+Git-Guild combines **GitHub/Gitee-style code hosting** (repositories, issues, pull requests, code review) with an **Adventurer's Guild** progression system.  
+Project maintainers can publish quests from real engineering work, and beginners can pick tasks, submit code, receive feedback, and grow through XP, levels, and badges.
 
 
 
@@ -20,24 +21,37 @@ Git-Guild brings the Adventurer's Guild fantasy to open source. Project maintain
 
 ## Features
 
+### Repository Hosting (GitHub/Gitee-style)
+
+- Create/import repositories and manage visibility/collaborators
+- Browse branches, commits, files, and diffs in the web UI
+- Use Issue + Pull Request workflows with reviewer comments
+- Integrate webhook events for automation and quest status sync
+
 ### For Adventurers (Beginner Developers)
 
-- Browse a **Quest Board** with tasks filtered by difficulty, language, and reward
-- Accept quests, submit pull requests or code, and receive reviewer feedback
-- Earn **XP** and **level up** through an RPG-style progression system
-- Collect **badges** for milestones (first quest, 10-quest streak, language mastery, etc.)
-- Finish official tutorials and challenge quests for XP and achievements
+- Browse a **Quest Board** filtered by difficulty, language, reward, and tags
+- Accept quests linked to real issues and submit pull requests/code
+- Receive reviewer feedback and follow suggested learning paths
+- Earn **XP**, level up, and unlock milestone badges
 
 ### For Guild Masters (Project Maintainers)
 
-- Post quests with structured descriptions, difficulty ratings, tags, and XP rewards
+- Publish structured quests from repository issues
+- Define completion criteria, rewards, and review checkpoints
 - Review submissions with approve / request-changes workflow
 
-### Platform
+### Platform & Growth
 
 - User system: registration, login, profile management
-- **Leaderboard** — weekly, monthly, and all-time rankings
-- Career stats: XP, level, quests completed, badges earned, etc.
+- **Leaderboard**: weekly, monthly, all-time rankings
+- Career stats: XP, level, quest completion, badge collection
+- Beginner onboarding: contribution guide, templates, tutorials
+
+## Development Status
+
+- `In Progress`: code hosting core (repo/issue/PR integration), quest workflow, XP system
+- `Planned`: recommendation engine, mentor mode, advanced analytics dashboard
 
 ---
 
