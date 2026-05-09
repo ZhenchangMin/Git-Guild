@@ -72,9 +72,22 @@ Project maintainers can publish quests from real engineering work, and beginners
 
 ### Prerequisites
 
-- [Docker Desktop](https://docs.docker.com/get-docker/) (or Docker + Docker Compose)
+- Docker 20.10+ and `docker-compose` (v1) or Docker Compose plugin (v2)
 - Java 17 (e.g. [Temurin](https://adoptium.net/))
 - Node.js 20+
+
+### 0. (China only) Configure Docker registry mirror
+
+If image pulls time out, run this once before step 2:
+
+```bash
+sudo tee /etc/docker/daemon.json <<EOF
+{
+  "registry-mirrors": ["https://docker.m.daocloud.io"]
+}
+EOF
+sudo systemctl restart docker
+```
 
 ### 1. Clone & configure environment
 
@@ -86,10 +99,12 @@ cp .env.example .env          # edit passwords if needed
 ### 2. Start infrastructure
 
 ```bash
-docker compose up -d
+docker-compose up -d
 # wait ~30s for all services to be healthy
-docker compose ps             # confirm mysql / redis / gitea are "healthy"
+docker-compose ps             # confirm mysql / redis / gitea are "healthy"
 ```
+
+> If your Docker supports the compose plugin, `docker compose up -d` works too.
 
 ### 3. Start backend
 
@@ -113,6 +128,8 @@ App: <http://localhost:5173>
 ### 5. Initialize Gitea (first time only)
 
 Open <http://localhost:3000>, complete the setup wizard, create an admin account, then generate an API token and add it to `.env` as `GITEA_TOKEN`.
+
+> **Port note**: MySQL is mapped to host port **3307** (container port 3306). `application.yml` is already configured — no manual change needed.
 
 ---
 

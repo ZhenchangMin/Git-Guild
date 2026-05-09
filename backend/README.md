@@ -8,24 +8,40 @@ Spring Boot 3 单体应用，内部按领域模块组织，对外提供 REST API
 |------|----------|
 | Java | 17（推荐 [Eclipse Temurin](https://adoptium.net/)） |
 | Maven | 使用项目自带的 `mvnw`，无需单独安装 |
-| Docker + Docker Compose | 用于启动 MySQL / Redis / Gitea |
+| Docker | 20.10+，用于启动 MySQL / Redis / Gitea |
+| docker-compose | v1（`docker-compose`）或 v2 插件（`docker compose`） |
 
-> 检查版本：`java -version`
+> 检查版本：`java -version` 和 `docker-compose --version`
 
 ## 启动步骤
 
-### 第一步：启动基础设施
+### 第一步：（国内环境）配置 Docker 镜像源
+
+如果拉取镜像超时，需先配置国内镜像源（只需执行一次）：
+
+```bash
+sudo tee /etc/docker/daemon.json <<EOF
+{
+  "registry-mirrors": ["https://docker.m.daocloud.io"]
+}
+EOF
+sudo systemctl restart docker
+```
+
+### 第二步：启动基础设施
 
 在**项目根目录**执行（MySQL、Redis、Gitea 三个服务）：
 
 ```bash
-docker compose up -d
+docker-compose up -d
 
 # 确认三个容器均为 healthy 再继续
-docker compose ps
+docker-compose ps
 ```
 
-### 第二步：配置环境变量（可选）
+> 如果你的 Docker 版本支持 compose 插件（`docker compose version` 有输出），也可以用 `docker compose up -d`。
+
+### 第三步：配置环境变量（可选）
 
 默认配置已预设本地开发参数，直接启动即可。如需自定义密码或配置邮件/Gitea：
 
@@ -33,6 +49,8 @@ docker compose ps
 # 在项目根目录
 cp .env.example .env    # 按需修改 .env 中的值
 ```
+
+> **注意**：MySQL 宿主机端口为 **3307**（容器内仍是 3306），`application.yml` 已配置好，无需手动修改。
 
 ### 第三步：启动 Spring Boot 应用
 

@@ -26,6 +26,8 @@ npm run dev
 
 启动成功后，浏览器访问 **http://localhost:5173**
 
+> 前端的 `/api/*` 请求会代理到后端 `http://localhost:8080`，请先启动后端和 `docker-compose`（见 `backend/README.md`）。
+
 ## 安装项目所需 UI 依赖
 
 当前脚手架只含基础 Vue 3，开发前请安装项目约定的依赖：
