@@ -55,112 +55,32 @@ Project maintainers can publish quests from real engineering work, and beginners
 
 ---
 
-## Tech Stack
+## Current Repo Shape
 
-| Layer      | Technology                                                        |
-| ---------- | ----------------------------------------------------------------- |
-| Frontend   | Vue 3 + Vite + Element Plus + Vue Router + Pinia + Axios          |
-| Backend    | Spring Boot 3 + Spring Security + JWT + JPA                       |
-| Database   | MySQL 8                                                           |
-| Cache      | Redis 7                                                           |
-| Code Host  | Gitea 1.22                                                        |
-| DevOps     | Docker Compose + GitHub Actions                                   |
+| Layer    | Technology                             |
+| -------- | -------------------------------------- |
+| Frontend | Vue 3 + Vite                           |
+| Backend  | Spring Boot 3                          |
+| Database | MySQL                                  |
+| DevOps   | Docker, Docker Compose, GitHub Actions |
 
 ---
 
-## Quick Start
-
-### Prerequisites
-
-- Docker 20.10+ and `docker-compose` (v1) or Docker Compose plugin (v2)
-- Java 17 (e.g. [Temurin](https://adoptium.net/))
-- Node.js 20+
-
-### 0. (China only) Configure Docker registry mirror
-
-If image pulls time out, run this once before step 2:
-
-```bash
-sudo tee /etc/docker/daemon.json <<EOF
-{
-  "registry-mirrors": ["https://docker.m.daocloud.io"]
-}
-EOF
-sudo systemctl restart docker
-```
-
-### 1. Clone & configure environment
-
-```bash
-git clone <repo-url> && cd Git-Guild
-cp .env.example .env          # edit passwords if needed
-```
-
-### 2. Start infrastructure
-
-```bash
-docker-compose up -d
-# wait ~30s for all services to be healthy
-docker-compose ps             # confirm mysql / redis / gitea are "healthy"
-```
-
-> If your Docker supports the compose plugin, `docker compose up -d` works too.
-
-### 3. Start backend
-
-```bash
-cd backend
-./mvnw spring-boot:run        # Windows: mvnw.cmd spring-boot:run
-```
-
-Swagger UI: <http://localhost:8080/swagger-ui.html>
-
-### 4. Start frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-App: <http://localhost:5173>
-
-### 5. Initialize Gitea (first time only)
-
-Open <http://localhost:3000>, complete the setup wizard, create an admin account, then generate an API token and add it to `.env` as `GITEA_TOKEN`.
-
-> **Port note**: MySQL is mapped to host port **3307** (container port 3306). `application.yml` is already configured — no manual change needed.
-
----
-
-## Project Structure
+## Current Project Structure
 
 ```
 Git-Guild/
-├── docker-compose.yml          # MySQL 8 + Redis 7 + Gitea 1.22
-├── .env.example                # environment variable template
-├── .github/workflows/          # CI (all branches) + Main pipeline
+├── README.md
+├── .gitignore
 │
-├── backend/                    # Spring Boot 3 application
-│   └── src/main/java/com/gitguild/backend/
-│       ├── common/             # unified response, global exception
-│       ├── user/               # auth, registration, roles, JWT
-│       ├── codehost/           # GitHub/Gitea adapter, webhooks
-│       ├── quest/              # quest board, bounties, state machine
-│       ├── recommendation/     # matching engine, ranking
-│       ├── review/             # submission, review workflow
-│       ├── guide/              # onboarding, templates, project explainer
-│       ├── notification/       # in-app + email notifications
-│       └── growth/             # XP, levels, badges, leaderboard (P1/P2)
+├── docs/                         # Documentation, design docs
 │
-├── frontend/                   # Vue 3 SPA
-│   └── src/
-│       ├── api/                # Axios instance + endpoint calls
-│       ├── router/             # Vue Router (history mode)
-│       ├── stores/             # Pinia (auth store + JWT persistence)
-│       └── views/              # page-level components
+├── .github/                      # GitHub Actions workflows
 │
-└── docs/                       # P1 requirements · P2 architecture · P3 design
+├── backend/                      # Spring Boot application
+│
+└── frontend/                     # Vue 3 application
+
 ```
 
 ---
