@@ -10,7 +10,7 @@ spring:
       on-profile: dev
 
   datasource:
-    url: jdbc:mysql://localhost:3306/gitguild?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3307/gitguild?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: ${MYSQL_USER:gitguild}
     password: ${MYSQL_PASSWORD:gitguild123}
     driver-class-name: com.mysql.cj.jdbc.Driver
