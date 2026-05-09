@@ -55,32 +55,95 @@ Project maintainers can publish quests from real engineering work, and beginners
 
 ---
 
-## Current Repo Shape
+## Tech Stack
 
-| Layer    | Technology                             |
-| -------- | -------------------------------------- |
-| Frontend | Vue 3 + Vite                           |
-| Backend  | Spring Boot 3                          |
-| Database | MySQL                                  |
-| DevOps   | Docker, Docker Compose, GitHub Actions |
+| Layer      | Technology                                                        |
+| ---------- | ----------------------------------------------------------------- |
+| Frontend   | Vue 3 + Vite + Element Plus + Vue Router + Pinia + Axios          |
+| Backend    | Spring Boot 3 + Spring Security + JWT + JPA                       |
+| Database   | MySQL 8                                                           |
+| Cache      | Redis 7                                                           |
+| Code Host  | Gitea 1.22                                                        |
+| DevOps     | Docker Compose + GitHub Actions                                   |
 
 ---
 
-## Current Project Structure
+## Quick Start
+
+### Prerequisites
+
+- [Docker Desktop](https://docs.docker.com/get-docker/) (or Docker + Docker Compose)
+- Java 17 (e.g. [Temurin](https://adoptium.net/))
+- Node.js 20+
+
+### 1. Clone & configure environment
+
+```bash
+git clone <repo-url> && cd Git-Guild
+cp .env.example .env          # edit passwords if needed
+```
+
+### 2. Start infrastructure
+
+```bash
+docker compose up -d
+# wait ~30s for all services to be healthy
+docker compose ps             # confirm mysql / redis / gitea are "healthy"
+```
+
+### 3. Start backend
+
+```bash
+cd backend
+./mvnw spring-boot:run        # Windows: mvnw.cmd spring-boot:run
+```
+
+Swagger UI: <http://localhost:8080/swagger-ui.html>
+
+### 4. Start frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+App: <http://localhost:5173>
+
+### 5. Initialize Gitea (first time only)
+
+Open <http://localhost:3000>, complete the setup wizard, create an admin account, then generate an API token and add it to `.env` as `GITEA_TOKEN`.
+
+---
+
+## Project Structure
 
 ```
 Git-Guild/
-├── README.md
-├── .gitignore
+├── docker-compose.yml          # MySQL 8 + Redis 7 + Gitea 1.22
+├── .env.example                # environment variable template
+├── .github/workflows/          # CI (all branches) + Main pipeline
 │
-├── docs/                         # Documentation, design docs
+├── backend/                    # Spring Boot 3 application
+│   └── src/main/java/com/gitguild/backend/
+│       ├── common/             # unified response, global exception
+│       ├── user/               # auth, registration, roles, JWT
+│       ├── codehost/           # GitHub/Gitea adapter, webhooks
+│       ├── quest/              # quest board, bounties, state machine
+│       ├── recommendation/     # matching engine, ranking
+│       ├── review/             # submission, review workflow
+│       ├── guide/              # onboarding, templates, project explainer
+│       ├── notification/       # in-app + email notifications
+│       └── growth/             # XP, levels, badges, leaderboard (P1/P2)
 │
-├── .github/                      # GitHub Actions workflows
+├── frontend/                   # Vue 3 SPA
+│   └── src/
+│       ├── api/                # Axios instance + endpoint calls
+│       ├── router/             # Vue Router (history mode)
+│       ├── stores/             # Pinia (auth store + JWT persistence)
+│       └── views/              # page-level components
 │
-├── backend/                      # Spring Boot application
-│
-└── frontend/                     # Vue 3 application
-
+└── docs/                       # P1 requirements · P2 architecture · P3 design
 ```
 
 ---
