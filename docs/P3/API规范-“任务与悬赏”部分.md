@@ -48,19 +48,19 @@ Authorization: Bearer <JWT_TOKEN>
 | --------- | ----------- | ---- |
 | `SUCCESS` | `200 / 201` | 请求成功 |
 
-| 错误码                      | HTTP 状态码    | 说明            |
-| ------------------------ | ----------- | ------------- |
-| `VALIDATION_FAILED`      | `400`       | 参数缺失或格式错误     |
-| `UNAUTHORIZED`           | `401`       | 未登录或令牌无效      |
-| `FORBIDDEN`              | `403`       | 当前用户无权限       |
-| `QUEST_NOT_FOUND`        | `404`       | 任务不存在         |
-| `REPOSITORY_NOT_FOUND`   | `404`       | 仓库不存在         |
-| `ISSUE_NOT_FOUND`        | `404`       | Issue 不存在     |
-| `ISSUE_NOT_AVAILABLE`    | `409`       | Issue 不可发布为任务 |
-| `QUEST_NOT_ACCEPTABLE`   | `409`       | 任务当前状态不可接取    |
-| `QUEST_ALREADY_ASSIGNED` | `409`       | 任务已被其他用户接取    |
-| `DUPLICATE_ASSIGNMENT`   | `409`       | 当前用户已接取该任务    |
-| `INTERNAL_ERROR`         | `500`       | 服务器内部错误       |
+| 错误码                      | HTTP 状态码 | 说明            |
+| ------------------------ | -------- | ------------- |
+| `VALIDATION_FAILED`      | `400`    | 参数缺失或格式错误     |
+| `UNAUTHORIZED`           | `401`    | 未登录或令牌无效      |
+| `FORBIDDEN`              | `403`    | 当前用户无权限       |
+| `QUEST_NOT_FOUND`        | `404`    | 任务不存在         |
+| `REPOSITORY_NOT_FOUND`   | `404`    | 仓库不存在         |
+| `ISSUE_NOT_FOUND`        | `404`    | Issue 不存在     |
+| `ISSUE_NOT_AVAILABLE`    | `409`    | Issue 不可发布为任务 |
+| `QUEST_NOT_ACCEPTABLE`   | `409`    | 任务当前状态不可接取    |
+| `QUEST_ALREADY_ASSIGNED` | `409`    | 任务已被其他用户接取    |
+| `DUPLICATE_ASSIGNMENT`   | `409`    | 当前用户已接取该任务    |
+| `INTERNAL_ERROR`         | `500`    | 服务器内部错误       |
 
 ## 3. 发布任务
 
@@ -92,8 +92,7 @@ Authorization: Bearer <JWT_TOKEN>
 | `estimatedHours`     | `Integer`       | 是   | 预计完成小时数            |
 | `rewardXp`           | `Integer`       | 是   | 奖励 XP              |
 | `categoryId`         | `Long`          | 是   | 任务分类 ID            |
-| `tagIds`             | `Array<Long>`   | 否   | 标签 ID 列表           |
-| `beginnerFriendly`   | `Boolean`       | 否   | 是否新手友好，默认 `false`  |
+| `tagIds`             | `Array<Long>`   | 否   | 标签 ID 列表，可用于标记“新手友好”等任务特征 |
 
 请求示例：
 
@@ -117,8 +116,7 @@ Content-Type: application/json
   "estimatedHours": 6,
   "rewardXp": 180,
   "categoryId": 2,
-  "tagIds": [5, 8],
-  "beginnerFriendly": true
+  "tagIds": [5, 8]
 }
 ```
 
@@ -176,6 +174,7 @@ HTTP 状态码：`409 Conflict`
 | 字段名                  | 说明                                                   |
 | -------------------- | ---------------------------------------------------- |
 | `descriptionPreview` | 任务描述摘要，由后端根据 `description` 自动截断生成，用于任务列表展示，不由委托人单独填写 |
+| `syncStatus`         | 关联仓库的同步状态，由后端在导入或同步仓库时维护，前端只读取展示                     |
 
 ### 请求参数
 
@@ -189,22 +188,23 @@ Query 参数：
 
 | 参数名                | 类型        | 必填  | 说明                                           |
 | ------------------ | --------- | --- | -------------------------------------------- |
-| `keyword`          | `String`  | 否   | 关键词                                          |
+| `keyword`          | `String`  | 否   | 搜索关键词，采用模糊匹配                                 |
 | `categoryId`       | `Long`    | 否   | 分类 ID                                        |
-| `tagIds`           | `String`  | 否   | 标签 ID，多个值用逗号分隔                               |
+| `tagIds`           | `String`  | 否   | 标签 ID，多个值用逗号分隔；多个标签之间为全部匹配 |
 | `difficulty`       | `String`  | 否   | 难度：`A`、`B`、`C`、`D`                           |
-| `techStack`        | `String`  | 否   | 技术栈                                          |
+| `techStack`        | `String`  | 否   | 技术栈筛选，采用精确匹配；多个值用逗号分隔，多个技术栈之间为任一匹配 |
 | `status`           | `String`  | 否   | 任务状态，默认 `PUBLISHED`                          |
-| `beginnerFriendly` | `Boolean` | 否   | 是否只看新手友好任务                                   |
 | `sortBy`           | `String`  | 否   | 排序字段：`createdAt`、`rewardXp`、`estimatedHours` |
 | `sortOrder`        | `String`  | 否   | 排序方向：`asc`、`desc`，默认 `desc`                  |
 | `page`             | `Integer` | 否   | 页码，从 `1` 开始，默认 `1`                           |
-| `size`             | `Integer` | 否   | 每页数量，默认 `4`，最大 `50`                            |
+| `size`             | `Integer` | 否   | 每页数量，默认 `4`，最大 `50`                          |
+
+备注：`keyword`、`categoryId`、`tagIds`、`difficulty`、`techStack`、`status` 等筛选条件同时存在时，结果必须同时满足所有条件。
 
 请求示例：
 
 ```http
-GET /api/v1/quests?difficulty=C&techStack=Vue&beginnerFriendly=true&page=1&size=4
+GET /api/v1/quests?difficulty=C&techStack=Vue&tagIds=5&page=1&size=4
 Authorization: Bearer <JWT_TOKEN>
 ```
 
@@ -229,7 +229,6 @@ HTTP 状态码：`200 OK`
         "rewardXp": 180,
         "estimatedHours": 6,
         "status": "PUBLISHED",
-        "beginnerFriendly": true,
         "category": {
           "categoryId": 2,
           "name": "前端开发"
@@ -237,7 +236,8 @@ HTTP 状态码：`200 OK`
         "tags": [
           {
             "tagId": 5,
-            "name": "新手友好"
+            "name": "新手友好",
+            "color": "#67C23A"
           }
         ],
         "repository": {
@@ -322,7 +322,6 @@ HTTP 状态码：`200 OK`
     "estimatedHours": 6,
     "rewardXp": 180,
     "status": "PUBLISHED",
-    "beginnerFriendly": true,
     "publisher": {
       "userId": 2001,
       "username": "maintainer01"
@@ -338,6 +337,17 @@ HTTP 状态码：`200 OK`
       "title": "Issue 同步状态不可见",
       "status": "OPEN"
     },
+    "category": {
+      "categoryId": 2,
+      "name": "前端开发"
+    },
+    "tags": [
+      {
+        "tagId": 5,
+        "name": "新手友好",
+        "color": "#67C23A"
+      }
+    ],
     "assignment": {
       "assigned": false,
       "assignee": null,
