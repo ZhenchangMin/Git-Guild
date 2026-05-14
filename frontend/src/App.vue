@@ -4,17 +4,16 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import deskImg from './assets/desk.png'
 import doorImg from './assets/door.png'
 import hallImg from './assets/hall.png'
-import idCardImg from './assets/ID card.png'
 import leaderBoardWallImg from './assets/leader board wall.png'
 import operationRoomImg from './assets/operation room.png'
 import questBoardImg from './assets/quest board.png'
 import submissionCounterImg from './assets/submission-counter-clerk-v0.png'
-import userProfileImg from './assets/user profile.png'
+import workbenchImg from './assets/workbench.png'
 import SubmissionCounter from './components/SubmissionCounter.vue'
+import Workbench from './components/Workbench.vue'
 
 const screen = ref('door')
 const activeRoom = ref(null)
-const showIdCard = ref(false)
 const selectedRole = ref('adventurer')
 const signedRole = ref('visitor')
 const hallViewport = ref(null)
@@ -72,10 +71,10 @@ const rooms = [
     height: 50,
   },
   {
-    id: 'profile',
-    label: 'User Profile',
-    hint: 'Progress, XP, and contribution record',
-    image: userProfileImg,
+    id: 'workbench',
+    label: 'Workbench / 工作台',
+    hint: 'Daily tasks, repositories, PRs, notifications',
+    image: workbenchImg,
     left: 64.3,
     top: 18,
     width: 14.5,
@@ -271,14 +270,12 @@ function openRoom(id) {
 }
 
 function backToHall() {
-  showIdCard.value = false
   screen.value = 'hall'
   window.location.hash = 'hall'
   nextTick(centerHall)
 }
 
 function backToDoor() {
-  showIdCard.value = false
   screen.value = 'door'
   activeRoom.value = null
   window.location.hash = ''
@@ -314,10 +311,6 @@ function prevQuestPage() {
 
 function nextQuestPage() {
   questPage.value = Math.min(questPageCount.value, questPage.value + 1)
-}
-
-function closeIdCard() {
-  showIdCard.value = false
 }
 
 function clampHallOffset(offset) {
@@ -361,10 +354,6 @@ onMounted(() => {
   if (hash === 'operation') {
     signedRole.value = 'admin'
     screen.value = 'operation'
-  } else if (hash === 'profile-card') {
-    activeRoom.value = 'profile'
-    screen.value = 'room'
-    showIdCard.value = true
   } else if (hash === 'hall') {
     screen.value = 'hall'
     nextTick(centerHall)
@@ -512,7 +501,11 @@ watch(questPageCount, (pageCount) => {
     <section
       v-else
       class="scene work-scene"
-      :class="{ 'quest-mode': activeRoom === 'quest', 'submission-mode': activeRoom === 'submission' }"
+      :class="{
+        'quest-mode': activeRoom === 'quest',
+        'submission-mode': activeRoom === 'submission',
+        'workbench-mode': activeRoom === 'workbench',
+      }"
       :style="{ backgroundImage: `url(${activeRoomImage})` }"
     >
       <button class="back-orb" type="button" aria-label="返回至大厅" @click="backToHall">
@@ -630,68 +623,7 @@ watch(questPageCount, (pageCount) => {
 
       <SubmissionCounter v-else-if="activeRoom === 'submission'" />
 
-      <div v-else-if="activeRoom === 'profile'" class="profile-detail-dock">
-        <button class="primary-action profile-detail-button" type="button" @click="showIdCard = true">
-          查看个人详细资料
-        </button>
-      </div>
-
-      <Transition name="id-card">
-        <div v-if="showIdCard" class="id-card-backdrop" role="dialog" aria-modal="true" aria-label="个人身份卡">
-          <button class="id-card-close" type="button" aria-label="关闭身份卡" @click="closeIdCard">×</button>
-          <section class="id-card-frame">
-            <img class="id-card-image" :src="idCardImg" alt="" />
-            <div class="default-avatar" aria-label="Default avatar">
-              <span class="avatar-head"></span>
-              <span class="avatar-body"></span>
-            </div>
-            <button class="avatar-edit" type="button">编辑头像</button>
-
-            <article class="identity-info">
-              <p class="kicker">Adventurer Record</p>
-              <h2>Minerva Dawn</h2>
-              <dl>
-                <div>
-                  <dt>角色</dt>
-                  <dd>Adventurer</dd>
-                </div>
-                <div>
-                  <dt>等级</dt>
-                  <dd>Level 3</dd>
-                </div>
-                <div>
-                  <dt>经验</dt>
-                  <dd>720 / 1000 XP</dd>
-                </div>
-                <div>
-                  <dt>最近分支</dt>
-                  <dd>feature/quest-flow</dd>
-                </div>
-              </dl>
-            </article>
-
-            <form class="profile-editor">
-              <p class="kicker">编辑个人信息</p>
-              <label>
-                昵称
-                <input value="Minerva Dawn" />
-              </label>
-              <label>
-                技术栈
-                <input value="Vue · Spring Boot" />
-              </label>
-              <label>
-                简介
-                <textarea rows="3">Learning through real quests and clean pull requests.</textarea>
-              </label>
-              <div class="editor-actions">
-                <button class="primary-action" type="button">保存</button>
-                <button class="quiet-action" type="button" @click="closeIdCard">取消</button>
-              </div>
-            </form>
-          </section>
-        </div>
-      </Transition>
+      <Workbench v-else-if="activeRoom === 'workbench'" @open-submission="openRoom('submission')" />
     </section>
   </main>
 </template>

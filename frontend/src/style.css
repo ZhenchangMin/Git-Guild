@@ -1030,6 +1030,17 @@ h2 {
   padding: 0;
 }
 
+.workbench-mode {
+  display: block;
+  padding: 0;
+}
+
+.workbench-mode::before {
+  background:
+    radial-gradient(circle at 48% 42%, rgba(28, 16, 7, 0.06) 0 28%, rgba(8, 4, 2, 0.28) 66%, rgba(5, 2, 1, 0.68) 100%),
+    linear-gradient(90deg, rgba(7, 3, 1, 0.62), transparent 26%, transparent 74%, rgba(7, 3, 1, 0.62));
+}
+
 .submission-mode::before {
   z-index: 0;
   background:
