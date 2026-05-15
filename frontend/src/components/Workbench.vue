@@ -2,24 +2,33 @@
 import { computed, ref } from 'vue'
 
 import {
+  maintainerNotifications,
+  maintainerPublishedQuests,
+  maintainerWorkbenchStats,
   notifications,
   pullRequests,
   recentContributions,
   repositories,
+  reviewQueue,
+  reviewFeedbacks,
   taskGroups,
   workbenchEmails,
   workbenchStats,
   workbenchUser,
 } from '../data/workbench'
 
-const emit = defineEmits(['open-submission'])
+const emit = defineEmits(['open-submission', 'open-id-card'])
 
+const workbenchView = ref('adventurer')
+const maintainerReviews = ref(reviewQueue.map((review) => ({ ...review, checklist: [...review.checklist] })))
 const mailboxMessages = ref(workbenchEmails.map((email) => ({ ...email, body: [...email.body] })))
 const isMailboxOpen = ref(false)
 const selectedTaskId = ref(null)
 const selectedEmailId = ref(null)
 const selectedRepositoryName = ref(null)
 const selectedNotificationText = ref(null)
+const selectedFeedbackId = ref(null)
+const selectedReviewId = ref(reviewQueue[0]?.id ?? null)
 const isGrowthDetailOpen = ref(false)
 const operationResult = ref({
   title: 'Git 操作',
@@ -39,9 +48,14 @@ const selectedEmail = computed(() => mailboxMessages.value.find((email) => email
 const selectedNotification = computed(() =>
   notifications.find((notification) => notification.text === selectedNotificationText.value) ?? null,
 )
+const selectedFeedback = computed(() =>
+  reviewFeedbacks.find((feedback) => feedback.id === selectedFeedbackId.value) ?? null,
+)
 const unreadMailCount = computed(() => mailboxMessages.value.filter((email) => email.unread).length)
 const displayStats = computed(() =>
-  workbenchStats.map((stat) => (stat.label === '未读邮件' ? { ...stat, value: unreadMailCount.value } : stat)),
+  workbenchView.value === 'guild-master'
+    ? maintainerWorkbenchStats
+    : workbenchStats.map((stat) => (stat.label === '未读邮件' ? { ...stat, value: unreadMailCount.value } : stat)),
 )
 const selectedTaskRepository = computed(() =>
   repositories.find((repository) => repository.name === selectedTask.value?.repository),
@@ -55,13 +69,59 @@ const selectedTaskPullRequests = computed(() => {
   const prId = selectedTask.value.prStatus.match(/PR #\d+/)?.[0]
   return pullRequests.filter((pr) => pr.id === prId || pr.title.includes(selectedTask.value.id))
 })
+const selectedFeedbackTask = computed(() =>
+  allTasks.value.find((task) => task.id === selectedFeedback.value?.questId) ?? null,
+)
 const xpProgress = computed(() => `${Math.round((workbenchUser.xpCurrent / workbenchUser.xpTarget) * 100)}%`)
+const selectedReview = computed(() =>
+  maintainerReviews.value.find((review) => review.id === selectedReviewId.value) ?? maintainerReviews.value[0] ?? null,
+)
+const activeRoleLabel = computed(() => (workbenchView.value === 'guild-master' ? 'Guild Master' : workbenchUser.role))
+
+function switchWorkbenchView(view) {
+  workbenchView.value = view
+  isMailboxOpen.value = false
+  operationResult.value =
+    view === 'guild-master'
+      ? {
+          title: '维护者工作台已打开',
+          body: '审核队列、提交详情和反馈操作已准备好。点击队列中的提交可以查看逐项检查。',
+        }
+      : {
+          title: '冒险家工作台已打开',
+          body: '我的待办、仓库操作、邮件通知和成长记录已恢复。',
+        }
+}
+
+function selectReview(review) {
+  selectedReviewId.value = review.id
+  operationResult.value = {
+    title: `${review.id} 已选中`,
+    body: `正在查看 ${review.questId} 的提交详情、完成标准和审核建议。`,
+  }
+}
+
+function runReviewAction(action, review = selectedReview.value) {
+  if (!review) return
+
+  const resultMap = {
+    approve: ['审核已通过', `${review.questId} 已通过审核，冒险家侧将收到成长记录和完成通知。`],
+    changes: ['修改请求已发送', `${review.questId} 的逐项反馈已发送，冒险家工作台将出现待修改事项。`],
+    reject: ['提交已驳回', `${review.questId} 已标记为驳回，任务仍需维护者后续处理。`],
+    draft: ['草稿已保存', `${review.questId} 的审核意见已保存为本地模拟草稿。`],
+    pr: ['PR 状态已打开', `${review.pullRequest} 的检查结果和 Review 状态已定位。`],
+  }
+
+  const [title, body] = resultMap[action] ?? ['审核操作已记录', `${review.questId} 的模拟操作已完成。`]
+  operationResult.value = { title, body }
+}
 
 function selectTask(task) {
   selectedTaskId.value = task.id
   selectedEmailId.value = null
   selectedRepositoryName.value = null
   selectedNotificationText.value = null
+  selectedFeedbackId.value = null
   isGrowthDetailOpen.value = false
   operationResult.value = {
     title: `${task.id} 已选中`,
@@ -74,6 +134,7 @@ function selectEmail(email) {
   selectedTaskId.value = null
   selectedRepositoryName.value = null
   selectedNotificationText.value = null
+  selectedFeedbackId.value = null
   isGrowthDetailOpen.value = false
   isMailboxOpen.value = false
   email.unread = false
@@ -88,6 +149,7 @@ function selectRepository(repository) {
   selectedTaskId.value = null
   selectedEmailId.value = null
   selectedNotificationText.value = null
+  selectedFeedbackId.value = null
   isGrowthDetailOpen.value = false
   operationResult.value = {
     title: `${repository.name} 已打开`,
@@ -100,6 +162,7 @@ function selectNotification(notification) {
   selectedTaskId.value = null
   selectedEmailId.value = null
   selectedRepositoryName.value = null
+  selectedFeedbackId.value = null
   isGrowthDetailOpen.value = false
   isMailboxOpen.value = false
   operationResult.value = {
@@ -114,10 +177,15 @@ function showGrowthDetails(source = '个人成长档案') {
   selectedEmailId.value = null
   selectedRepositoryName.value = null
   selectedNotificationText.value = null
+  selectedFeedbackId.value = null
   operationResult.value = {
     title: '成长详情已打开',
     body: `${source} 已显示 Level、XP、完成任务数和最近贡献记录。`,
   }
+}
+
+function openIdCard() {
+  emit('open-id-card')
 }
 
 function resolveNotificationAction(notification) {
@@ -127,7 +195,7 @@ function resolveNotificationAction(notification) {
     查看任务: 'feedback',
     处理异常: 'exception',
   }
-  return { type: actionMap[notification.action] ?? 'feedback' }
+  return { type: actionMap[notification.action] ?? 'feedback', feedbackId: notification.feedbackId }
 }
 
 function runEmailAction(action, email) {
@@ -156,7 +224,12 @@ function runEmailAction(action, email) {
 
 function runAction(action, source = '当前事项') {
   if (action.type === 'submit') {
-    emit('open-submission')
+    emit('open-submission', action.questId ?? selectedFeedback.value?.questId ?? selectedTask.value?.id)
+    return
+  }
+
+  if (action.type === 'feedback') {
+    openFeedback(action.feedbackId ?? selectedTask.value?.feedbackId, source)
     return
   }
 
@@ -185,6 +258,17 @@ function runAction(action, source = '当前事项') {
   const [title, body] = resultMap[action.type] ?? ['操作已记录', `${source} 的模拟操作已完成。`]
   operationResult.value = { title, body }
 }
+
+function openFeedback(feedbackId, source = '审核反馈') {
+  const fallbackId = reviewFeedbacks.find((feedback) => feedback.questId === selectedTask.value?.id)?.id
+  selectedFeedbackId.value = feedbackId ?? fallbackId ?? reviewFeedbacks[0]?.id ?? null
+  isGrowthDetailOpen.value = false
+  isMailboxOpen.value = false
+  operationResult.value = {
+    title: '反馈详情已打开',
+    body: `${source} 的逐项审核意见已显示。请先在工作台更新 PR，再到提交柜台重新提交成果。`,
+  }
+}
 </script>
 
 <template>
@@ -197,8 +281,24 @@ function runAction(action, source = '当前事项') {
           <span class="user-avatar" aria-hidden="true">{{ workbenchUser.name.slice(0, 1) }}</span>
           <div>
             <strong>{{ workbenchUser.name }}</strong>
-            <span>{{ workbenchUser.role }}</span>
+            <span>{{ activeRoleLabel }}</span>
           </div>
+        </div>
+        <div class="view-switch" aria-label="工作台视图切换">
+          <button
+            type="button"
+            :class="{ active: workbenchView === 'adventurer' }"
+            @click="switchWorkbenchView('adventurer')"
+          >
+            Adventurer View
+          </button>
+          <button
+            type="button"
+            :class="{ active: workbenchView === 'guild-master' }"
+            @click="switchWorkbenchView('guild-master')"
+          >
+            Guild Master View
+          </button>
         </div>
       </div>
 
@@ -208,7 +308,7 @@ function runAction(action, source = '当前事项') {
             <strong>Level {{ workbenchUser.level }}</strong>
             <span>{{ workbenchUser.xpCurrent }} / {{ workbenchUser.xpTarget }} XP</span>
           </div>
-          <button class="quiet-action detail-link" type="button" @click="showGrowthDetails()">
+          <button class="quiet-action detail-link" type="button" @click="openIdCard">
             查看详细信息
           </button>
         </div>
@@ -293,7 +393,7 @@ function runAction(action, source = '当前事项') {
       </div>
     </header>
 
-    <aside class="workbench-panel todo-panel">
+    <aside v-if="workbenchView === 'adventurer'" class="workbench-panel todo-panel">
       <div class="panel-head">
         <p class="kicker">My Todo</p>
         <h2>我的待办</h2>
@@ -322,8 +422,275 @@ function runAction(action, source = '当前事项') {
       </div>
     </aside>
 
+    <aside v-else class="workbench-panel todo-panel review-queue-panel">
+      <div class="panel-head">
+        <p class="kicker">Review Queue</p>
+        <h2>审核队列</h2>
+      </div>
+
+      <div class="todo-group-list">
+        <button
+          v-for="review in maintainerReviews"
+          :key="review.id"
+          class="todo-task review-queue-item"
+          :class="{ active: selectedReview?.id === review.id }"
+          type="button"
+          @click="selectReview(review)"
+        >
+          <span class="status-pill" :class="{ warning: review.status !== '待审核' }">{{ review.status }}</span>
+          <strong>{{ review.id }} · {{ review.questId }}</strong>
+          <small>{{ review.questTitle }}</small>
+          <small>提交人：{{ review.submitter }} · {{ review.pullRequest }}</small>
+          <small>提交时间：{{ review.submittedAt }}</small>
+        </button>
+      </div>
+    </aside>
+
     <main class="workbench-main">
-      <section v-if="selectedEmail" class="workbench-panel task-detail-panel email-detail-panel">
+      <section v-if="workbenchView === 'guild-master'" class="workbench-panel task-detail-panel maintainer-detail-panel">
+        <div class="panel-head inline">
+          <div>
+            <p class="kicker">Guild Master Review</p>
+            <h2>{{ selectedReview?.questId }} · {{ selectedReview?.questTitle }}</h2>
+          </div>
+          <span class="status-pill" :class="{ warning: selectedReview?.status !== '待审核' }">
+            {{ selectedReview?.status }}
+          </span>
+        </div>
+
+        <div v-if="selectedReview" class="maintainer-detail-grid">
+          <article class="maintainer-brief-card">
+            <div>
+              <p class="kicker">Submission Detail</p>
+              <h3>{{ selectedReview.summary }}</h3>
+            </div>
+            <dl>
+              <div>
+                <dt>提交编号</dt>
+                <dd>{{ selectedReview.id }}</dd>
+              </div>
+              <div>
+                <dt>任务</dt>
+                <dd>{{ selectedReview.questId }} · {{ selectedReview.questTitle }}</dd>
+              </div>
+              <div>
+                <dt>提交人</dt>
+                <dd>{{ selectedReview.submitter }}</dd>
+              </div>
+              <div>
+                <dt>关联仓库</dt>
+                <dd>{{ selectedReview.repository }}</dd>
+              </div>
+              <div>
+                <dt>关联 PR</dt>
+                <dd>{{ selectedReview.pullRequest }}</dd>
+              </div>
+              <div>
+                <dt>提交时间</dt>
+                <dd>{{ selectedReview.submittedAt }}</dd>
+              </div>
+            </dl>
+          </article>
+
+          <article class="detail-card maintainer-check-card">
+            <h3>完成标准逐项检查</h3>
+            <div class="feedback-check-list">
+              <section
+                v-for="item in selectedReview.checklist"
+                :key="item.item"
+                class="feedback-check-row"
+                :class="{ passed: item.passed, failed: !item.passed }"
+              >
+                <div>
+                  <strong>{{ item.item }}</strong>
+                  <span>{{ item.passed ? '通过' : '需修改' }}</span>
+                </div>
+                <p>{{ item.comment }}</p>
+              </section>
+            </div>
+          </article>
+
+          <article class="detail-card maintainer-feedback-card">
+            <h3>审核总结</h3>
+            <p>{{ selectedReview.summary }}</p>
+            <h3>必须修改</h3>
+            <ul class="feedback-list urgent">
+              <li v-for="item in selectedReview.requiredChanges" :key="item">{{ item }}</li>
+            </ul>
+            <h3>学习建议</h3>
+            <ul class="feedback-list">
+              <li v-for="item in selectedReview.learningSuggestions" :key="item">{{ item }}</li>
+            </ul>
+          </article>
+
+          <article class="detail-card maintainer-action-card">
+            <h3>审核操作</h3>
+            <div class="card-actions detail-actions">
+              <button class="primary-action" type="button" @click="runReviewAction('approve')">通过</button>
+              <button class="quiet-action" type="button" @click="runReviewAction('changes')">请求修改</button>
+              <button class="quiet-action danger" type="button" @click="runReviewAction('reject')">驳回</button>
+              <button class="quiet-action" type="button" @click="runReviewAction('pr')">查看 PR</button>
+              <button class="quiet-action" type="button" @click="runReviewAction('draft')">保存草稿</button>
+            </div>
+            <p>这里仅做静态模拟，不保存真实审核结果；通过或请求修改后，冒险家侧会在工作台看到反馈或成长状态。</p>
+          </article>
+
+          <article class="detail-card maintainer-quest-card">
+            <h3>我发布的任务</h3>
+            <div class="maintainer-list">
+              <section v-for="quest in maintainerPublishedQuests" :key="quest.id">
+                <strong>{{ quest.id }} · {{ quest.title }}</strong>
+                <span>{{ quest.status }} · {{ quest.assignee }}</span>
+              </section>
+            </div>
+          </article>
+
+          <article class="detail-card maintainer-repository-card">
+            <h3>仓库状态</h3>
+            <div class="maintainer-list">
+              <section v-for="repository in repositories" :key="repository.name">
+                <strong>{{ repository.name }}</strong>
+                <span :class="{ warning: repository.syncStatus.includes('warning') }">
+                  {{ repository.syncStatus }} · Issue {{ repository.issues }} · PR {{ repository.pullRequests }}
+                </span>
+              </section>
+            </div>
+          </article>
+
+          <article class="detail-card maintainer-notice-card">
+            <h3>维护者通知</h3>
+            <div class="maintainer-list">
+              <section v-for="notice in maintainerNotifications" :key="notice.text">
+                <strong>{{ notice.type }}</strong>
+                <span>{{ notice.text }}</span>
+              </section>
+            </div>
+          </article>
+
+          <article class="detail-card maintainer-operation-card">
+            <h3>{{ operationResult.title }}</h3>
+            <p>{{ operationResult.body }}</p>
+          </article>
+        </div>
+      </section>
+
+      <template v-else>
+      <section v-if="selectedFeedback" class="workbench-panel task-detail-panel feedback-detail-panel">
+        <div class="panel-head inline">
+          <div>
+            <p class="kicker">Review Feedback</p>
+            <h2>{{ selectedFeedback.questId }} · {{ selectedFeedback.questTitle }}</h2>
+          </div>
+          <span class="status-pill warning">{{ selectedFeedback.conclusion }}</span>
+        </div>
+
+        <div class="feedback-detail-grid">
+          <article class="feedback-brief-card">
+            <div>
+              <p class="kicker">Feedback Archive</p>
+              <h3>{{ selectedFeedback.summary }}</h3>
+            </div>
+            <dl>
+              <div>
+                <dt>任务编号与标题</dt>
+                <dd>{{ selectedFeedback.questId }} · {{ selectedFeedback.questTitle }}</dd>
+              </div>
+              <div>
+                <dt>关联仓库</dt>
+                <dd>{{ selectedFeedback.repository }}</dd>
+              </div>
+              <div>
+                <dt>关联 PR</dt>
+                <dd>{{ selectedFeedback.pullRequest }} · {{ selectedFeedback.pullRequestTitle }}</dd>
+              </div>
+              <div>
+                <dt>审核人</dt>
+                <dd>{{ selectedFeedback.reviewer }}</dd>
+              </div>
+              <div>
+                <dt>审核结论</dt>
+                <dd>{{ selectedFeedback.conclusion }}</dd>
+              </div>
+              <div>
+                <dt>审核时间</dt>
+                <dd>{{ selectedFeedback.reviewedAt }}</dd>
+              </div>
+            </dl>
+          </article>
+
+          <article class="detail-card feedback-check-card">
+            <h3>逐项检查结果</h3>
+            <div class="feedback-check-list">
+              <section
+                v-for="item in selectedFeedback.checks"
+                :key="item.checkpoint"
+                class="feedback-check-row"
+                :class="{ passed: item.passed, failed: !item.passed }"
+              >
+                <div>
+                  <strong>{{ item.checkpoint }}</strong>
+                  <span>{{ item.passed ? '通过' : '需修改' }}</span>
+                </div>
+                <p>{{ item.comment }}</p>
+              </section>
+            </div>
+          </article>
+
+          <article class="detail-card action-note-card">
+            <h3>工作台与提交柜台分工</h3>
+            <p>代码文件上传、commit 和 PR 更新仍在工作台完成；完成修改后，成果记录需要到 Submission Counter / 提交柜台重新提交。</p>
+          </article>
+
+          <article class="detail-card required-change-card">
+            <h3>必须修改</h3>
+            <ul class="feedback-list urgent">
+              <li v-for="item in selectedFeedback.requiredChanges" :key="item">{{ item }}</li>
+            </ul>
+          </article>
+
+          <article class="detail-card learning-tip-card">
+            <h3>学习建议</h3>
+            <ul class="feedback-list">
+              <li v-for="item in selectedFeedback.learningTips" :key="item">{{ item }}</li>
+            </ul>
+          </article>
+
+          <article class="detail-card feedback-action-card">
+            <h3>下一步操作</h3>
+            <div class="card-actions detail-actions">
+              <button
+                class="quiet-action"
+                type="button"
+                @click="runAction({ type: 'pull-request' }, `${selectedFeedback.questId} ${selectedFeedback.questTitle}`)"
+              >
+                进入工作台更新 PR
+              </button>
+              <button
+                class="primary-action"
+                type="button"
+                @click="runAction({ type: 'submit', questId: selectedFeedback.questId }, `${selectedFeedback.questId} ${selectedFeedback.questTitle}`)"
+              >
+                重新提交成果
+              </button>
+              <button
+                class="quiet-action"
+                type="button"
+                @click="runAction({ type: 'pr-view' }, `${selectedFeedback.pullRequest} ${selectedFeedback.pullRequestTitle}`)"
+              >
+                查看 PR
+              </button>
+            </div>
+            <p v-if="selectedFeedbackTask">当前待办状态：{{ selectedFeedbackTask.statusLabel }} · {{ selectedFeedbackTask.nextStep }}</p>
+          </article>
+
+          <article class="detail-card feedback-operation-card">
+            <h3>{{ operationResult.title }}</h3>
+            <p>{{ operationResult.body }}</p>
+          </article>
+        </div>
+      </section>
+
+      <section v-else-if="selectedEmail" class="workbench-panel task-detail-panel email-detail-panel">
         <div class="panel-head inline">
           <div>
             <p class="kicker">Mail Detail</p>
@@ -363,9 +730,17 @@ function runAction(action, source = '当前事项') {
           <article class="detail-card wide">
             <h3>邮件操作</h3>
             <div class="card-actions detail-actions">
+              <button
+                v-if="selectedEmail.feedbackId"
+                class="primary-action"
+                type="button"
+                @click="runAction({ type: 'feedback', feedbackId: selectedEmail.feedbackId }, selectedEmail.related)"
+              >
+                查看审核反馈
+              </button>
               <button class="quiet-action" type="button" @click="runEmailAction('read', selectedEmail)">标记已读</button>
               <button class="quiet-action" type="button" @click="runEmailAction('unread', selectedEmail)">标记未读</button>
-              <button class="primary-action" type="button" @click="runEmailAction('reply', selectedEmail)">回复</button>
+              <button class="quiet-action" type="button" @click="runEmailAction('reply', selectedEmail)">回复</button>
               <button class="quiet-action" type="button" @click="runEmailAction('archive', selectedEmail)">归档</button>
               <button class="quiet-action" type="button" @click="runEmailAction('delete', selectedEmail)">删除</button>
             </div>
@@ -647,6 +1022,7 @@ function runAction(action, source = '当前事项') {
       </section>
 
       <section v-else class="workbench-panel task-detail-panel blank-detail" aria-hidden="true"></section>
+      </template>
     </main>
   </div>
 </template>
@@ -735,6 +1111,33 @@ function runAction(action, source = '当前事项') {
   display: block;
   margin-top: 3px;
   font-size: 0.84rem;
+}
+
+.view-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.view-switch button {
+  min-height: 32px;
+  border: 1px solid rgba(240, 198, 118, 0.24);
+  border-radius: 999px;
+  padding: 0 11px;
+  color: rgba(255, 231, 183, 0.78);
+  font-size: 0.76rem;
+  background: rgba(11, 6, 3, 0.36);
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.view-switch button:hover,
+.view-switch button:focus-visible,
+.view-switch button.active {
+  border-color: var(--gold-bright);
+  color: #ffe8b9;
+  background: rgba(82, 45, 16, 0.62);
+  transform: translateY(-1px);
 }
 
 .workbench-level {
@@ -1265,6 +1668,307 @@ dd {
   line-height: 1.58;
 }
 
+.feedback-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.72fr);
+  grid-template-areas:
+    "brief brief"
+    "checks note"
+    "checks required"
+    "tips actions"
+    "operation operation";
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.feedback-brief-card {
+  grid-area: brief;
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
+  gap: 16px;
+  border: 1px solid rgba(240, 198, 118, 0.28);
+  border-radius: 7px;
+  padding: 16px;
+  background:
+    linear-gradient(135deg, rgba(91, 50, 19, 0.58), rgba(11, 6, 3, 0.46)),
+    radial-gradient(circle at 92% 12%, rgba(255, 217, 138, 0.14), transparent 0 30%, transparent 56%);
+}
+
+.feedback-brief-card h3 {
+  margin: 2px 0 0;
+  color: #ffe8b9;
+  font-family: var(--font-display);
+  font-size: 1.08rem;
+  line-height: 1.38;
+}
+
+.feedback-brief-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.feedback-brief-card dl div {
+  min-width: 0;
+  border-bottom: 1px solid rgba(240, 198, 118, 0.16);
+  padding-bottom: 6px;
+}
+
+.feedback-brief-card dd {
+  overflow-wrap: anywhere;
+}
+
+.feedback-check-card {
+  grid-area: checks;
+}
+
+.action-note-card {
+  grid-area: note;
+  border-color: rgba(238, 184, 91, 0.34);
+  background:
+    linear-gradient(180deg, rgba(39, 22, 10, 0.66), rgba(12, 7, 4, 0.46)),
+    linear-gradient(135deg, rgba(216, 154, 50, 0.12), transparent 58%);
+}
+
+.required-change-card {
+  grid-area: required;
+}
+
+.learning-tip-card {
+  grid-area: tips;
+}
+
+.feedback-action-card {
+  grid-area: actions;
+}
+
+.feedback-operation-card {
+  grid-area: operation;
+}
+
+.feedback-check-list {
+  display: grid;
+  gap: 9px;
+}
+
+.feedback-check-row {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(240, 198, 118, 0.18);
+  border-radius: 5px;
+  padding: 10px;
+  background: rgba(7, 4, 2, 0.3);
+}
+
+.feedback-check-row.passed {
+  border-color: rgba(111, 158, 87, 0.58);
+  background: rgba(44, 73, 36, 0.26);
+}
+
+.feedback-check-row.failed {
+  border-color: rgba(204, 95, 65, 0.68);
+  background: rgba(88, 31, 23, 0.32);
+}
+
+.feedback-check-row div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.feedback-check-row strong {
+  color: #ffe8b9;
+  line-height: 1.25;
+}
+
+.feedback-check-row span {
+  flex: 0 0 auto;
+  border: 1px solid rgba(238, 184, 91, 0.38);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #ffe4ad;
+  font-size: 0.72rem;
+  background: rgba(80, 43, 18, 0.44);
+}
+
+.feedback-check-row.passed span {
+  border-color: rgba(129, 184, 98, 0.68);
+  color: #dcf4c2;
+  background: rgba(44, 91, 36, 0.44);
+}
+
+.feedback-check-row.failed span {
+  border-color: rgba(238, 120, 82, 0.72);
+  color: #ffd7c9;
+  background: rgba(110, 42, 36, 0.5);
+}
+
+.feedback-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  color: rgba(255, 231, 183, 0.78);
+  list-style: none;
+}
+
+.feedback-list li {
+  position: relative;
+  border-bottom: 1px solid rgba(240, 198, 118, 0.16);
+  padding: 0 0 8px 17px;
+  line-height: 1.42;
+}
+
+.feedback-list li::before {
+  position: absolute;
+  left: 0;
+  top: 0.58em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  content: '';
+  background: rgba(238, 184, 91, 0.76);
+}
+
+.feedback-list.urgent li::before {
+  background: #d66a48;
+}
+
+.feedback-action-card p {
+  border-top: 1px solid rgba(240, 198, 118, 0.16);
+  padding-top: 10px;
+}
+
+.review-queue-item {
+  gap: 6px;
+}
+
+.maintainer-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.72fr);
+  grid-template-areas:
+    "brief brief"
+    "checks feedback"
+    "actions quests"
+    "repos notices"
+    "operation operation";
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.maintainer-brief-card {
+  grid-area: brief;
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(320px, 1.08fr);
+  gap: 16px;
+  border: 1px solid rgba(240, 198, 118, 0.28);
+  border-radius: 7px;
+  padding: 16px;
+  background:
+    linear-gradient(135deg, rgba(91, 50, 19, 0.58), rgba(11, 6, 3, 0.46)),
+    radial-gradient(circle at 90% 14%, rgba(255, 217, 138, 0.14), transparent 0 30%, transparent 56%);
+}
+
+.maintainer-brief-card h3 {
+  margin: 2px 0 0;
+  color: #ffe8b9;
+  font-family: var(--font-display);
+  font-size: 1.08rem;
+  line-height: 1.38;
+}
+
+.maintainer-brief-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.maintainer-brief-card dl div {
+  min-width: 0;
+  border-bottom: 1px solid rgba(240, 198, 118, 0.16);
+  padding-bottom: 6px;
+}
+
+.maintainer-brief-card dd {
+  overflow-wrap: anywhere;
+}
+
+.maintainer-check-card {
+  grid-area: checks;
+}
+
+.maintainer-feedback-card {
+  grid-area: feedback;
+}
+
+.maintainer-action-card {
+  grid-area: actions;
+  border-color: rgba(238, 184, 91, 0.34);
+  background:
+    linear-gradient(180deg, rgba(39, 22, 10, 0.66), rgba(12, 7, 4, 0.46)),
+    linear-gradient(135deg, rgba(216, 154, 50, 0.12), transparent 58%);
+}
+
+.maintainer-quest-card {
+  grid-area: quests;
+}
+
+.maintainer-repository-card {
+  grid-area: repos;
+}
+
+.maintainer-notice-card {
+  grid-area: notices;
+}
+
+.maintainer-operation-card {
+  grid-area: operation;
+}
+
+.maintainer-list {
+  display: grid;
+  gap: 8px;
+}
+
+.maintainer-list section {
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid rgba(240, 198, 118, 0.16);
+  padding-bottom: 8px;
+}
+
+.maintainer-list strong {
+  color: #ffe8b9;
+  line-height: 1.25;
+}
+
+.maintainer-list span {
+  color: rgba(255, 231, 183, 0.72);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.maintainer-list span.warning {
+  color: #ffd7c9;
+}
+
+.quiet-action.danger {
+  border-color: rgba(204, 95, 65, 0.68);
+  color: #ffd7c9;
+}
+
+.quiet-action.danger:hover,
+.quiet-action.danger:focus-visible {
+  background: rgba(110, 42, 36, 0.48);
+}
+
 .repository-panel {
   overflow: auto;
 }
@@ -1652,6 +2356,47 @@ dd {
   }
 
   .growth-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .feedback-detail-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "brief"
+      "checks"
+      "note"
+      "required"
+      "tips"
+      "actions"
+      "operation";
+  }
+
+  .feedback-brief-card {
+    grid-template-columns: 1fr;
+  }
+
+  .feedback-brief-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .maintainer-detail-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "brief"
+      "checks"
+      "feedback"
+      "actions"
+      "quests"
+      "repos"
+      "notices"
+      "operation";
+  }
+
+  .maintainer-brief-card {
+    grid-template-columns: 1fr;
+  }
+
+  .maintainer-brief-card dl {
     grid-template-columns: 1fr;
   }
 

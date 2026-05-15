@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import parchmentFormImg from '../assets/submission-form-parchment-v0-clean.png'
 import {
@@ -12,7 +12,54 @@ import {
 
 const isFormOpen = ref(false)
 
+const props = defineProps({
+  quest: {
+    type: Object,
+    default: null,
+  },
+})
+
 const evidenceItems = ['运行截图', '测试日志', '设计稿链接']
+
+const displayLinkedSubmission = computed(() => {
+  if (!props.quest) return linkedSubmission
+
+  return {
+    quest: `${props.quest.id} · ${props.quest.title}`,
+    meta: `${props.quest.stack} · 难度 ${props.quest.difficulty} · ${props.quest.reward}`,
+  }
+})
+
+const displaySubmissionFields = computed(() => {
+  if (!props.quest) return submissionFields
+
+  const repositoryName = props.quest.detail?.repository?.name ?? 'git-guild / frontend'
+  const branchName = props.quest.detail?.repository?.branch
+    ? `feature/${props.quest.id.toLowerCase()}`
+    : 'feature/refactor-submission-flow'
+  const pullRequest = props.quest.detail?.pr?.number
+  const hasPullRequest = pullRequest && pullRequest !== 'Not created'
+
+  return submissionFields.map((field) => {
+    if (field.id === 'repository') return { ...field, value: repositoryName }
+    if (field.id === 'branch') return { ...field, value: branchName }
+    if (field.id === 'pull-request') {
+      return {
+        ...field,
+        value: hasPullRequest ? pullRequest : '',
+        placeholder: hasPullRequest ? field.placeholder : '先在工作台发起 PR，再粘贴 Pull Request 链接',
+      }
+    }
+    if (field.id === 'submission-note') {
+      return {
+        ...field,
+        value: `准备提交 ${props.quest.id} 的成果审核。请说明本次修改、测试结果和完成标准自检情况。`,
+      }
+    }
+
+    return field
+  })
+})
 </script>
 
 <template>
@@ -42,12 +89,12 @@ const evidenceItems = ['运行截图', '测试日志', '设计稿链接']
           <div class="submission-sheet-body">
             <section class="submission-quest-summary" aria-label="关联委托">
               <p class="kicker">Linked Quest</p>
-              <h2>{{ linkedSubmission.quest }}</h2>
-              <p>{{ linkedSubmission.meta }}</p>
+              <h2>{{ displayLinkedSubmission.quest }}</h2>
+              <p>{{ displayLinkedSubmission.meta }}</p>
             </section>
 
             <form class="submission-form-panel">
-              <label v-for="field in submissionFields" :key="field.id" :class="{ 'wide-field': field.wide }">
+              <label v-for="field in displaySubmissionFields" :key="field.id" :class="{ 'wide-field': field.wide }">
                 <span>{{ field.label }}</span>
                 <textarea
                   v-if="field.type === 'textarea'"

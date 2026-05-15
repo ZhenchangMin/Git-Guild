@@ -79,7 +79,7 @@ export const taskGroups = [
         prStatus: 'PR #23 Changes requested',
         nextStep: '根据逐项反馈更新 PR',
         actions: [
-          { label: '查看反馈', type: 'feedback', primary: true },
+          { label: '查看反馈', type: 'feedback', feedbackId: 'feedback-qst-0444', primary: true },
           { label: '更新 PR', type: 'pull-request' },
           { label: '重新提交', type: 'submit' },
         ],
@@ -130,10 +130,180 @@ export const repositories = [
 export const pullRequests = [
   { id: 'PR #18', title: 'QST-0427 submission flow', status: 'Open', action: '查看 PR' },
   { id: 'PR #21', title: 'repository import error view', status: 'Review requested', action: '查看 PR' },
+  { id: 'PR #23', title: 'QST-0444 review feedback archive', status: 'Changes requested', action: '查看 PR' },
+]
+
+export const reviewFeedbacks = [
+  {
+    id: 'feedback-qst-0444',
+    questId: 'QST-0444',
+    questTitle: '审核反馈归档',
+    repository: 'git-guild / frontend',
+    pullRequest: 'PR #23',
+    pullRequestTitle: 'QST-0444 review feedback archive',
+    reviewer: 'Guild Master · Review Desk',
+    conclusion: '请求修改',
+    reviewedAt: '今天 09:18',
+    summary:
+      '整体方向正确，已经能展示最近审核意见。但当前版本还不能稳定支持按任务归档查看，学习建议也没有和必须修改项分开。请先补齐这两处，再通过提交柜台重新提交成果。',
+    checks: [
+      {
+        checkpoint: 'PR 指向正确仓库与任务分支',
+        passed: true,
+        comment: 'PR #23 指向 git-guild / frontend，分支名称和 QST-0444 对应，关联关系清楚。',
+      },
+      {
+        checkpoint: '审核反馈按任务归档展示',
+        passed: false,
+        comment:
+          '当前只按时间列出反馈。请增加任务编号筛选或分组，让用户能直接定位 QST-0444 对应的审核记录。',
+      },
+      {
+        checkpoint: '区分通过、退回和待修改状态',
+        passed: true,
+        comment: '状态标签已经能区分通过和退回，但待修改状态建议继续保留警示色。',
+      },
+      {
+        checkpoint: '必须修改与学习建议分区',
+        passed: false,
+        comment:
+          '现在所有文字都放在同一段说明里。请拆成“必须修改”和“学习建议”两个区域，避免新手不知道先做哪一项。',
+      },
+      {
+        checkpoint: '重新提交路径清晰',
+        passed: false,
+        comment:
+          '页面需要明确说明：代码和 PR 更新在工作台完成，成果重新提交在提交柜台完成，并提供对应入口。',
+      },
+    ],
+    requiredChanges: [
+      '在反馈归档区域增加任务编号筛选或按任务分组，默认高亮当前任务 QST-0444。',
+      '把“必须修改”和“学习建议”拆成两个清晰区域，必须修改项放在学习建议前面。',
+      '在反馈详情底部补充下一步操作：进入工作台更新 PR、重新提交成果、查看 PR。',
+    ],
+    learningTips: [
+      '先修正会阻塞验收的内容，再处理体验优化；这样维护者复审时能更快判断是否达标。',
+      '每条修改建议最好对应一个可检查结果，例如“能按 QST-0444 筛选”比“优化筛选体验”更容易验收。',
+      '重新提交时在提交说明中列出已完成的检查项，能减少维护者来回确认的成本。',
+    ],
+  },
+]
+
+export const maintainerWorkbenchStats = [
+  { label: '待审核提交', value: 3 },
+  { label: '请求修改', value: 2 },
+  { label: '已发布任务', value: 6 },
+  { label: '仓库预警', value: 1 },
+]
+
+export const reviewQueue = [
+  {
+    id: 'SUB-0427-01',
+    questId: 'QST-0427',
+    questTitle: '重构提交流程',
+    submitter: 'Minerva Dawn',
+    repository: 'git-guild / frontend',
+    pullRequest: 'PR #18',
+    status: '待审核',
+    submittedAt: '今天 10:30',
+    summary: '已重整任务成果提交路径，补充 PR 链接校验和退回修改入口。',
+    checklist: [
+      {
+        item: 'PR 链接指向正确仓库',
+        passed: true,
+        comment: 'PR #18 属于 git-guild / frontend，和任务仓库一致。',
+      },
+      {
+        item: '完成标准逐项覆盖',
+        passed: false,
+        comment: '提交说明中缺少退回修改状态截图，需要补充后再复审。',
+      },
+      {
+        item: '提交说明清晰',
+        passed: true,
+        comment: '说明覆盖了表单字段、PR 关联和提交审核入口。',
+      },
+    ],
+    requiredChanges: ['补充退回修改状态截图。', '在提交说明中注明本次验证使用的浏览器和测试数据。'],
+    learningSuggestions: ['复审前先按完成标准逐项自检。', '提交说明可以按“做了什么 / 怎么验证 / 还剩什么风险”组织。'],
+  },
+  {
+    id: 'SUB-0431-01',
+    questId: 'QST-0431',
+    questTitle: '仓库导入异常页',
+    submitter: 'Evan Stone',
+    repository: 'git-guild / frontend',
+    pullRequest: 'PR #21',
+    status: '待审核',
+    submittedAt: '今天 09:48',
+    summary: '新增导入失败状态、重试入口和同步日志摘要。',
+    checklist: [
+      {
+        item: '异常原因可见',
+        passed: true,
+        comment: '网络失败和权限不足两类原因已经分开展示。',
+      },
+      {
+        item: '提供重试入口',
+        passed: true,
+        comment: '页面右侧有手动重试按钮，状态反馈清楚。',
+      },
+      {
+        item: '同步状态能回到工作台',
+        passed: false,
+        comment: '需要补充从异常页返回仓库工作台的入口。',
+      },
+    ],
+    requiredChanges: ['增加返回仓库工作台的入口。'],
+    learningSuggestions: ['异常页面应同时给出原因、影响和下一步，避免用户只看到失败提示。'],
+  },
+  {
+    id: 'SUB-0444-02',
+    questId: 'QST-0444',
+    questTitle: '审核反馈归档',
+    submitter: 'Minerva Dawn',
+    repository: 'git-guild / frontend',
+    pullRequest: 'PR #23',
+    status: '已请求修改',
+    submittedAt: '昨天 18:16',
+    summary: '反馈归档区域已能显示历史意见，但筛选和学习建议分区仍需完善。',
+    checklist: [
+      {
+        item: '反馈按任务归档',
+        passed: false,
+        comment: '当前仍主要按时间排列，需要按任务编号筛选。',
+      },
+      {
+        item: '修改建议可执行',
+        passed: true,
+        comment: '必须修改项已经较具体。',
+      },
+      {
+        item: '重新提交路径清晰',
+        passed: true,
+        comment: '已说明更新 PR 后到提交柜台重新提交。',
+      },
+    ],
+    requiredChanges: ['增加任务编号筛选或分组。', '学习建议需要和必须修改项分开展示。'],
+    learningSuggestions: ['把 Review 反馈写成可检查项，有助于新手按项修复。'],
+  },
+]
+
+export const maintainerPublishedQuests = [
+  { id: 'QST-0427', title: '重构提交流程', status: '审核中', assignee: 'Minerva Dawn' },
+  { id: 'QST-0431', title: '仓库导入异常页', status: '待审核', assignee: 'Evan Stone' },
+  { id: 'QST-0444', title: '审核反馈归档', status: '待修改', assignee: 'Minerva Dawn' },
+  { id: 'QST-0450', title: '推荐任务理由展示', status: '已发布', assignee: '未接取' },
+]
+
+export const maintainerNotifications = [
+  { type: '新提交', text: 'Minerva Dawn 提交了 QST-0427 的成果审核。' },
+  { type: 'PR 更新', text: 'PR #21 已通过基础检查，等待维护者 Review。' },
+  { type: '同步预警', text: 'git-guild/backend 同步状态为 Sync warning。' },
 ]
 
 export const notifications = [
-  { type: '审核反馈', text: '维护者请求修改 QST-0444', action: '查看反馈' },
+  { type: '审核反馈', text: '维护者请求修改 QST-0444', action: '查看反馈', feedbackId: 'feedback-qst-0444' },
   { type: 'PR 状态更新', text: 'PR #18 已通过基础检查', action: '查看 PR' },
   { type: '系统异常', text: '仓库 git-guild/backend 同步失败，需要重新同步', action: '处理异常' },
   { type: '管理员通知', text: '管理员退回了一个任务发布申请', action: '查看任务' },
@@ -148,6 +318,7 @@ export const workbenchEmails = [
     subject: 'QST-0444 需要修改后重新提交',
     receivedAt: '今天 09:24',
     related: 'QST-0444 · 审核反馈归档',
+    feedbackId: 'feedback-qst-0444',
     preview: '维护者已经留下逐项反馈，请补充归档筛选和学习建议展示。',
     body: [
       '你的 PR 已经完成初步审核，核心功能方向正确，但还需要补充两个细节后再进入下一轮审核。',

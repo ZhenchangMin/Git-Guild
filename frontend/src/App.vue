@@ -4,18 +4,24 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import deskImg from './assets/desk.png'
 import doorImg from './assets/door.png'
 import hallImg from './assets/hall.png'
+import idCardImg from './assets/ID card.png'
 import leaderBoardWallImg from './assets/leader board wall.png'
 import operationRoomImg from './assets/operation room.png'
 import questBoardImg from './assets/quest board.png'
 import submissionCounterImg from './assets/submission-counter-clerk-v0.png'
 import workbenchImg from './assets/workbench.png'
+import QuestDetail from './components/QuestDetail.vue'
 import SubmissionCounter from './components/SubmissionCounter.vue'
 import Workbench from './components/Workbench.vue'
+import { questDetails } from './data/quests'
 
 const screen = ref('door')
 const activeRoom = ref(null)
+const showIdCard = ref(false)
 const selectedRole = ref('adventurer')
 const signedRole = ref('visitor')
+const showGuide = ref(false)
+const viewHistory = ref([])
 const hallViewport = ref(null)
 const hallTrack = ref(null)
 const hallOffset = ref(0)
@@ -32,6 +38,9 @@ const selectedQuestFilters = ref({
 })
 const questPage = ref(1)
 const questPageSize = 4
+const activeQuestId = ref('QST-0427')
+const activeQuestIntent = ref('view')
+const activeSubmissionQuestId = ref('QST-0427')
 
 const roles = [
   { id: 'adventurer', name: 'Adventurer', note: 'Browse quests and submit work' },
@@ -101,7 +110,7 @@ const questCommissions = [
     difficulty: 'C',
     stack: 'Vue / Spring Boot',
     techStack: ['Vue', 'Spring Boot'],
-    status: 'Open',
+    status: 'Review',
     tags: ['Issue', '同步', '新手友好'],
     reward: '180 XP',
     summary: '展示仓库 Issue 同步状态，并给出失败后的下一步操作。',
@@ -129,7 +138,7 @@ const questCommissions = [
     difficulty: 'C',
     stack: 'Vue / Gitea',
     techStack: ['Vue', 'Gitea'],
-    status: 'Review',
+    status: 'PR Ready',
     tags: ['导入', '异常', '管理员'],
     reward: '160 XP',
     summary: '为仓库导入失败提供清晰错误页，帮助维护者重新接入项目。',
@@ -157,7 +166,7 @@ const questCommissions = [
     difficulty: 'C',
     stack: 'Vue / Local State',
     techStack: ['Vue', 'Local State'],
-    status: 'Open',
+    status: 'In Progress',
     tags: ['筛选', '状态', '任务板'],
     reward: '150 XP',
     summary: '记住用户最近使用的筛选条件，让返回任务板后保持上下文。',
@@ -171,7 +180,7 @@ const questCommissions = [
     difficulty: 'D',
     stack: 'Spring Boot / Vue',
     techStack: ['Spring Boot', 'Vue'],
-    status: 'Open',
+    status: 'Changes',
     tags: ['反馈', '个人资料', '审核'],
     reward: '260 XP',
     summary: '在个人资料中展示最近审核意见，突出可学习的修改建议。',
@@ -184,7 +193,7 @@ const questFilterGroups = [
   { id: 'tag', title: '标签', options: ['新手友好', 'Issue', 'PR', '审核', '同步', '异常', '反馈'] },
   { id: 'difficulty', title: '难度', options: ['B', 'C', 'D'] },
   { id: 'stack', title: '技术栈', options: ['Vue', 'Spring Boot', 'REST API', 'Gitea', 'Markdown', 'Local State'] },
-  { id: 'status', title: '状态', options: ['Open', 'Review'] },
+  { id: 'status', title: '状态', options: ['Open', 'In Progress', 'PR Ready', 'Review', 'Changes'] },
 ]
 
 const activeRoomImage = computed(() => rooms.find((room) => room.id === activeRoom.value)?.image)
@@ -247,16 +256,120 @@ const pagedQuestCommissions = computed(() => {
   const start = (questPage.value - 1) * questPageSize
   return rankedQuestCommissions.value.slice(start, start + questPageSize)
 })
+const activeQuest = computed(
+  () => questCommissions.find((quest) => quest.id === activeQuestId.value) ?? questCommissions[0],
+)
+const activeSubmissionQuest = computed(() => {
+  const quest = questCommissions.find((item) => item.id === activeSubmissionQuestId.value) ?? activeQuest.value
+  return {
+    ...quest,
+    detail: questDetails[quest.id],
+  }
+})
+const hallBackHint = computed(() => getBackHint('入口'))
+const operationBackHint = computed(() => getBackHint('入口'))
+const questDetailBackHint = computed(() => getBackHint('任务板'))
+const roomBackHint = computed(() => getBackHint('大厅'))
+
+function describeView(view) {
+  if (!view) return ''
+  if (view.screen === 'door') return '入口'
+  if (view.screen === 'hall') return '大厅'
+  if (view.screen === 'operation') return '管理员操作台'
+  if (view.screen === 'quest-detail') return '任务详情'
+  if (view.screen === 'room') {
+    const roomNames = {
+      submission: '提交柜台',
+      quest: '任务板',
+      desk: '仓库桌面',
+      workbench: '工作台',
+      leaderboard: '排行榜墙',
+    }
+    return roomNames[view.activeRoom] ?? '上一房间'
+  }
+  return '上一页面'
+}
+
+function getBackHint(fallbackName) {
+  const previousView = viewHistory.value[viewHistory.value.length - 1]
+  const previousName = describeView(previousView)
+  return previousName ? `返回上一页：${previousName}` : `返回至${fallbackName}`
+}
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key)
+}
+
+function currentView() {
+  return {
+    screen: screen.value,
+    activeRoom: activeRoom.value,
+    activeQuestId: activeQuestId.value,
+    activeQuestIntent: activeQuestIntent.value,
+    activeSubmissionQuestId: activeSubmissionQuestId.value,
+    hash: window.location.hash.replace('#', ''),
+  }
+}
+
+function normalizeView(view) {
+  return {
+    screen: hasOwn(view, 'screen') ? view.screen : screen.value,
+    activeRoom: hasOwn(view, 'activeRoom') ? view.activeRoom : activeRoom.value,
+    activeQuestId: hasOwn(view, 'activeQuestId') ? view.activeQuestId : activeQuestId.value,
+    activeQuestIntent: hasOwn(view, 'activeQuestIntent') ? view.activeQuestIntent : activeQuestIntent.value,
+    activeSubmissionQuestId: hasOwn(view, 'activeSubmissionQuestId')
+      ? view.activeSubmissionQuestId
+      : activeSubmissionQuestId.value,
+    hash: hasOwn(view, 'hash') ? view.hash : window.location.hash.replace('#', ''),
+  }
+}
+
+function isSameView(first, second) {
+  return (
+    first.screen === second.screen &&
+    first.activeRoom === second.activeRoom &&
+    first.activeQuestId === second.activeQuestId &&
+    first.activeQuestIntent === second.activeQuestIntent &&
+    first.activeSubmissionQuestId === second.activeSubmissionQuestId &&
+    first.hash === second.hash
+  )
+}
+
+function applyView(view) {
+  const nextView = normalizeView(view)
+  screen.value = nextView.screen
+  activeRoom.value = nextView.activeRoom
+  activeQuestId.value = nextView.activeQuestId
+  activeQuestIntent.value = nextView.activeQuestIntent
+  activeSubmissionQuestId.value = nextView.activeSubmissionQuestId
+  window.location.hash = nextView.hash
+  if (nextView.screen === 'hall') {
+    nextTick(centerHall)
+  }
+}
+
+function navigateTo(view) {
+  const previousView = currentView()
+  const nextView = normalizeView(view)
+  if (!isSameView(previousView, nextView)) {
+    viewHistory.value.push(previousView)
+  }
+  applyView(nextView)
+}
+
+function goBack(fallbackView) {
+  showIdCard.value = false
+  const previousView = viewHistory.value.pop()
+  applyView(previousView ?? fallbackView)
+}
+
 function enterGuild(roleId = selectedRole.value) {
   signedRole.value = roleId
   if (roleId === 'admin') {
-    screen.value = 'operation'
-    window.location.hash = 'operation'
+    navigateTo({ screen: 'operation', activeRoom: null, hash: 'operation' })
     return
   }
-  screen.value = 'hall'
-  window.location.hash = 'hall'
-  nextTick(centerHall)
+  navigateTo({ screen: 'hall', activeRoom: null, hash: 'hall' })
 }
 
 function enterAsVisitor() {
@@ -264,21 +377,66 @@ function enterAsVisitor() {
 }
 
 function openRoom(id) {
-  activeRoom.value = id
-  screen.value = 'room'
-  window.location.hash = id
+  navigateTo({ screen: 'room', activeRoom: id, hash: id })
+}
+
+function openQuestDetail(questId, intent = 'view') {
+  navigateTo({
+    screen: 'quest-detail',
+    activeRoom: null,
+    activeQuestId: questId,
+    activeQuestIntent: intent,
+    hash: `quest-${questId}`,
+  })
+}
+
+function backToQuestBoard() {
+  goBack({ screen: 'room', activeRoom: 'quest', hash: 'quest' })
+}
+
+function openWorkbenchFromQuestDetail() {
+  openRoom('workbench')
+}
+
+function openSubmissionFromQuestDetail(questId = activeQuestId.value) {
+  activeSubmissionQuestId.value = questId
+  navigateTo({ screen: 'room', activeRoom: 'submission', activeSubmissionQuestId: questId, hash: 'submission' })
+}
+
+function openSubmissionFromWorkbench(questId) {
+  if (questId) {
+    activeSubmissionQuestId.value = questId
+  }
+  navigateTo({
+    screen: 'room',
+    activeRoom: 'submission',
+    activeSubmissionQuestId: questId ?? activeSubmissionQuestId.value,
+    hash: 'submission',
+  })
 }
 
 function backToHall() {
-  screen.value = 'hall'
-  window.location.hash = 'hall'
-  nextTick(centerHall)
+  goBack({ screen: 'hall', activeRoom: null, hash: 'hall' })
 }
 
 function backToDoor() {
-  screen.value = 'door'
-  activeRoom.value = null
-  window.location.hash = ''
+  goBack({ screen: 'door', activeRoom: null, hash: '' })
+}
+
+function openIdCard() {
+  showIdCard.value = true
+}
+
+function closeIdCard() {
+  showIdCard.value = false
+}
+
+function openGuide() {
+  showGuide.value = true
+}
+
+function closeGuide() {
+  showGuide.value = false
 }
 
 function toggleQuestFilter(groupId, option) {
@@ -354,6 +512,14 @@ onMounted(() => {
   if (hash === 'operation') {
     signedRole.value = 'admin'
     screen.value = 'operation'
+  } else if (hash === 'quest-detail') {
+    activeQuestId.value = 'QST-0427'
+    activeQuestIntent.value = 'view'
+    screen.value = 'quest-detail'
+  } else if (hash.startsWith('quest-')) {
+    activeQuestId.value = hash.replace('quest-', '')
+    activeQuestIntent.value = 'view'
+    screen.value = 'quest-detail'
   } else if (hash === 'hall') {
     screen.value = 'hall'
     nextTick(centerHall)
@@ -378,6 +544,58 @@ watch(questPageCount, (pageCount) => {
 
 <template>
   <main class="app-shell">
+    <button class="help-orb" type="button" aria-label="打开 Git Guild 使用教程" @click="openGuide">?</button>
+
+    <Transition name="guide-card">
+      <div v-if="showGuide" class="guide-backdrop" role="dialog" aria-modal="true" aria-label="Git Guild 使用教程">
+        <section class="guide-panel">
+          <header class="guide-head">
+            <div>
+              <p class="kicker">Quick Guide</p>
+              <h1>Git Guild 使用教程</h1>
+            </div>
+            <button class="guide-close" type="button" aria-label="关闭使用教程" @click="closeGuide">×</button>
+          </header>
+
+          <div class="guide-grid">
+            <article class="guide-card-block">
+              <span>01</span>
+              <h2>推荐演示流程</h2>
+              <ol>
+                <li>进入大厅，打开 Quest Board 浏览和筛选任务。</li>
+                <li>查看任务详情，确认完成标准后接取任务。</li>
+                <li>进入 Workbench 查看个人仓库、分支、提交和 PR 状态。</li>
+                <li>在 Submission Counter 提交任务成果，等待维护者审核。</li>
+                <li>切换维护者视角处理审核，再回到工作台查看反馈。</li>
+              </ol>
+            </article>
+
+            <article class="guide-card-block">
+              <span>02</span>
+              <h2>页面分工</h2>
+              <p>任务板负责找任务；任务详情负责说明目标、标准和接取；工作台负责仓库与 Git 协作；提交柜台只负责平台内任务成果提交。</p>
+            </article>
+
+            <article class="guide-card-block">
+              <span>03</span>
+              <h2>角色视角</h2>
+              <p>冒险家完成任务和查看成长反馈；维护者发布任务、审核提交和处理 PR；管理员审核任务清晰度、合规性并处理导入或同步异常。</p>
+            </article>
+
+            <article class="guide-card-block">
+              <span>04</span>
+              <h2>操作边界</h2>
+              <p>当前 Web 原型不做在线代码编辑器。用户通过上传或提交变更完成 commit、创建分支、发起 PR，并与任务状态联动。</p>
+            </article>
+          </div>
+
+          <footer class="guide-note">
+            左上角返回按钮会优先回到上一页面；如果是直接打开某个页面，则返回到该页面的默认上级入口。
+          </footer>
+        </section>
+      </div>
+    </Transition>
+
     <section v-if="screen === 'door'" class="scene door-scene" :style="{ backgroundImage: `url(${doorImg})` }">
       <aside class="login-panel" aria-label="Login panel">
         <p class="kicker">Git Guild Gate</p>
@@ -413,11 +631,11 @@ watch(questPageCount, (pageCount) => {
     </section>
 
     <section v-else-if="screen === 'hall'" class="hall-scene">
-      <button class="back-orb" type="button" aria-label="返回至入口" @click="backToDoor">
+      <button class="back-orb" type="button" :aria-label="hallBackHint" @click="backToDoor">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
         </svg>
-        <span>返回至入口</span>
+        <span>{{ hallBackHint }}</span>
       </button>
 
       <div
@@ -454,11 +672,11 @@ watch(questPageCount, (pageCount) => {
       class="scene work-scene"
       :style="{ backgroundImage: `url(${operationRoomImg})` }"
     >
-      <button class="back-orb" type="button" aria-label="返回至入口" @click="backToDoor">
+      <button class="back-orb" type="button" :aria-label="operationBackHint" @click="backToDoor">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
         </svg>
-        <span>返回至入口</span>
+        <span>{{ operationBackHint }}</span>
       </button>
 
       <div class="room-layout admin-layout">
@@ -499,6 +717,26 @@ watch(questPageCount, (pageCount) => {
     </section>
 
     <section
+      v-else-if="screen === 'quest-detail'"
+      class="scene quest-detail-mode"
+      :style="{ backgroundImage: `url(${questBoardImg})` }"
+    >
+      <button class="back-orb" type="button" :aria-label="questDetailBackHint" @click="backToQuestBoard">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 6 9 12l6 6" />
+        </svg>
+        <span>{{ questDetailBackHint }}</span>
+      </button>
+
+      <QuestDetail
+        :quest="activeQuest"
+        :intent="activeQuestIntent"
+        @open-workbench="openWorkbenchFromQuestDetail"
+        @open-submission="openSubmissionFromQuestDetail"
+      />
+    </section>
+
+    <section
       v-else
       class="scene work-scene"
       :class="{
@@ -508,11 +746,11 @@ watch(questPageCount, (pageCount) => {
       }"
       :style="{ backgroundImage: `url(${activeRoomImage})` }"
     >
-      <button class="back-orb" type="button" aria-label="返回至大厅" @click="backToHall">
+      <button class="back-orb" type="button" :aria-label="roomBackHint" @click="backToHall">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
         </svg>
-        <span>返回至大厅</span>
+        <span>{{ roomBackHint }}</span>
       </button>
 
       <div v-if="activeRoom === 'quest'" class="quest-board-workspace" aria-label="悬赏板">
@@ -601,8 +839,8 @@ watch(questPageCount, (pageCount) => {
                 <li v-for="line in quest.criteria.slice(0, 2)" :key="line">{{ line }}</li>
               </ul>
               <div class="commission-actions">
-                <button class="primary-action" type="button">接取</button>
-                <button class="quiet-action" type="button">详情</button>
+                <button class="primary-action" type="button" @click="openQuestDetail(quest.id, 'accept')">接取</button>
+                <button class="quiet-action" type="button" @click="openQuestDetail(quest.id, 'view')">详情</button>
               </div>
             </article>
           </div>
@@ -621,9 +859,70 @@ watch(questPageCount, (pageCount) => {
         </nav>
       </div>
 
-      <SubmissionCounter v-else-if="activeRoom === 'submission'" />
+      <SubmissionCounter v-else-if="activeRoom === 'submission'" :quest="activeSubmissionQuest" />
 
-      <Workbench v-else-if="activeRoom === 'workbench'" @open-submission="openRoom('submission')" />
+      <Workbench
+        v-else-if="activeRoom === 'workbench'"
+        @open-submission="openSubmissionFromWorkbench"
+        @open-id-card="openIdCard"
+      />
+
+      <Transition name="id-card">
+        <div v-if="showIdCard" class="id-card-backdrop" role="dialog" aria-modal="true" aria-label="个人身份卡">
+          <button class="id-card-close" type="button" aria-label="关闭身份卡" @click="closeIdCard">×</button>
+          <section class="id-card-frame">
+            <img class="id-card-image" :src="idCardImg" alt="" />
+            <div class="default-avatar" aria-label="Default avatar">
+              <span class="avatar-head"></span>
+              <span class="avatar-body"></span>
+            </div>
+            <button class="avatar-edit" type="button">编辑头像</button>
+
+            <article class="identity-info">
+              <p class="kicker">Adventurer Record</p>
+              <h2>Minerva Dawn</h2>
+              <dl>
+                <div>
+                  <dt>角色</dt>
+                  <dd>Adventurer</dd>
+                </div>
+                <div>
+                  <dt>等级</dt>
+                  <dd>Level 3</dd>
+                </div>
+                <div>
+                  <dt>经验</dt>
+                  <dd>720 / 1000 XP</dd>
+                </div>
+                <div>
+                  <dt>最近分支</dt>
+                  <dd>feature/quest-flow</dd>
+                </div>
+              </dl>
+            </article>
+
+            <form class="profile-editor">
+              <p class="kicker">编辑个人信息</p>
+              <label>
+                昵称
+                <input value="Minerva Dawn" />
+              </label>
+              <label>
+                技术栈
+                <input value="Vue · Spring Boot" />
+              </label>
+              <label>
+                简介
+                <textarea rows="3">Learning through real quests and clean pull requests.</textarea>
+              </label>
+              <div class="editor-actions">
+                <button class="primary-action" type="button">保存</button>
+                <button class="quiet-action" type="button" @click="closeIdCard">取消</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </Transition>
     </section>
   </main>
 </template>
