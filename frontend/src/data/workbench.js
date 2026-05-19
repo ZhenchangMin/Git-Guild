@@ -1,6 +1,6 @@
 export const workbenchUser = {
   name: 'Minerva Dawn',
-  role: 'Adventurer',
+  role: '冒险家',
   level: 3,
   xpCurrent: 720,
   xpTarget: 1000,
@@ -25,10 +25,18 @@ export const taskGroups = [
         repository: 'git-guild / frontend',
         issue: '#42',
         prStatus: '未发起',
+        branch: '',
+        recentCommit: '待上传',
+        prNumber: '',
+        prState: '未创建',
+        checkResult: '等待 PR',
+        counterLink: '未登记',
+        counterDetail: '项目提交先在工作台完成，PR 准备好后再到提交柜台提交任务成果。',
         nextStep: '创建 feature 分支并上传提交',
         actions: [
           { label: '查看仓库', type: 'repository' },
           { label: '创建分支', type: 'branch' },
+          { label: '上传提交', type: 'commit' },
           { label: '发起 PR', type: 'pull-request' },
           { label: '提交成果', type: 'submit', primary: true },
         ],
@@ -38,7 +46,14 @@ export const taskGroups = [
         title: '仓库导入异常页',
         repository: 'git-guild / frontend',
         issue: '#38',
-        prStatus: 'PR #21 Review requested',
+        prStatus: 'PR #21 待审核',
+        branch: 'feature/qst-0431-import-error',
+        recentCommit: 'c7a9d21',
+        prNumber: 'PR #21',
+        prState: '待审核',
+        checkResult: '基础检查通过',
+        counterLink: '待登记成果',
+        counterDetail: '项目提交已在工作台完成，还需要去提交柜台补充截图和成果说明。',
         nextStep: '补充运行截图后提交成果',
         actions: [
           { label: '查看仓库', type: 'repository' },
@@ -58,7 +73,14 @@ export const taskGroups = [
         title: 'Issue sync status page',
         repository: 'git-guild / backend',
         issue: '#31',
-        prStatus: 'PR #18 Open',
+        prStatus: 'PR #18 打开',
+        branch: 'feature/qst-0412-issue-sync',
+        recentCommit: '71ad0e4',
+        prNumber: 'PR #18',
+        prState: '打开',
+        checkResult: '等待委托人审核',
+        counterLink: '已登记成果',
+        counterDetail: '任务成果已在提交柜台登记，当前等待维护者审核 PR 与提交说明。',
         nextStep: '等待维护者审核',
         actions: [
           { label: '查看提交记录', type: 'history' },
@@ -76,10 +98,18 @@ export const taskGroups = [
         title: '审核反馈归档',
         repository: 'git-guild / frontend',
         issue: '#47',
-        prStatus: 'PR #23 Changes requested',
+        prStatus: 'PR #23 退回修改',
+        branch: 'feature/qst-0444-feedback-archive',
+        recentCommit: 'b81f0ca',
+        prNumber: 'PR #23',
+        prState: '退回修改',
+        checkResult: '2 项检查未通过',
+        counterLink: '需重新提交',
+        counterDetail: '先在工作台更新 PR，修复完成后到提交柜台重新提交任务成果。',
         nextStep: '根据逐项反馈更新 PR',
         actions: [
           { label: '查看反馈', type: 'feedback', feedbackId: 'feedback-qst-0444', primary: true },
+          { label: '上传提交', type: 'commit' },
           { label: '更新 PR', type: 'pull-request' },
           { label: '重新提交', type: 'submit' },
         ],
@@ -96,6 +126,13 @@ export const taskGroups = [
         repository: 'git-guild / frontend',
         issue: '#24',
         prStatus: 'PR #12 Merged',
+        branch: 'feature/qst-0398-empty-state',
+        recentCommit: '9f31c2a',
+        prNumber: 'PR #12',
+        prState: 'Merged',
+        checkResult: '全部通过',
+        counterLink: '已归档',
+        counterDetail: '项目提交和任务成果提交都已完成，贡献已写入成长记录。',
         nextStep: '已写入贡献记录',
         actions: [
           { label: '查看贡献记录', type: 'contribution', primary: true },
@@ -128,9 +165,9 @@ export const repositories = [
 ]
 
 export const pullRequests = [
-  { id: 'PR #18', title: 'QST-0427 submission flow', status: 'Open', action: '查看 PR' },
-  { id: 'PR #21', title: 'repository import error view', status: 'Review requested', action: '查看 PR' },
-  { id: 'PR #23', title: 'QST-0444 review feedback archive', status: 'Changes requested', action: '查看 PR' },
+  { id: 'PR #18', taskId: 'QST-0412', title: 'QST-0412 Issue 同步状态页', status: '打开', checks: '等待委托人审核', action: '查看 PR' },
+  { id: 'PR #21', taskId: 'QST-0431', title: 'QST-0431 repository import error view', status: '待审核', checks: '基础检查通过', action: '查看 PR' },
+  { id: 'PR #23', taskId: 'QST-0444', title: 'QST-0444 审核反馈归档', status: '退回修改', checks: '2 项检查未通过', action: '查看 PR' },
 ]
 
 export const reviewFeedbacks = [
@@ -138,12 +175,19 @@ export const reviewFeedbacks = [
     id: 'feedback-qst-0444',
     questId: 'QST-0444',
     questTitle: '审核反馈归档',
+    status: 'changes-requested',
+    statusLabel: '退回修改',
+    flowStatus: 'changes-requested',
     repository: 'git-guild / frontend',
     pullRequest: 'PR #23',
     pullRequestTitle: 'QST-0444 review feedback archive',
-    reviewer: 'Guild Master · Review Desk',
+    reviewer: '委托人 · 审核台',
     conclusion: '请求修改',
     reviewedAt: '今天 09:18',
+    xpEarned: 0,
+    xpProgressAfter: '720 / 1000 XP · Level 3',
+    contributionRecord: '暂未展示，复审通过后写入贡献记录。',
+    archiveNote: '必须补齐筛选、分区和重新提交路径后复审。',
     summary:
       '整体方向正确，已经能展示最近审核意见。但当前版本还不能稳定支持按任务归档查看，学习建议也没有和必须修改项分开。请先补齐这两处，再通过提交柜台重新提交成果。',
     checks: [
@@ -187,6 +231,90 @@ export const reviewFeedbacks = [
       '重新提交时在提交说明中列出已完成的检查项，能减少维护者来回确认的成本。',
     ],
   },
+  {
+    id: 'feedback-qst-0412',
+    questId: 'QST-0412',
+    questTitle: 'Issue sync status page',
+    status: 'in-review',
+    statusLabel: '待复审',
+    flowStatus: 'in-review',
+    repository: 'git-guild / backend',
+    pullRequest: 'PR #18',
+    pullRequestTitle: 'QST-0412 issue sync status page',
+    reviewer: '委托人 · 仓库适配',
+    conclusion: '待复审',
+    reviewedAt: '今天 08:42',
+    xpEarned: 0,
+    xpProgressAfter: '720 / 1000 XP · Level 3',
+    contributionRecord: '复审完成前不展示到公开贡献墙。',
+    archiveNote: '已登记成果，等待维护者复审 PR 与提交说明。',
+    summary:
+      '成果已通过基础检查并进入复审。当前不需要重新提交，建议保持 PR 分支可同步，等待维护者确认完成标准覆盖情况。',
+    checks: [
+      {
+        checkpoint: 'PR 与任务关联',
+        passed: true,
+        comment: 'PR #18 已关联 QST-0412，提交柜台记录和仓库分支一致。',
+      },
+      {
+        checkpoint: '基础检查',
+        passed: true,
+        comment: '构建和静态检查已通过，维护者可以继续查看实现细节。',
+      },
+      {
+        checkpoint: '复审材料完整',
+        passed: false,
+        comment: '仍在等待维护者确认截图和完成标准自检是否足够。',
+      },
+    ],
+    requiredChanges: ['暂时无需修改代码；若维护者追加意见，再回工作台更新 PR。'],
+    learningTips: [
+      '待复审状态适合检查提交说明是否包含“做了什么、如何验证、剩余风险”。',
+      '不要在复审中随意改动已通过检查的 PR，除非维护者明确要求补交。',
+    ],
+  },
+  {
+    id: 'feedback-qst-0398',
+    questId: 'QST-0398',
+    questTitle: '任务筛选空态优化',
+    status: 'approved',
+    statusLabel: '通过',
+    flowStatus: 'approved',
+    repository: 'git-guild / frontend',
+    pullRequest: 'PR #12',
+    pullRequestTitle: 'QST-0398 empty filter state',
+    reviewer: '委托人 · 悬赏任务板',
+    conclusion: '审核通过',
+    reviewedAt: '昨天 17:35',
+    xpEarned: 180,
+    xpProgressAfter: '720 / 1000 XP · Level 3',
+    contributionRecord: '完成 QST-0398 任务筛选空态优化，合并 PR #12 到 git-guild/frontend。',
+    archiveNote: '已获得 180 XP，可作为课堂贡献记录展示。',
+    summary:
+      '任务筛选空态已经通过审核。空结果提示、清空筛选入口和分页状态都符合完成标准，贡献记录已写入成长档案。',
+    checks: [
+      {
+        checkpoint: '空态提示清晰',
+        passed: true,
+        comment: '无匹配任务时能说明原因，并提示调整搜索或筛选条件。',
+      },
+      {
+        checkpoint: '筛选恢复入口',
+        passed: true,
+        comment: '清空筛选按钮明显，课堂演示时能快速回到完整任务列表。',
+      },
+      {
+        checkpoint: '贡献记录可展示',
+        passed: true,
+        comment: '任务、PR、XP 和贡献摘要已写入成长记录。',
+      },
+    ],
+    requiredChanges: ['无必须修改项，本次审核已通过。'],
+    learningTips: [
+      '通过后的反馈也值得归档，后续可以复用其中的验收标准写法。',
+      '公开展示贡献记录时优先呈现任务目标、PR 编号和获得 XP。',
+    ],
+  },
 ]
 
 export const maintainerWorkbenchStats = [
@@ -194,6 +322,53 @@ export const maintainerWorkbenchStats = [
   { label: '请求修改', value: 2 },
   { label: '已发布任务', value: 6 },
   { label: '仓库预警', value: 1 },
+]
+
+export const maintainerIssueBacklog = [
+  {
+    id: '#58',
+    title: '提交柜台缺少任务草稿预检',
+    repository: 'git-guild / frontend',
+    summary:
+      '维护者从 Issue 创建悬赏任务时，需要先看到草稿完整度，避免描述、完成标准或奖励不清楚就提交管理员审核。',
+    labels: ['frontend', 'demo-flow'],
+    suggestedDifficulty: '中级',
+    suggestedTechStack: 'Vue, CSS Grid, 本地 mock',
+    suggestedReward: '420 XP · 70 Gold',
+    suggestedStandards: [
+      '从 Issue 点击后自动带出标题、摘要和关联仓库。',
+      '草稿表单包含难度、技术栈、奖励和完成标准字段。',
+      '清晰度检查能区分通过项和待补项。',
+      '提交审核后页面显示管理员审核中的状态。',
+    ],
+  },
+  {
+    id: '#61',
+    title: '仓库同步异常需要课堂演示入口',
+    repository: 'git-guild / backend',
+    summary:
+      '课堂演示中需要一个更短的 Issue 到任务发布流程，用来说明维护者如何把后端同步异常包装成新手可接取任务。',
+    labels: ['backend', 'teaching'],
+    suggestedDifficulty: '初级',
+    suggestedTechStack: 'Node API, Mock 日志',
+    suggestedReward: '',
+    suggestedStandards: [
+      '展示异常原因、影响范围和重试入口。',
+      '说明学生需要提交的截图或日志片段。',
+    ],
+  },
+  {
+    id: '#64',
+    title: '个人成长卡片缺少贡献回放',
+    repository: 'git-guild / frontend',
+    summary:
+      '用户完成任务后，希望在个人成长卡片里回看贡献摘要、审核结果和获得的 XP，方便课程结项展示。',
+    labels: ['profile', 'growth'],
+    suggestedDifficulty: '',
+    suggestedTechStack: 'Vue, CSS transition',
+    suggestedReward: '300 XP · 45 Gold',
+    suggestedStandards: [],
+  },
 ]
 
 export const reviewQueue = [
@@ -285,7 +460,7 @@ export const reviewQueue = [
       },
     ],
     requiredChanges: ['增加任务编号筛选或分组。', '学习建议需要和必须修改项分开展示。'],
-    learningSuggestions: ['把 Review 反馈写成可检查项，有助于新手按项修复。'],
+  learningSuggestions: ['把审核反馈写成可检查项，有助于新手按项修复。'],
   },
 ]
 
@@ -298,7 +473,7 @@ export const maintainerPublishedQuests = [
 
 export const maintainerNotifications = [
   { type: '新提交', text: 'Minerva Dawn 提交了 QST-0427 的成果审核。' },
-  { type: 'PR 更新', text: 'PR #21 已通过基础检查，等待维护者 Review。' },
+  { type: 'PR 更新', text: 'PR #21 已通过基础检查，等待委托人审核。' },
   { type: '同步预警', text: 'git-guild/backend 同步状态为 Sync warning。' },
 ]
 
@@ -313,7 +488,7 @@ export const workbenchEmails = [
   {
     id: 'mail-001',
     unread: true,
-    from: 'Review Desk',
+    from: '审核台',
     to: 'Minerva Dawn',
     subject: 'QST-0444 需要修改后重新提交',
     receivedAt: '今天 09:24',
@@ -337,7 +512,7 @@ export const workbenchEmails = [
     preview: '构建和静态检查已通过，可以等待维护者 review。',
     body: [
       'PR #18 的基础检查已经通过，包括前端构建和提交信息检查。',
-      '当前状态仍为 Open，维护者还没有给出最终审核意见。你可以继续查看 PR 或等待通知。',
+      '当前状态仍为打开，委托人还没有给出最终审核意见。你可以继续查看 PR 或等待通知。',
     ],
   },
   {

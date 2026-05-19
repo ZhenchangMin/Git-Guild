@@ -1,6 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 
+import BeginnerQuestChecklist from './BeginnerQuestChecklist.vue'
+import QuestStatusFlow from './QuestStatusFlow.vue'
 import { defaultContributionSteps, defaultSubmissionRequirements, questDetails } from '../data/quests'
 
 const props = defineProps({
@@ -33,7 +35,7 @@ const issue = computed(
     detail.value.issue ?? {
       number: '#42',
       title: props.quest.title,
-      status: 'Open',
+      status: '可接取',
     },
 )
 const pullRequest = computed(
@@ -50,6 +52,25 @@ const contributionSteps = computed(() => detail.value.contributionSteps ?? defau
 const submissionRequirements = computed(() => detail.value.submissionRequirements ?? defaultSubmissionRequirements)
 const hasPullRequest = computed(() => pullRequest.value.number !== 'Not created')
 const isAcceptIntent = computed(() => props.intent === 'accept' && localWorkflowState.value === 'available')
+const statusFlowContext = computed(() => ({
+  quest: `${props.quest.id} · ${props.quest.title}`,
+  repository: repository.value.name,
+  branch: hasPullRequest.value ? `任务分支 → ${repository.value.branch}` : `待创建任务分支，默认从 ${repository.value.branch} 切出`,
+  pullRequest: hasPullRequest.value
+    ? `${pullRequest.value.number} · ${pullRequest.value.status}`
+    : `${pullRequest.value.number} · ${pullRequest.value.status}`,
+  counter:
+    localWorkflowState.value === 'available' || localWorkflowState.value === 'in-progress'
+      ? 'PR 准备好后到提交柜台登记'
+      : '已进入提交柜台材料链路',
+  feedback:
+    localWorkflowState.value === 'changes-requested'
+      ? '维护者已退回，请查看逐项反馈'
+      : localWorkflowState.value === 'completed'
+        ? '审核通过，已写入成长记录'
+        : '等待维护者审核后生成',
+  syncStatus: repository.value.syncStatus,
+}))
 
 const workflowConfig = computed(() => {
   const configs = {
@@ -97,7 +118,7 @@ const workflowConfig = computed(() => {
 watch(
   () => [props.quest.id, props.intent],
   () => {
-    localWorkflowState.value = detail.value.workflowState ?? (props.quest.status === 'Review' ? 'in-review' : 'available')
+    localWorkflowState.value = detail.value.workflowState ?? (props.quest.status === '待审核' ? 'in-review' : 'available')
     inlineNotice.value =
       props.intent === 'accept' && localWorkflowState.value === 'available'
         ? '请确认任务背景和完成标准后接取该任务。点击任务板的“接取”不会直接完成接取。'
@@ -156,7 +177,7 @@ function showIssueHint() {
   <div class="quest-detail-workspace" aria-label="任务详情">
     <header class="quest-detail-hero">
       <div class="quest-title-block">
-        <p class="kicker">Quest Detail</p>
+        <p class="kicker">悬赏任务详情</p>
         <h1>{{ quest.id }} · {{ quest.title }}</h1>
         <p>{{ description }}</p>
       </div>
@@ -201,10 +222,12 @@ function showIssueHint() {
       </p>
     </header>
 
+    <QuestStatusFlow :status="localWorkflowState" :context="statusFlowContext" />
+
     <div class="quest-detail-grid">
       <main class="quest-main-column">
         <section class="quest-detail-card">
-          <p class="kicker">Background</p>
+          <p class="kicker">任务背景</p>
           <h2>任务背景</h2>
           <p>{{ description }}</p>
           <dl class="source-summary">
@@ -220,7 +243,7 @@ function showIssueHint() {
         </section>
 
         <section class="quest-detail-card">
-          <p class="kicker">Acceptance Checklist</p>
+          <p class="kicker">验收清单</p>
           <h2>完成标准</h2>
           <p class="section-note">提交前请逐项确认。这里检查任务完成结果，不替代工作台中的 commit 和 PR 操作。</p>
           <div class="criteria-list">
@@ -231,9 +254,17 @@ function showIssueHint() {
           </div>
         </section>
 
+        <BeginnerQuestChecklist
+          :quest="quest"
+          :workflow-state="localWorkflowState"
+          :repository="repository"
+          :pull-request="pullRequest"
+        />
+
         <section class="quest-detail-card">
           <p class="kicker">Beginner Path</p>
-          <h2>新手贡献步骤</h2>
+          <h2>简版路径</h2>
+          <p class="section-note">上方清单用于课堂演示和本地勾选；这里保留快速回看路径。</p>
           <ol class="contribution-steps">
             <li v-for="step in contributionSteps" :key="step">{{ step }}</li>
           </ol>
@@ -242,7 +273,7 @@ function showIssueHint() {
 
       <aside class="quest-side-column">
         <section class="quest-detail-card side-card">
-          <p class="kicker">Repository & Issue</p>
+          <p class="kicker">仓库与 Issue</p>
           <h2>关联仓库与 Issue</h2>
           <dl>
             <div>
@@ -277,7 +308,7 @@ function showIssueHint() {
         </section>
 
         <section class="quest-detail-card side-card progress-card">
-          <p class="kicker">Next Step</p>
+          <p class="kicker">下一步</p>
           <h2>当前进度 / 下一步</h2>
           <strong>{{ workflowConfig.status }}</strong>
           <p>{{ workflowConfig.next }}</p>
@@ -289,7 +320,7 @@ function showIssueHint() {
         </section>
 
         <section class="quest-detail-card side-card">
-          <p class="kicker">Submission Counter</p>
+          <p class="kicker">提交柜台</p>
           <h2>提交要求</h2>
           <ul class="submission-requirements">
             <li v-for="item in submissionRequirements" :key="item">{{ item }}</li>
@@ -433,6 +464,10 @@ function showIssueHint() {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(310px, 0.42fr);
   gap: 16px;
+  margin-top: 16px;
+}
+
+.quest-status-flow {
   margin-top: 16px;
 }
 

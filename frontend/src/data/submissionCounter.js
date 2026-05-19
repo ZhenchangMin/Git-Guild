@@ -18,9 +18,9 @@ export const submissionFields = [
   },
   {
     id: 'pull-request',
-    label: 'Pull Request',
-    ariaLabel: 'Pull Request 链接',
-    placeholder: '粘贴 Pull Request 链接',
+    label: 'PR',
+    ariaLabel: 'PR 链接',
+    placeholder: '粘贴 PR 链接',
     wide: true,
   },
   {
@@ -49,7 +49,7 @@ export const submissionReviewSteps = [
 ]
 
 export const reviewerSlot = {
-  eyebrow: 'Review Feedback',
+  eyebrow: '审核反馈',
   title: '维护者反馈位',
   body: '审核意见、退回原因和学习建议集中放在这里，避免用户在任务、PR、通知之间来回找反馈。',
 }

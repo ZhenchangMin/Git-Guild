@@ -11,12 +11,12 @@ export const questDetails = {
     },
     issue: {
       number: '#31',
-      title: 'Issue sync status is invisible on repository page',
-      status: 'Open',
+      title: '仓库页缺少 Issue 同步状态',
+      status: '可接取',
     },
     pr: {
       number: 'PR #18',
-      status: 'Open',
+      status: '可接取',
     },
   },
   'QST-0427': {
@@ -31,12 +31,12 @@ export const questDetails = {
     },
     issue: {
       number: '#42',
-      title: 'Submission flow needs clearer PR and review linkage',
-      status: 'Open',
+      title: '成果提交流程需要更清晰地关联 PR 和审核',
+      status: '可接取',
     },
     pr: {
       number: 'Not created',
-      status: 'Not started',
+      status: '尚未开始',
     },
   },
   'QST-0431': {
@@ -51,12 +51,12 @@ export const questDetails = {
     },
     issue: {
       number: '#38',
-      title: 'Repository import failures need an actionable view',
-      status: 'Open',
+      title: '仓库导入失败需要可操作提示',
+      status: '可接取',
     },
     pr: {
       number: 'PR #21',
-      status: 'Review requested',
+      status: '待审核',
     },
   },
   'QST-0438': {
@@ -71,12 +71,12 @@ export const questDetails = {
     },
     issue: {
       number: '#44',
-      title: 'Beginner contribution checklist is missing',
-      status: 'Open',
+      title: '缺少新手贡献执行清单',
+      status: '可接取',
     },
     pr: {
       number: 'Not created',
-      status: 'Not started',
+      status: '尚未开始',
     },
   },
   'QST-0440': {
@@ -91,12 +91,12 @@ export const questDetails = {
     },
     issue: {
       number: '#45',
-      title: 'Quest filters should survive returning from detail pages',
-      status: 'Open',
+      title: '返回任务详情后应保留筛选条件',
+      status: '可接取',
     },
     pr: {
       number: 'Not created',
-      status: 'Not started',
+      status: '尚未开始',
     },
   },
   'QST-0444': {
@@ -111,12 +111,12 @@ export const questDetails = {
     },
     issue: {
       number: '#47',
-      title: 'Review feedback should be visible from user profile',
-      status: 'Open',
+      title: '审核反馈应能在个人资料中查看',
+      status: '可接取',
     },
     pr: {
       number: 'PR #23',
-      status: 'Changes requested',
+      status: '退回修改',
     },
   },
 }
@@ -126,13 +126,13 @@ export const defaultContributionSteps = [
   '接取任务，确认任务状态变为进行中。',
   '进入工作台，在关联仓库中创建任务分支。',
   '在工作台上传变更文件并生成 commit。',
-  '在工作台发起 Pull Request，等待基础检查。',
+  '在工作台发起 PR，等待基础检查。',
   '到提交柜台填写成果说明并提交审核。',
 ]
 
 export const defaultSubmissionRequirements = [
   '关联任务编号和任务标题。',
-  '关联 Pull Request 链接。',
+  '关联 PR 链接。',
   '成果说明，说明本次修改解决了什么问题。',
   '完成标准逐项自检。',
   '测试说明或运行截图；MVP 中附件可以为空。',

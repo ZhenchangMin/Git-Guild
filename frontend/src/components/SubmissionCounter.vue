@@ -47,7 +47,7 @@ const displaySubmissionFields = computed(() => {
       return {
         ...field,
         value: hasPullRequest ? pullRequest : '',
-        placeholder: hasPullRequest ? field.placeholder : '先在工作台发起 PR，再粘贴 Pull Request 链接',
+        placeholder: hasPullRequest ? field.placeholder : '先在工作台发起 PR，再粘贴 PR 链接',
       }
     }
     if (field.id === 'submission-note') {
@@ -80,7 +80,7 @@ const displaySubmissionFields = computed(() => {
 
           <header class="submission-sheet-head">
             <div>
-              <p class="kicker">Submission Counter</p>
+              <p class="kicker">提交柜台</p>
               <h1>委托提交单</h1>
             </div>
             <span>草稿</span>
@@ -88,7 +88,7 @@ const displaySubmissionFields = computed(() => {
 
           <div class="submission-sheet-body">
             <section class="submission-quest-summary" aria-label="关联委托">
-              <p class="kicker">Linked Quest</p>
+              <p class="kicker">关联悬赏任务</p>
               <h2>{{ displayLinkedSubmission.quest }}</h2>
               <p>{{ displayLinkedSubmission.meta }}</p>
             </section>
@@ -119,7 +119,7 @@ const displaySubmissionFields = computed(() => {
 
             <section class="submission-evidence-panel" aria-label="附件与证据">
               <div>
-                <p class="kicker">Evidence</p>
+                <p class="kicker">附件与证据</p>
                 <h2>附件与证据</h2>
               </div>
               <button v-for="item in evidenceItems" :key="item" type="button">

@@ -11,15 +11,17 @@ import questBoardImg from './assets/quest board.png'
 import submissionCounterImg from './assets/submission-counter-clerk-v0.png'
 import workbenchImg from './assets/workbench.png'
 import QuestDetail from './components/QuestDetail.vue'
+import RepositorySyncDesk from './components/RepositorySyncDesk.vue'
 import SubmissionCounter from './components/SubmissionCounter.vue'
 import Workbench from './components/Workbench.vue'
+import { adminExceptionCases, adminQuestApplications } from './data/admin'
 import { questDetails } from './data/quests'
 
 const screen = ref('door')
 const activeRoom = ref(null)
 const showIdCard = ref(false)
-const selectedRole = ref('adventurer')
-const signedRole = ref('visitor')
+const selectedRole = ref('ADVENTURER')
+const signedRole = ref('VISITOR')
 const showGuide = ref(false)
 const viewHistory = ref([])
 const hallViewport = ref(null)
@@ -41,18 +43,25 @@ const questPageSize = 4
 const activeQuestId = ref('QST-0427')
 const activeQuestIntent = ref('view')
 const activeSubmissionQuestId = ref('QST-0427')
+const adminApplications = ref(adminQuestApplications.map((application) => ({ ...application })))
+const adminExceptions = ref(adminExceptionCases.map((exception) => ({ ...exception })))
+const activeAdminApplicationId = ref(adminQuestApplications[0]?.id ?? null)
+const adminActionResult = ref({
+  title: '等待管理员审核',
+  body: '选择一份维护者提交的任务发布申请，检查清晰度、合规性、Issue 关联和完成标准后再决定是否上架。',
+})
 
 const roles = [
-  { id: 'adventurer', name: 'Adventurer', note: 'Browse quests and submit work' },
-  { id: 'master', name: 'Guild Master', note: 'Publish quests and review results' },
-  { id: 'admin', name: 'Administrator', note: 'Approve listings and handle incidents' },
+  { id: 'ADVENTURER', name: '冒险家', note: '浏览悬赏任务并提交成果' },
+  { id: 'MAINTAINER', name: '委托人', note: '发布悬赏任务并审核成果' },
+  { id: 'ADMIN', name: '管理员', note: '审核任务上架并处理异常' },
 ]
 
 const rooms = [
   {
     id: 'submission',
-    label: 'Submission Counter',
-    hint: 'Submitted work and review flow',
+    label: '提交柜台',
+    hint: '登记成果并提交审核',
     image: submissionCounterImg,
     left: 7.2,
     top: 17,
@@ -61,8 +70,8 @@ const rooms = [
   },
   {
     id: 'quest',
-    label: 'Quest Board',
-    hint: 'Issue-linked quests ready to claim',
+    label: '悬赏任务板',
+    hint: '浏览可接取的 Issue 关联任务',
     image: questBoardImg,
     left: 23.6,
     top: 16,
@@ -71,8 +80,8 @@ const rooms = [
   },
   {
     id: 'desk',
-    label: 'Desk',
-    hint: 'Repositories, branches, commits, pull requests',
+    label: '前台向导',
+    hint: '新手引导、仓库接入和异常求助',
     image: deskImg,
     left: 43.8,
     top: 37,
@@ -81,8 +90,8 @@ const rooms = [
   },
   {
     id: 'workbench',
-    label: 'Workbench / 工作台',
-    hint: 'Daily tasks, repositories, PRs, notifications',
+    label: '工作台',
+    hint: '任务、仓库、分支、commit 和 PR',
     image: workbenchImg,
     left: 64.3,
     top: 18,
@@ -91,8 +100,8 @@ const rooms = [
   },
   {
     id: 'leaderboard',
-    label: 'Leader Board Wall',
-    hint: 'Guild records and visible achievements',
+    label: '排行榜墙',
+    hint: '展示成长记录和阶段性成果',
     image: leaderBoardWallImg,
     left: 82.2,
     top: 17,
@@ -104,13 +113,13 @@ const rooms = [
 const questCommissions = [
   {
     id: 'QST-0412',
-    title: 'Issue sync status page',
-    issuer: 'Guild Master · Repo Adapter',
+    title: 'Issue 同步状态页',
+    issuer: '委托人 · 仓库适配',
     category: '接入',
     difficulty: 'C',
     stack: 'Vue / Spring Boot',
     techStack: ['Vue', 'Spring Boot'],
-    status: 'Review',
+    status: '待审核',
     tags: ['Issue', '同步', '新手友好'],
     reward: '180 XP',
     summary: '展示仓库 Issue 同步状态，并给出失败后的下一步操作。',
@@ -118,13 +127,13 @@ const questCommissions = [
   },
   {
     id: 'QST-0427',
-    title: 'Refactor submission flow',
-    issuer: 'Guild Master · Review Desk',
+    title: '重构成果提交流程',
+    issuer: '委托人 · 审核台',
     category: '流程',
     difficulty: 'D',
     stack: 'Vue / REST API',
     techStack: ['Vue', 'REST API'],
-    status: 'Open',
+    status: '可接取',
     tags: ['PR', '提交', '审核'],
     reward: '240 XP',
     summary: '重整成果提交表单，让任务、分支和 PR 关联更清楚。',
@@ -132,13 +141,13 @@ const questCommissions = [
   },
   {
     id: 'QST-0431',
-    title: 'Repository import error view',
-    issuer: 'Administrator · Import Hall',
+    title: '仓库导入失败提示页',
+    issuer: '管理员 · 导入大厅',
     category: '界面',
     difficulty: 'C',
     stack: 'Vue / Gitea',
     techStack: ['Vue', 'Gitea'],
-    status: 'PR Ready',
+    status: 'PR 已就绪',
     tags: ['导入', '异常', '管理员'],
     reward: '160 XP',
     summary: '为仓库导入失败提供清晰错误页，帮助维护者重新接入项目。',
@@ -146,13 +155,13 @@ const questCommissions = [
   },
   {
     id: 'QST-0438',
-    title: 'Beginner guide checklist',
-    issuer: 'Guild Master · Tutorial Shelf',
+    title: '新手执行清单',
+    issuer: '委托人 · 新手教程',
     category: '引导',
     difficulty: 'B',
     stack: 'Markdown / Vue',
     techStack: ['Markdown', 'Vue'],
-    status: 'Open',
+    status: '可接取',
     tags: ['新手友好', '教程', '文档'],
     reward: '120 XP',
     summary: '把任务详情中的贡献步骤整理为新手可勾选的执行清单。',
@@ -160,13 +169,13 @@ const questCommissions = [
   },
   {
     id: 'QST-0440',
-    title: 'Task filter persistence',
-    issuer: 'Maintainer · Quest Board',
+    title: '任务筛选条件保持',
+    issuer: '委托人 · 悬赏任务板',
     category: '体验',
     difficulty: 'C',
     stack: 'Vue / Local State',
     techStack: ['Vue', 'Local State'],
-    status: 'In Progress',
+    status: '进行中',
     tags: ['筛选', '状态', '任务板'],
     reward: '150 XP',
     summary: '记住用户最近使用的筛选条件，让返回任务板后保持上下文。',
@@ -174,13 +183,13 @@ const questCommissions = [
   },
   {
     id: 'QST-0444',
-    title: 'Review feedback archive',
-    issuer: 'Guild Master · Submission Counter',
+    title: '审核反馈归档',
+    issuer: '委托人 · 提交柜台',
     category: '资料',
     difficulty: 'D',
     stack: 'Spring Boot / Vue',
     techStack: ['Spring Boot', 'Vue'],
-    status: 'Changes',
+    status: '退回修改',
     tags: ['反馈', '个人资料', '审核'],
     reward: '260 XP',
     summary: '在个人资料中展示最近审核意见，突出可学习的修改建议。',
@@ -193,7 +202,7 @@ const questFilterGroups = [
   { id: 'tag', title: '标签', options: ['新手友好', 'Issue', 'PR', '审核', '同步', '异常', '反馈'] },
   { id: 'difficulty', title: '难度', options: ['B', 'C', 'D'] },
   { id: 'stack', title: '技术栈', options: ['Vue', 'Spring Boot', 'REST API', 'Gitea', 'Markdown', 'Local State'] },
-  { id: 'status', title: '状态', options: ['Open', 'In Progress', 'PR Ready', 'Review', 'Changes'] },
+  { id: 'status', title: '状态', options: ['可接取', '进行中', 'PR 已就绪', '待审核', '退回修改'] },
 ]
 
 const activeRoomImage = computed(() => rooms.find((room) => room.id === activeRoom.value)?.image)
@@ -266,6 +275,44 @@ const activeSubmissionQuest = computed(() => {
     detail: questDetails[quest.id],
   }
 })
+const activeAdminApplication = computed(
+  () =>
+    adminApplications.value.find((application) => application.id === activeAdminApplicationId.value) ??
+    adminApplications.value[0],
+)
+const adminQueueStats = computed(() => {
+  const counts = adminApplications.value.reduce(
+    (summary, application) => {
+      if (application.status === '已通过上架') summary.approved += 1
+      else if (application.status === '退回补充') summary.returned += 1
+      else if (application.status === '标记异常') summary.flagged += 1
+      else summary.pending += 1
+      return summary
+    },
+    { pending: 0, approved: 0, returned: 0, flagged: 0 },
+  )
+  return [
+    { label: '待处理', value: counts.pending },
+    { label: '已上架', value: counts.approved },
+    { label: '退回补充', value: counts.returned },
+    { label: '异常', value: counts.flagged },
+  ]
+})
+const adminExceptionStats = computed(() => {
+  const pending = adminExceptions.value.filter((exception) => exception.status === '待处理').length
+  const review = adminExceptions.value.filter((exception) => exception.status === '需复核').length
+  const resolved = adminExceptions.value.filter((exception) => exception.status === '已处理').length
+  return { pending, review, resolved }
+})
+const activeAdminPassedChecks = computed(() => {
+  const application = activeAdminApplication.value
+  if (!application) return { passed: 0, total: 0 }
+  const checks = [...application.clarityChecks, ...application.complianceChecks]
+  return {
+    passed: checks.filter((check) => check.passed).length,
+    total: checks.length,
+  }
+})
 const hallBackHint = computed(() => getBackHint('入口'))
 const operationBackHint = computed(() => getBackHint('入口'))
 const questDetailBackHint = computed(() => getBackHint('任务板'))
@@ -281,7 +328,7 @@ function describeView(view) {
     const roomNames = {
       submission: '提交柜台',
       quest: '任务板',
-      desk: '仓库桌面',
+      desk: '前台',
       workbench: '工作台',
       leaderboard: '排行榜墙',
     }
@@ -365,7 +412,7 @@ function goBack(fallbackView) {
 
 function enterGuild(roleId = selectedRole.value) {
   signedRole.value = roleId
-  if (roleId === 'admin') {
+  if (roleId === 'ADMIN') {
     navigateTo({ screen: 'operation', activeRoom: null, hash: 'operation' })
     return
   }
@@ -373,7 +420,7 @@ function enterGuild(roleId = selectedRole.value) {
 }
 
 function enterAsVisitor() {
-  enterGuild('visitor')
+  enterGuild('VISITOR')
 }
 
 function openRoom(id) {
@@ -413,6 +460,58 @@ function openSubmissionFromWorkbench(questId) {
     activeSubmissionQuestId: questId ?? activeSubmissionQuestId.value,
     hash: 'submission',
   })
+}
+
+function selectAdminApplication(application) {
+  activeAdminApplicationId.value = application.id
+  adminActionResult.value = {
+    title: `${application.id} 已调阅`,
+    body: `正在审核 ${application.questId} 的任务发布申请。这里检查的是上架申请，不是冒险家成果提交。`,
+  }
+}
+
+function runAdminApplicationAction(action) {
+  const application = activeAdminApplication.value
+  if (!application) return
+
+  const statusMap = {
+    approve: {
+      status: '已通过上架',
+      statusTone: 'approved',
+      title: '通过上架',
+      body: `${application.questId} 已通过管理员审核，可进入悬赏任务板供冒险家接取。`,
+    },
+    return: {
+      status: '退回补充',
+      statusTone: 'return',
+      title: '已退回维护者补充',
+      body: `${application.questId} 已退回维护者，需要补齐完成标准、奖励或边界说明后重新提交管理员审核。`,
+    },
+    flag: {
+      status: '标记异常',
+      statusTone: 'danger',
+      title: '已标记异常',
+      body: `${application.questId} 已进入异常处理队列，上架前需要管理员确认合规风险和 Issue 关联。`,
+    },
+  }
+  const result = statusMap[action]
+  if (!result) return
+
+  application.status = result.status
+  application.statusTone = result.statusTone
+  adminActionResult.value = {
+    title: result.title,
+    body: result.body,
+  }
+}
+
+function resolveAdminException(exception) {
+  exception.status = exception.resultStatus
+  exception.statusTone = exception.resultTone
+  adminActionResult.value = {
+    title: `${exception.type}：${exception.status}`,
+    body: exception.resultMessage,
+  }
 }
 
 function backToHall() {
@@ -510,7 +609,7 @@ onMounted(() => {
   window.addEventListener('resize', centerHall)
   const hash = window.location.hash.replace('#', '')
   if (hash === 'operation') {
-    signedRole.value = 'admin'
+    signedRole.value = 'ADMIN'
     screen.value = 'operation'
   } else if (hash === 'quest-detail') {
     activeQuestId.value = 'QST-0427'
@@ -562,10 +661,10 @@ watch(questPageCount, (pageCount) => {
               <span>01</span>
               <h2>推荐演示流程</h2>
               <ol>
-                <li>进入大厅，打开 Quest Board 浏览和筛选任务。</li>
+                <li>进入大厅，打开悬赏任务板浏览和筛选任务。</li>
                 <li>查看任务详情，确认完成标准后接取任务。</li>
-                <li>进入 Workbench 查看个人仓库、分支、提交和 PR 状态。</li>
-                <li>在 Submission Counter 提交任务成果，等待维护者审核。</li>
+                <li>进入工作台查看个人仓库、分支、commit 和 PR 状态。</li>
+                <li>在提交柜台提交任务成果，等待委托人审核。</li>
                 <li>切换维护者视角处理审核，再回到工作台查看反馈。</li>
               </ol>
             </article>
@@ -597,15 +696,15 @@ watch(questPageCount, (pageCount) => {
     </Transition>
 
     <section v-if="screen === 'door'" class="scene door-scene" :style="{ backgroundImage: `url(${doorImg})` }">
-      <aside class="login-panel" aria-label="Login panel">
-        <p class="kicker">Git Guild Gate</p>
-        <h1>Enter the Hall</h1>
+      <aside class="login-panel" aria-label="登录面板">
+        <p class="kicker">Git Guild 入口</p>
+        <h1>登录 Git Guild</h1>
         <div class="field-group">
-          <label for="guild-name">Guild Name</label>
+          <label for="guild-name">账号</label>
           <input id="guild-name" value="adventurer@relay" autocomplete="username" />
         </div>
         <div class="field-group">
-          <label for="guild-key">Access Key</label>
+          <label for="guild-key">访问密钥</label>
           <input id="guild-key" value="••••••••" type="password" autocomplete="current-password" />
         </div>
 
@@ -624,8 +723,8 @@ watch(questPageCount, (pageCount) => {
         </div>
 
         <div class="login-actions">
-          <button class="primary-action" type="button" @click="enterGuild()">Sign In</button>
-          <button class="quiet-action" type="button" @click="enterAsVisitor">Visit Hall</button>
+          <button class="primary-action" type="button" @click="enterGuild()">登录</button>
+          <button class="quiet-action" type="button" @click="enterAsVisitor">以访客身份进入</button>
         </div>
       </aside>
     </section>
@@ -679,40 +778,221 @@ watch(questPageCount, (pageCount) => {
         <span>{{ operationBackHint }}</span>
       </button>
 
-      <div class="room-layout admin-layout">
-        <section class="parchment-panel tall-panel">
-          <p class="kicker">Review Queue</p>
-          <h1>Quest Clearance</h1>
-          <div class="review-stack">
-            <article class="sealed-row">
-              <strong>QST-0431 · Repository import error view</strong>
-              <span>Clear goal, issue linked, completion checklist present.</span>
-              <div class="row-actions">
-                <button type="button">Approve</button>
-                <button type="button">Return</button>
+      <div class="admin-review-workspace">
+        <aside class="admin-queue-panel" aria-label="任务发布申请队列">
+          <div class="admin-panel-head">
+            <div>
+              <p class="kicker">Admin Clearance</p>
+              <h1>任务上架审核</h1>
+            </div>
+            <span>发布申请</span>
+          </div>
+
+          <dl class="admin-stat-grid">
+            <div v-for="stat in adminQueueStats" :key="stat.label">
+              <dt>{{ stat.label }}</dt>
+              <dd>{{ stat.value }}</dd>
+            </div>
+          </dl>
+
+          <div class="admin-application-list">
+            <button
+              v-for="application in adminApplications"
+              :key="application.id"
+              class="admin-application-card"
+              :class="[{ active: activeAdminApplication?.id === application.id }, application.statusTone]"
+              type="button"
+              @click="selectAdminApplication(application)"
+            >
+              <span>{{ application.id }} · {{ application.submittedAt }}</span>
+              <strong>{{ application.questId }} · {{ application.title }}</strong>
+              <small>{{ application.maintainer }}</small>
+              <em>{{ application.status }}</em>
+            </button>
+          </div>
+        </aside>
+
+        <section v-if="activeAdminApplication" class="admin-detail-panel" aria-live="polite">
+          <header class="admin-detail-hero">
+            <div>
+              <p class="kicker">Quest Publishing Application</p>
+              <h2>{{ activeAdminApplication.questId }} · {{ activeAdminApplication.title }}</h2>
+              <p>{{ activeAdminApplication.summary }}</p>
+            </div>
+            <span class="admin-status-seal" :class="activeAdminApplication.statusTone">
+              {{ activeAdminApplication.status }}
+            </span>
+          </header>
+
+          <div class="admin-detail-grid">
+            <article class="admin-ledger-card issue-card">
+              <p class="kicker">Issue 关联</p>
+              <h3>Issue 关联</h3>
+              <dl>
+                <div>
+                  <dt>维护者</dt>
+                  <dd>{{ activeAdminApplication.maintainer }}</dd>
+                </div>
+                <div>
+                  <dt>仓库</dt>
+                  <dd>{{ activeAdminApplication.repository }}</dd>
+                </div>
+                <div>
+                  <dt>Issue</dt>
+                  <dd>{{ activeAdminApplication.issue }}</dd>
+                </div>
+                <div>
+                  <dt>受众</dt>
+                  <dd>{{ activeAdminApplication.targetAudience }}</dd>
+                </div>
+                <div>
+                  <dt>难度</dt>
+                  <dd>{{ activeAdminApplication.difficulty }}</dd>
+                </div>
+                <div>
+                  <dt>奖励</dt>
+                  <dd>{{ activeAdminApplication.reward }}</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article class="admin-ledger-card check-card">
+              <div class="admin-card-title">
+                <div>
+                  <p class="kicker">Clarity Check</p>
+                  <h3>清晰度检查</h3>
+                </div>
+                <span>{{ activeAdminPassedChecks.passed }} / {{ activeAdminPassedChecks.total }}</span>
+              </div>
+              <div class="admin-check-list">
+                <section
+                  v-for="check in activeAdminApplication.clarityChecks"
+                  :key="check.label"
+                  class="admin-check-row"
+                  :class="{ passed: check.passed, failed: !check.passed }"
+                >
+                  <strong>{{ check.label }}</strong>
+                  <span>{{ check.passed ? '通过' : '待补' }}</span>
+                  <p>{{ check.note }}</p>
+                </section>
               </div>
             </article>
-            <article class="sealed-row warning">
-              <strong>QST-0440 · Fix sync failure</strong>
-              <span>Missing verification steps and expected result.</span>
-              <div class="row-actions">
-                <button type="button">Request Detail</button>
-                <button type="button">Close</button>
+
+            <article class="admin-ledger-card check-card">
+              <div class="admin-card-title">
+                <div>
+                  <p class="kicker">Compliance</p>
+                  <h3>合规性检查</h3>
+                </div>
               </div>
+              <div class="admin-check-list">
+                <section
+                  v-for="check in activeAdminApplication.complianceChecks"
+                  :key="check.label"
+                  class="admin-check-row"
+                  :class="{ passed: check.passed, failed: !check.passed }"
+                >
+                  <strong>{{ check.label }}</strong>
+                  <span>{{ check.passed ? '通过' : '风险' }}</span>
+                  <p>{{ check.note }}</p>
+                </section>
+              </div>
+            </article>
+
+            <article class="admin-ledger-card standards-card">
+              <p class="kicker">Acceptance</p>
+              <h3>完成标准</h3>
+              <ol v-if="activeAdminApplication.completionStandards.length > 0">
+                <li v-for="standard in activeAdminApplication.completionStandards" :key="standard">{{ standard }}</li>
+              </ol>
+              <p v-else class="admin-empty-note">维护者尚未提供可验收完成标准，建议退回补充。</p>
             </article>
           </div>
         </section>
 
-        <section class="glass-ledger">
-          <p class="kicker">Incident Desk</p>
-          <h2>Common Exceptions</h2>
-          <ul>
-            <li><span>Import failed</span><button type="button">Retry</button></li>
-            <li><span>Sync failed</span><button type="button">Resync</button></li>
-            <li><span>Unclear quest returned</span><button type="button">Inspect</button></li>
-            <li><span>PR link mismatch</span><button type="button">Resolve</button></li>
-          </ul>
-        </section>
+        <aside v-if="activeAdminApplication" class="admin-action-panel">
+          <section class="glass-ledger admin-risk-ledger">
+            <p class="kicker">Risk Notice</p>
+            <h2>风险提示</h2>
+            <ul>
+              <li v-for="risk in activeAdminApplication.risks" :key="risk">
+                <span>{{ risk }}</span>
+              </li>
+            </ul>
+          </section>
+
+          <section class="glass-ledger admin-exception-ledger">
+            <div class="admin-card-title">
+              <div>
+                <p class="kicker">Exception Docket</p>
+                <h2>异常处理演示</h2>
+              </div>
+              <span>{{ adminExceptionStats.pending }} 待处理 · {{ adminExceptionStats.review }} 复核</span>
+            </div>
+
+            <div class="admin-exception-list">
+              <article
+                v-for="exception in adminExceptions"
+                :key="exception.id"
+                class="admin-exception-card"
+                :class="exception.statusTone"
+              >
+                <div class="exception-card-head">
+                  <span>{{ exception.id }} · {{ exception.type }}</span>
+                  <em>{{ exception.status }}</em>
+                </div>
+                <h3>{{ exception.title }}</h3>
+                <dl>
+                  <div>
+                    <dt>原因</dt>
+                    <dd>{{ exception.reason }}</dd>
+                  </div>
+                  <div>
+                    <dt>影响</dt>
+                    <dd>{{ exception.impact }}</dd>
+                  </div>
+                  <div>
+                    <dt>建议处理</dt>
+                    <dd>{{ exception.suggestion }}</dd>
+                  </div>
+                </dl>
+                <button
+                  class="quiet-action"
+                  type="button"
+                  :disabled="exception.status !== '待处理'"
+                  @click="resolveAdminException(exception)"
+                >
+                  {{ exception.status === '待处理' ? exception.actionLabel : '处理完成' }}
+                </button>
+              </article>
+            </div>
+          </section>
+
+          <section class="parchment-panel admin-decision-card">
+            <p class="kicker">审核决定</p>
+            <h2>管理员操作</h2>
+            <p>
+              当前处理的是维护者提交的任务发布申请。通过后进入悬赏任务板；退回或异常都不会上架。
+            </p>
+            <div class="admin-action-buttons">
+              <button class="primary-action" type="button" @click="runAdminApplicationAction('approve')">
+                通过上架
+              </button>
+              <button class="quiet-action" type="button" @click="runAdminApplicationAction('return')">
+                退回补充
+              </button>
+              <button class="quiet-action danger" type="button" @click="runAdminApplicationAction('flag')">
+                标记异常
+              </button>
+            </div>
+          </section>
+
+          <section class="glass-ledger admin-result-ledger">
+            <p class="kicker">操作结果</p>
+            <h2>{{ adminActionResult.title }}</h2>
+            <p>{{ adminActionResult.body }}</p>
+          </section>
+        </aside>
       </div>
     </section>
 
@@ -741,6 +1021,7 @@ watch(questPageCount, (pageCount) => {
       class="scene work-scene"
       :class="{
         'quest-mode': activeRoom === 'quest',
+        'desk-mode': activeRoom === 'desk',
         'submission-mode': activeRoom === 'submission',
         'workbench-mode': activeRoom === 'workbench',
       }"
@@ -769,7 +1050,7 @@ watch(questPageCount, (pageCount) => {
         <aside class="quest-filter-rail" aria-label="筛选条件">
           <div class="filter-rail-head">
             <div>
-              <p class="kicker">Filters</p>
+              <p class="kicker">筛选条件</p>
               <h2>筛选条件</h2>
             </div>
             <button type="button" @click="clearQuestFilters">清空</button>
@@ -799,7 +1080,7 @@ watch(questPageCount, (pageCount) => {
         <section class="commission-panel" aria-live="polite">
           <header class="commission-panel-head">
             <div>
-              <p class="kicker">Available Quests</p>
+              <p class="kicker">悬赏任务列表</p>
               <h1>委托清单</h1>
             </div>
             <span>按关联度排序</span>
@@ -846,7 +1127,7 @@ watch(questPageCount, (pageCount) => {
           </div>
 
           <div v-else class="commission-empty">
-            <p class="kicker">No Match</p>
+            <p class="kicker">没有匹配</p>
             <h2>没有符合条件的委托</h2>
             <p>调整搜索内容或关闭部分筛选条件后，右侧清单会同步刷新。</p>
           </div>
@@ -860,6 +1141,8 @@ watch(questPageCount, (pageCount) => {
       </div>
 
       <SubmissionCounter v-else-if="activeRoom === 'submission'" :quest="activeSubmissionQuest" />
+
+      <RepositorySyncDesk v-else-if="activeRoom === 'desk'" />
 
       <Workbench
         v-else-if="activeRoom === 'workbench'"
@@ -879,12 +1162,12 @@ watch(questPageCount, (pageCount) => {
             <button class="avatar-edit" type="button">编辑头像</button>
 
             <article class="identity-info">
-              <p class="kicker">Adventurer Record</p>
+              <p class="kicker">冒险家档案</p>
               <h2>Minerva Dawn</h2>
               <dl>
                 <div>
                   <dt>角色</dt>
-                  <dd>Adventurer</dd>
+                  <dd>冒险家</dd>
                 </div>
                 <div>
                   <dt>等级</dt>

@@ -1,7 +1,9 @@
 <script setup>
 import { computed, ref } from 'vue'
 
+import QuestStatusFlow from './QuestStatusFlow.vue'
 import {
+  maintainerIssueBacklog,
   maintainerNotifications,
   maintainerPublishedQuests,
   maintainerWorkbenchStats,
@@ -22,6 +24,14 @@ const emit = defineEmits(['open-submission', 'open-id-card'])
 const workbenchView = ref('adventurer')
 const maintainerReviews = ref(reviewQueue.map((review) => ({ ...review, checklist: [...review.checklist] })))
 const mailboxMessages = ref(workbenchEmails.map((email) => ({ ...email, body: [...email.body] })))
+const taskGroupList = ref(
+  taskGroups.map((group) => ({
+    ...group,
+    tasks: group.tasks.map((task) => ({ ...task, actions: [...task.actions] })),
+  })),
+)
+const repositoryList = ref(repositories.map((repository) => ({ ...repository })))
+const pullRequestList = ref(pullRequests.map((pullRequest) => ({ ...pullRequest })))
 const isMailboxOpen = ref(false)
 const selectedTaskId = ref(null)
 const selectedEmailId = ref(null)
@@ -29,17 +39,27 @@ const selectedRepositoryName = ref(null)
 const selectedNotificationText = ref(null)
 const selectedFeedbackId = ref(null)
 const selectedReviewId = ref(reviewQueue[0]?.id ?? null)
+const selectedPublishingIssueId = ref(maintainerIssueBacklog[0]?.id ?? null)
+const taskDraft = ref(createDraftFromIssue(maintainerIssueBacklog[0]))
+const publishingReviewStatus = ref({
+  label: '草稿待检查',
+  body: '选择左侧 Issue 后会自动生成悬赏任务草稿，补齐字段后可提交管理员审核。',
+  submittedAt: '',
+})
 const isGrowthDetailOpen = ref(false)
 const operationResult = ref({
   title: 'Git 操作',
   body: '选择创建分支、上传提交或发起 PR 后，这里会展示模拟结果。',
 })
+const simulatedCommitIndex = ref(2)
+const simulatedPullRequestIndex = ref(24)
 
 const allTasks = computed(() =>
-  taskGroups.flatMap((group) =>
+  taskGroupList.value.flatMap((group) =>
     group.tasks.map((task) => ({
       ...task,
       statusLabel: group.label,
+      workflowState: group.id,
     })),
   ),
 )
@@ -51,6 +71,8 @@ const selectedNotification = computed(() =>
 const selectedFeedback = computed(() =>
   reviewFeedbacks.find((feedback) => feedback.id === selectedFeedbackId.value) ?? null,
 )
+const feedbackTaskFilter = ref('all')
+const feedbackStatusFilter = ref('all')
 const unreadMailCount = computed(() => mailboxMessages.value.filter((email) => email.unread).length)
 const displayStats = computed(() =>
   workbenchView.value === 'guild-master'
@@ -58,25 +80,238 @@ const displayStats = computed(() =>
     : workbenchStats.map((stat) => (stat.label === '未读邮件' ? { ...stat, value: unreadMailCount.value } : stat)),
 )
 const selectedTaskRepository = computed(() =>
-  repositories.find((repository) => repository.name === selectedTask.value?.repository),
+  repositoryList.value.find((repository) => repository.name === selectedTask.value?.repository),
 )
 const selectedRepository = computed(() =>
-  repositories.find((repository) => repository.name === selectedRepositoryName.value) ?? null,
+  repositoryList.value.find((repository) => repository.name === selectedRepositoryName.value) ?? null,
 )
 const selectedTaskPullRequests = computed(() => {
   if (!selectedTask.value) return []
 
-  const prId = selectedTask.value.prStatus.match(/PR #\d+/)?.[0]
-  return pullRequests.filter((pr) => pr.id === prId || pr.title.includes(selectedTask.value.id))
+  const prId = selectedTask.value.prNumber || selectedTask.value.prStatus.match(/PR #\d+/)?.[0]
+  return pullRequestList.value.filter((pr) => pr.id === prId || pr.taskId === selectedTask.value.id)
 })
+const selectedRepositoryTasks = computed(() =>
+  allTasks.value.filter((task) => task.repository === selectedRepository.value?.name),
+)
 const selectedFeedbackTask = computed(() =>
   allTasks.value.find((task) => task.id === selectedFeedback.value?.questId) ?? null,
 )
+const feedbackTaskOptions = computed(() => [
+  { value: 'all', label: '全部任务' },
+  ...reviewFeedbacks.map((feedback) => ({
+    value: feedback.questId,
+    label: `${feedback.questId} · ${feedback.questTitle}`,
+  })),
+])
+const feedbackStatusOptions = [
+  { value: 'all', label: '全部状态' },
+  { value: 'approved', label: '通过' },
+  { value: 'changes-requested', label: '退回修改' },
+  { value: 'in-review', label: '待复审' },
+]
+const feedbackArchiveStats = computed(() => {
+  const counts = reviewFeedbacks.reduce(
+    (summary, feedback) => {
+      summary[feedback.status] = (summary[feedback.status] ?? 0) + 1
+      return summary
+    },
+    { approved: 0, 'changes-requested': 0, 'in-review': 0 },
+  )
+
+  return [
+    { label: '通过', value: counts.approved },
+    { label: '退回修改', value: counts['changes-requested'] },
+    { label: '待复审', value: counts['in-review'] },
+  ]
+})
+const filteredFeedbacks = computed(() =>
+  reviewFeedbacks.filter(
+    (feedback) =>
+      (feedbackTaskFilter.value === 'all' || feedback.questId === feedbackTaskFilter.value) &&
+      (feedbackStatusFilter.value === 'all' || feedback.status === feedbackStatusFilter.value),
+  ),
+)
+const selectedFeedbackStatusMeta = computed(() => getFeedbackStatusMeta(selectedFeedback.value?.status))
+const selectedFeedbackFlowStatus = computed(() => selectedFeedback.value?.flowStatus ?? selectedFeedback.value?.status ?? 'review')
+const canResubmitSelectedFeedback = computed(() => selectedFeedback.value?.status === 'changes-requested')
+const displayableContributionRecords = computed(() =>
+  reviewFeedbacks.filter((feedback) => feedback.status === 'approved' && feedback.contributionRecord),
+)
+const archivedXpEarned = computed(() =>
+  reviewFeedbacks.reduce((total, feedback) => total + (Number(feedback.xpEarned) || 0), 0),
+)
+const selectedTaskFlowContext = computed(() => {
+  if (!selectedTask.value) return {}
+
+  return {
+    quest: `${selectedTask.value.id} · ${selectedTask.value.title}`,
+    repository: selectedTask.value.repository,
+    branch: selectedTask.value.branch ? `任务分支：${selectedTask.value.branch}` : '任务分支未创建',
+    prStatus: selectedTask.value.prStatus,
+    counter:
+      selectedTask.value.workflowState === 'in-progress'
+        ? 'PR 准备好后到提交柜台登记'
+        : selectedTask.value.workflowState === 'changes-requested'
+          ? '修改完成后重新提交成果'
+          : '已登记成果或等待记录归档',
+    feedback:
+      selectedTask.value.workflowState === 'changes-requested'
+        ? '维护者已退回，请查看逐项反馈'
+        : selectedTask.value.workflowState === 'completed'
+          ? '审核通过，已写入成长记录'
+          : '等待审核结果或通知',
+    syncStatus: selectedTaskRepository.value?.syncStatus,
+    viewer: workbenchUser.name,
+  }
+})
+const linkPanelTask = computed(() => {
+  if (selectedTask.value) return selectedTask.value
+  if (!selectedRepository.value) return null
+
+  return (
+    selectedRepositoryTasks.value.find((task) => task.workflowState !== 'completed') ??
+    selectedRepositoryTasks.value[0] ??
+    null
+  )
+})
+const linkPanelRepository = computed(() =>
+  repositoryList.value.find((repository) => repository.name === linkPanelTask.value?.repository) ?? selectedRepository.value,
+)
+const linkPanelPullRequest = computed(() => {
+  if (!linkPanelTask.value) return null
+
+  return (
+    pullRequestList.value.find(
+      (pullRequest) => pullRequest.taskId === linkPanelTask.value.id || pullRequest.id === linkPanelTask.value.prNumber,
+    ) ?? null
+  )
+})
+const linkPanelChecks = computed(() => {
+  if (!linkPanelTask.value) return []
+
+  return [
+    {
+      label: '任务分支',
+      passed: Boolean(linkPanelTask.value.branch),
+      detail: linkPanelTask.value.branch || '还没有创建任务分支。',
+    },
+    {
+      label: '最近 commit',
+      passed: linkPanelTask.value.recentCommit !== '待上传',
+      detail: linkPanelTask.value.recentCommit || '还没有上传提交。',
+    },
+    {
+      label: 'PR 与检查',
+      passed: Boolean(linkPanelTask.value.prNumber) && !linkPanelTask.value.checkResult.includes('未通过'),
+      detail: linkPanelTask.value.prNumber
+        ? `${linkPanelTask.value.prNumber} · ${linkPanelTask.value.prState} · ${linkPanelTask.value.checkResult}`
+        : '还没有创建 PR。',
+    },
+    {
+      label: '提交柜台',
+      passed: ['待登记成果', '需重新提交', '已登记成果', '已归档'].includes(linkPanelTask.value.counterLink),
+      detail: linkPanelTask.value.counterDetail,
+    },
+  ]
+})
+const canOpenSubmissionCounter = computed(() => {
+  if (!linkPanelTask.value) return false
+
+  return Boolean(linkPanelTask.value.prNumber) && linkPanelTask.value.recentCommit !== '待上传'
+})
+const selectedFeedbackFlowContext = computed(() => {
+  if (!selectedFeedback.value) return {}
+
+  const isReturned = selectedFeedback.value.status === 'changes-requested'
+  const isApproved = selectedFeedback.value.status === 'approved'
+
+  return {
+    quest: `${selectedFeedback.value.questId} · ${selectedFeedback.value.questTitle}`,
+    repository: selectedFeedback.value.repository,
+    branch: isReturned
+      ? `继续更新 ${selectedFeedback.value.pullRequest} 对应任务分支`
+      : isApproved
+        ? '任务分支已完成，可在贡献记录中回看'
+        : '保持任务分支可同步，等待复审结果',
+    pullRequest: `${selectedFeedback.value.pullRequest} · ${selectedFeedback.value.pullRequestTitle}`,
+    counter: isReturned ? '修复后回到提交柜台重新提交成果记录' : '当前无需重新提交成果',
+    feedback: `${selectedFeedback.value.conclusion} · ${selectedFeedback.value.reviewedAt}`,
+    syncStatus: repositoryList.value.find((repository) => repository.name === selectedFeedback.value.repository)?.syncStatus,
+    viewer: workbenchUser.name,
+  }
+})
 const xpProgress = computed(() => `${Math.round((workbenchUser.xpCurrent / workbenchUser.xpTarget) * 100)}%`)
 const selectedReview = computed(() =>
   maintainerReviews.value.find((review) => review.id === selectedReviewId.value) ?? maintainerReviews.value[0] ?? null,
 )
-const activeRoleLabel = computed(() => (workbenchView.value === 'guild-master' ? 'Guild Master' : workbenchUser.role))
+const selectedPublishingIssue = computed(() =>
+  maintainerIssueBacklog.find((issue) => issue.id === selectedPublishingIssueId.value) ?? maintainerIssueBacklog[0] ?? null,
+)
+const draftCompletionItems = computed(() =>
+  taskDraft.value.completionStandards
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean),
+)
+const clarityChecks = computed(() => [
+  {
+    label: 'Issue 来源明确',
+    passed: Boolean(taskDraft.value.issueId && taskDraft.value.repository),
+    detail: taskDraft.value.issueId
+      ? `${taskDraft.value.issueId} · ${taskDraft.value.repository}`
+      : '需要先从左侧选择一个 Issue。',
+  },
+  {
+    label: '任务标题和摘要可读',
+    passed: taskDraft.value.title.trim().length >= 8 && taskDraft.value.summary.trim().length >= 24,
+    detail: '标题至少 8 个字符，摘要需要说明背景、目标和用户价值。',
+  },
+  {
+    label: '难度、技术栈和奖励完整',
+    passed: Boolean(
+      taskDraft.value.difficulty.trim() && taskDraft.value.techStack.trim() && taskDraft.value.reward.trim(),
+    ),
+    detail: '三项会影响推荐、接取预期和课程激励。',
+  },
+  {
+    label: '完成标准可验收',
+    passed: draftCompletionItems.value.length >= 3,
+    detail: `当前 ${draftCompletionItems.value.length} 项，建议至少 3 项并且每项能被维护者检查。`,
+  },
+])
+const claritySummary = computed(() => {
+  const passed = clarityChecks.value.filter((item) => item.passed).length
+  return { passed, total: clarityChecks.value.length }
+})
+const isDraftReady = computed(() => claritySummary.value.passed === claritySummary.value.total)
+const activeRoleLabel = computed(() => (workbenchView.value === 'guild-master' ? '委托人' : workbenchUser.role))
+
+function createDraftFromIssue(issue) {
+  if (!issue) {
+    return {
+      issueId: '',
+      repository: '',
+      title: '',
+      summary: '',
+      difficulty: '',
+      techStack: '',
+      reward: '',
+      completionStandards: '',
+    }
+  }
+
+  return {
+    issueId: issue.id,
+    repository: issue.repository,
+    title: issue.title,
+    summary: issue.summary,
+    difficulty: issue.suggestedDifficulty,
+    techStack: issue.suggestedTechStack,
+    reward: issue.suggestedReward,
+    completionStandards: issue.suggestedStandards.join('\n'),
+  }
+}
 
 function switchWorkbenchView(view) {
   workbenchView.value = view
@@ -101,6 +336,45 @@ function selectReview(review) {
   }
 }
 
+function selectPublishingIssue(issue) {
+  selectedPublishingIssueId.value = issue.id
+  taskDraft.value = createDraftFromIssue(issue)
+  publishingReviewStatus.value = {
+    label: '草稿已生成',
+    body: `${issue.id} 的标题、摘要和关联仓库已带入草稿。请检查奖励、技术栈和完成标准。`,
+    submittedAt: '',
+  }
+  operationResult.value = {
+    title: `${issue.id} 已生成任务草稿`,
+    body: `维护者发布工坊已载入 ${issue.repository} 的 Issue 上下文，可继续做清晰度检查。`,
+  }
+}
+
+function submitTaskDraftForReview() {
+  if (!isDraftReady.value) {
+    publishingReviewStatus.value = {
+      label: '清晰度检查未通过',
+      body: '请先补齐待补项，再提交给管理员审核。',
+      submittedAt: '刚刚',
+    }
+    operationResult.value = {
+      title: '任务发布申请暂未提交',
+      body: '清晰度检查仍有待补项，课堂演示可继续编辑草稿字段并再次提交。',
+    }
+    return
+  }
+
+  publishingReviewStatus.value = {
+    label: '已提交管理员审核',
+    body: `${taskDraft.value.issueId} 已作为悬赏任务草稿提交，管理员审核通过后会出现在悬赏任务板。`,
+    submittedAt: '刚刚',
+  }
+  operationResult.value = {
+    title: '任务发布申请已提交',
+    body: `${taskDraft.value.title} 已进入管理员审核队列，当前为本地 mock 状态。`,
+  }
+}
+
 function runReviewAction(action, review = selectedReview.value) {
   if (!review) return
 
@@ -109,7 +383,7 @@ function runReviewAction(action, review = selectedReview.value) {
     changes: ['修改请求已发送', `${review.questId} 的逐项反馈已发送，冒险家工作台将出现待修改事项。`],
     reject: ['提交已驳回', `${review.questId} 已标记为驳回，任务仍需维护者后续处理。`],
     draft: ['草稿已保存', `${review.questId} 的审核意见已保存为本地模拟草稿。`],
-    pr: ['PR 状态已打开', `${review.pullRequest} 的检查结果和 Review 状态已定位。`],
+    pr: ['PR 状态已打开', `${review.pullRequest} 的检查结果和审核状态已定位。`],
   }
 
   const [title, body] = resultMap[action] ?? ['审核操作已记录', `${review.questId} 的模拟操作已完成。`]
@@ -198,6 +472,47 @@ function resolveNotificationAction(notification) {
   return { type: actionMap[notification.action] ?? 'feedback', feedbackId: notification.feedbackId }
 }
 
+function getFeedbackStatusMeta(status) {
+  const statusMap = {
+    approved: { label: '通过', tone: 'approved', flowStatus: 'approved' },
+    'changes-requested': { label: '退回修改', tone: 'warning', flowStatus: 'changes-requested' },
+    'in-review': { label: '待复审', tone: 'review', flowStatus: 'in-review' },
+  }
+
+  return statusMap[status] ?? { label: '待复审', tone: 'review', flowStatus: 'in-review' }
+}
+
+function selectFeedbackArchive(feedback) {
+  selectedFeedbackId.value = feedback.id
+  selectedTaskId.value = null
+  selectedEmailId.value = null
+  selectedRepositoryName.value = null
+  selectedNotificationText.value = null
+  isGrowthDetailOpen.value = false
+  isMailboxOpen.value = false
+  operationResult.value = {
+    title: `${feedback.questId} 反馈已打开`,
+    body: `当前归档状态为“${getFeedbackStatusMeta(feedback.status).label}”。筛选结果已定位到这条审核记录。`,
+  }
+}
+
+function setFeedbackTaskFilter(value) {
+  feedbackTaskFilter.value = value
+  operationResult.value = {
+    title: '反馈归档已按任务筛选',
+    body: value === 'all' ? '当前显示全部任务的审核意见。' : `当前只显示 ${value} 的审核意见。`,
+  }
+}
+
+function setFeedbackStatusFilter(value) {
+  feedbackStatusFilter.value = value
+  const label = feedbackStatusOptions.find((option) => option.value === value)?.label ?? '全部状态'
+  operationResult.value = {
+    title: '反馈归档已按状态筛选',
+    body: `当前筛选状态：${label}。点击任一归档卡片可在右侧查看详情。`,
+  }
+}
+
 function runEmailAction(action, email) {
   if (!email) return
 
@@ -222,9 +537,182 @@ function runEmailAction(action, email) {
   operationResult.value = { title, body }
 }
 
+function findTaskGroup(taskId) {
+  return taskGroupList.value.find((group) => group.tasks.some((task) => task.id === taskId)) ?? null
+}
+
+function findTaskRecord(taskId) {
+  return findTaskGroup(taskId)?.tasks.find((task) => task.id === taskId) ?? null
+}
+
+function findRepositoryRecord(repositoryName) {
+  return repositoryList.value.find((repository) => repository.name === repositoryName) ?? null
+}
+
+function findActionTaskRecord() {
+  if (selectedTask.value) return findTaskRecord(selectedTask.value.id)
+  if (!selectedRepository.value) return null
+
+  const task = selectedRepositoryTasks.value.find((item) => item.workflowState !== 'completed') ?? selectedRepositoryTasks.value[0]
+  return task ? findTaskRecord(task.id) : null
+}
+
+function updateRepositoryActivity(task) {
+  const repository = findRepositoryRecord(task.repository)
+  if (!repository) return
+
+  if (task.branch && !repository.activeBranchAdded) {
+    repository.branches += 1
+    repository.activeBranchAdded = true
+  }
+
+  if (task.recentCommit && task.recentCommit !== '待上传') {
+    repository.lastCommit = task.recentCommit
+  }
+}
+
+function ensureTaskBranch(task) {
+  if (task.branch) return false
+
+  task.branch = `feature/${task.id.toLowerCase()}-${task.title.toLowerCase().replaceAll(' ', '-')}`
+  task.nextStep = '上传提交后创建 PR'
+  task.counterLink = '未登记'
+  task.counterDetail = '分支已创建，但还没有 commit 和 PR；任务成果暂时不能去提交柜台登记。'
+  updateRepositoryActivity(task)
+  return true
+}
+
+function ensureTaskCommit(task) {
+  ensureTaskBranch(task)
+  const commitId = `c0ffee${simulatedCommitIndex.value}`
+  simulatedCommitIndex.value += 1
+  task.recentCommit = commitId
+  task.nextStep = task.prNumber ? '同步 PR 状态后去提交柜台登记成果' : '创建 PR 并等待基础检查'
+  task.counterLink = task.prNumber ? '待登记成果' : '未登记'
+  task.counterDetail = task.prNumber
+    ? '项目提交已上传到当前 PR；任务成果提交仍需到提交柜台完成。'
+    : 'commit 已上传，但还没有 PR；提交柜台需要 PR 链接后才能登记成果。'
+  updateRepositoryActivity(task)
+  return commitId
+}
+
+function ensureTaskPullRequest(task) {
+  ensureTaskCommit(task)
+
+  if (!task.prNumber) {
+    const prId = `PR #${simulatedPullRequestIndex.value}`
+    simulatedPullRequestIndex.value += 1
+    task.prNumber = prId
+    task.prState = '打开'
+    task.prStatus = `${prId} 打开`
+    task.checkResult = '基础检查排队中'
+    pullRequestList.value.push({
+      id: prId,
+      taskId: task.id,
+      title: `${task.id} ${task.title}`,
+      status: '打开',
+      checks: '基础检查排队中',
+      action: '查看 PR',
+    })
+
+    const repository = findRepositoryRecord(task.repository)
+    if (repository) repository.pullRequests += 1
+  }
+
+  task.counterLink = '待登记成果'
+  task.counterDetail = '项目提交已在工作台完成；任务成果还没有在提交柜台登记。'
+  task.nextStep = '基础检查通过后去提交柜台登记成果'
+}
+
+function syncTaskPullRequest(task) {
+  if (!task.prNumber) {
+    ensureTaskPullRequest(task)
+  }
+
+  const pullRequest = pullRequestList.value.find((item) => item.id === task.prNumber)
+  const taskGroup = findTaskGroup(task.id)
+  const isRevision = taskGroup?.id === 'changes-requested' || ['Changes requested', '退回修改'].includes(task.prState)
+  task.prState = isRevision ? '待审核' : '待审核'
+  task.prStatus = `${task.prNumber} ${task.prState}`
+  task.checkResult = isRevision ? '复审检查通过' : '基础检查通过'
+  task.nextStep = isRevision ? '去提交柜台重新提交成果' : '去提交柜台登记任务成果'
+  task.counterLink = isRevision ? '需重新提交' : '待登记成果'
+  task.counterDetail = isRevision
+    ? 'PR 已更新且复审检查通过；现在需要到提交柜台重新提交任务成果。'
+    : 'PR 检查已通过；现在可以到提交柜台提交任务成果说明。'
+
+  if (pullRequest) {
+    pullRequest.status = task.prState
+    pullRequest.checks = task.checkResult
+  }
+}
+
+function runLinkedGitAction(actionType, source) {
+  const task = findActionTaskRecord()
+
+  if (!task) {
+    operationResult.value = {
+      title: '没有可联动的任务',
+      body: `${source} 当前没有关联任务，无法模拟任务分支、commit 或 PR。`,
+    }
+    return true
+  }
+
+  if (actionType === 'branch') {
+    const created = ensureTaskBranch(task)
+    operationResult.value = {
+      title: created ? '已创建任务分支' : '任务分支已存在',
+      body: `${task.id} 当前分支为 ${task.branch}。这一步只完成项目代码工作，还不能提交任务成果。`,
+    }
+    return true
+  }
+
+  if (actionType === 'commit') {
+    const commitId = ensureTaskCommit(task)
+    operationResult.value = {
+      title: '上传提交已记录',
+      body: `${task.id} 已生成最近 commit ${commitId}。还需要 PR 通过检查后，才能到提交柜台登记任务成果。`,
+    }
+    return true
+  }
+
+  if (actionType === 'pull-request') {
+    ensureTaskPullRequest(task)
+    operationResult.value = {
+      title: 'PR 已创建',
+      body: `${task.id} 已关联 ${task.prNumber}，检查结果为“${task.checkResult}”。项目提交已在工作台完成，任务成果提交仍在提交柜台完成。`,
+    }
+    return true
+  }
+
+  if (actionType === 'sync-pr') {
+    syncTaskPullRequest(task)
+    operationResult.value = {
+      title: 'PR 状态已同步',
+      body: `${task.id} 当前为 ${task.prNumber} · ${task.prState} · ${task.checkResult}。${task.counterDetail}`,
+    }
+    return true
+  }
+
+  return false
+}
+
 function runAction(action, source = '当前事项') {
   if (action.type === 'submit') {
-    emit('open-submission', action.questId ?? selectedFeedback.value?.questId ?? selectedTask.value?.id)
+    const taskId = action.questId ?? selectedFeedback.value?.questId ?? selectedTask.value?.id ?? linkPanelTask.value?.id
+    const task = taskId ? findTaskRecord(taskId) : null
+
+    if (task && (!task.prNumber || task.recentCommit === '待上传')) {
+      operationResult.value = {
+        title: '暂时不能提交任务成果',
+        body: `${task.id} 还缺少 ${!task.branch ? '任务分支、' : ''}${
+          task.recentCommit === '待上传' ? 'commit、' : ''
+        }${!task.prNumber ? 'PR' : ''}。请先在工作台完成项目提交，再去提交柜台提交任务成果。`,
+      }
+      return
+    }
+
+    emit('open-submission', taskId)
     return
   }
 
@@ -243,17 +731,18 @@ function runAction(action, source = '当前事项') {
     return
   }
 
+  if (['branch', 'commit', 'pull-request', 'sync-pr'].includes(action.type)) {
+    if (runLinkedGitAction(action.type, source)) return
+  }
+
   const resultMap = {
-    branch: ['已创建任务分支', `${source} 已生成 feature/qst-workbench-demo 分支。`],
-    commit: ['上传提交已记录', `${source} 已模拟上传文件并生成 commit c0ffee1。`],
-    'pull-request': ['Pull Request 已准备', `${source} 已模拟创建 PR 草稿，可继续到提交柜台关联成果。`],
     feedback: ['反馈已打开', `${source} 的退回意见已定位到审核反馈区。`],
     repository: ['仓库视图已打开', `${source} 的分支、提交、Issue 和 PR 摘要已定位。`],
     history: ['提交记录已打开', `${source} 的最近提交记录已定位。`],
     'pr-view': ['PR 状态已打开', `${source} 的 PR 检查状态已定位。`],
     contribution: ['贡献记录已打开', `${source} 已完成并写入个人贡献记录。`],
     growth: ['成长结果已打开', `${source} 对应 XP 和等级进度已更新。`],
-    exception: ['异常处理入口已打开', `${source} 已进入同步异常处理流程。`],
+    exception: ['同步状态已刷新', `${source} 已完成一次模拟同步；如果 PR 刚创建，请继续点击“同步 PR 状态”查看检查结果。`],
   }
   const [title, body] = resultMap[action.type] ?? ['操作已记录', `${source} 的模拟操作已完成。`]
   operationResult.value = { title, body }
@@ -275,7 +764,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
   <div class="workbench-workspace" aria-label="工作台">
     <header class="workbench-statusbar">
       <div class="workbench-user">
-        <p class="kicker">Workbench</p>
+        <p class="kicker">工作台</p>
         <h1>工作台</h1>
         <div class="user-identity">
           <span class="user-avatar" aria-hidden="true">{{ workbenchUser.name.slice(0, 1) }}</span>
@@ -290,14 +779,14 @@ function openFeedback(feedbackId, source = '审核反馈') {
             :class="{ active: workbenchView === 'adventurer' }"
             @click="switchWorkbenchView('adventurer')"
           >
-            Adventurer View
+            冒险家视图
           </button>
           <button
             type="button"
             :class="{ active: workbenchView === 'guild-master' }"
             @click="switchWorkbenchView('guild-master')"
           >
-            Guild Master View
+            委托人视图
           </button>
         </div>
       </div>
@@ -327,7 +816,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
       <div class="repository-shortcuts" aria-label="仓库快捷入口">
         <span>仓库</span>
         <button
-          v-for="repository in repositories"
+          v-for="repository in repositoryList"
           :key="repository.name"
           class="repository-chip"
           :class="{ active: selectedRepositoryName === repository.name }"
@@ -400,7 +889,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
       </div>
 
       <div class="todo-group-list">
-        <section v-for="group in taskGroups" :key="group.id" class="todo-group">
+        <section v-for="group in taskGroupList" :key="group.id" class="todo-group">
           <header>
             <h3>{{ group.label }}</h3>
             <span>{{ group.tasks.length }}</span>
@@ -420,15 +909,106 @@ function openFeedback(feedbackId, source = '审核反馈') {
           </button>
         </section>
       </div>
+
+      <section class="feedback-archive-card" aria-label="反馈归档">
+        <header class="archive-head">
+          <div>
+            <p class="kicker">Feedback Archive</p>
+            <h3>反馈归档</h3>
+          </div>
+          <span>{{ filteredFeedbacks.length }} 条</span>
+        </header>
+
+        <dl class="archive-stat-grid">
+          <div v-for="stat in feedbackArchiveStats" :key="stat.label">
+            <dt>{{ stat.label }}</dt>
+            <dd>{{ stat.value }}</dd>
+          </div>
+        </dl>
+
+        <div class="archive-filter-group">
+          <span>按任务</span>
+          <select
+            :value="feedbackTaskFilter"
+            aria-label="按任务筛选反馈"
+            @change="setFeedbackTaskFilter($event.target.value)"
+          >
+            <option v-for="option in feedbackTaskOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+
+        <div class="archive-filter-group">
+          <span>按状态</span>
+          <div class="archive-filter-chips">
+            <button
+              v-for="option in feedbackStatusOptions"
+              :key="option.value"
+              type="button"
+              :class="{ active: feedbackStatusFilter === option.value }"
+              :aria-pressed="feedbackStatusFilter === option.value"
+              @click="setFeedbackStatusFilter(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="filteredFeedbacks.length > 0" class="feedback-archive-list">
+          <button
+            v-for="feedback in filteredFeedbacks"
+            :key="feedback.id"
+            class="feedback-archive-row"
+            :class="[{ active: selectedFeedbackId === feedback.id }, getFeedbackStatusMeta(feedback.status).tone]"
+            type="button"
+            @click="selectFeedbackArchive(feedback)"
+          >
+            <span>{{ feedback.questId }} · {{ getFeedbackStatusMeta(feedback.status).label }}</span>
+            <strong>{{ feedback.questTitle }}</strong>
+            <small>{{ feedback.reviewedAt }} · {{ feedback.pullRequest }}</small>
+            <small>{{ feedback.archiveNote }}</small>
+          </button>
+        </div>
+
+        <p v-else class="archive-empty">当前筛选没有匹配反馈，切换任务或状态即可恢复归档列表。</p>
+      </section>
     </aside>
 
     <aside v-else class="workbench-panel todo-panel review-queue-panel">
       <div class="panel-head">
-        <p class="kicker">Review Queue</p>
-        <h2>审核队列</h2>
+        <p class="kicker">委托人工作区</p>
+        <h2>任务发布与审核</h2>
       </div>
 
       <div class="todo-group-list">
+        <section class="todo-group">
+          <header>
+            <h3>Issue 悬赏草稿</h3>
+            <span>{{ maintainerIssueBacklog.length }}</span>
+          </header>
+
+          <button
+            v-for="issue in maintainerIssueBacklog"
+            :key="issue.id"
+            class="todo-task issue-draft-item"
+            :class="{ active: selectedPublishingIssue?.id === issue.id }"
+            type="button"
+            @click="selectPublishingIssue(issue)"
+          >
+            <span class="status-pill">{{ issue.id }}</span>
+            <strong>{{ issue.title }}</strong>
+            <small>{{ issue.repository }}</small>
+            <small>{{ issue.labels.join(' · ') }}</small>
+          </button>
+        </section>
+
+        <section class="todo-group">
+          <header>
+            <h3>提交审核队列</h3>
+            <span>{{ maintainerReviews.length }}</span>
+          </header>
+
         <button
           v-for="review in maintainerReviews"
           :key="review.id"
@@ -443,6 +1023,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
           <small>提交人：{{ review.submitter }} · {{ review.pullRequest }}</small>
           <small>提交时间：{{ review.submittedAt }}</small>
         </button>
+        </section>
       </div>
     </aside>
 
@@ -450,7 +1031,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
       <section v-if="workbenchView === 'guild-master'" class="workbench-panel task-detail-panel maintainer-detail-panel">
         <div class="panel-head inline">
           <div>
-            <p class="kicker">Guild Master Review</p>
+            <p class="kicker">委托人审核</p>
             <h2>{{ selectedReview?.questId }} · {{ selectedReview?.questTitle }}</h2>
           </div>
           <span class="status-pill" :class="{ warning: selectedReview?.status !== '待审核' }">
@@ -459,6 +1040,103 @@ function openFeedback(feedbackId, source = '审核反馈') {
         </div>
 
         <div v-if="selectedReview" class="maintainer-detail-grid">
+          <article class="detail-card maintainer-publisher-card">
+            <div class="publisher-hero">
+              <div>
+                <p class="kicker">Issue → 悬赏任务草稿 → 清晰度检查 → 管理员审核</p>
+                <h3>维护者任务发布工坊</h3>
+                <p>
+                  点击左侧 Issue 会自动带出标题、摘要和关联仓库；补齐字段后，清晰度检查会判断是否可以提交给管理员审核。
+                </p>
+              </div>
+              <div class="publisher-status-card">
+                <span>发布状态</span>
+                <strong>{{ publishingReviewStatus.label }}</strong>
+                <small v-if="publishingReviewStatus.submittedAt">{{ publishingReviewStatus.submittedAt }}</small>
+              </div>
+            </div>
+
+            <div class="publisher-grid">
+              <section class="issue-context-card">
+                <h4>Issue 上下文</h4>
+                <dl>
+                  <div>
+                    <dt>Issue</dt>
+                    <dd>{{ taskDraft.issueId }}</dd>
+                  </div>
+                  <div>
+                    <dt>关联仓库</dt>
+                    <dd>{{ taskDraft.repository }}</dd>
+                  </div>
+                </dl>
+                <p>{{ selectedPublishingIssue?.summary }}</p>
+              </section>
+
+              <form class="quest-draft-form" @submit.prevent="submitTaskDraftForReview">
+                <label>
+                  <span>任务标题</span>
+                  <input v-model="taskDraft.title" type="text" />
+                </label>
+                <label>
+                  <span>难度</span>
+                  <input v-model="taskDraft.difficulty" type="text" placeholder="初级 / 中级 / 高级" />
+                </label>
+                <label>
+                  <span>技术栈</span>
+                  <input v-model="taskDraft.techStack" type="text" placeholder="Vue, CSS, API..." />
+                </label>
+                <label>
+                  <span>奖励</span>
+                  <input v-model="taskDraft.reward" type="text" placeholder="XP / Gold / 徽章" />
+                </label>
+                <label class="wide-field">
+                  <span>任务摘要</span>
+                  <textarea v-model="taskDraft.summary" rows="3"></textarea>
+                </label>
+                <label class="wide-field">
+                  <span>完成标准（每行一项）</span>
+                  <textarea v-model="taskDraft.completionStandards" rows="5"></textarea>
+                </label>
+              </form>
+
+              <section class="clarity-check-card">
+                <div>
+                  <h4>清晰度检查</h4>
+                  <span class="status-pill" :class="{ warning: !isDraftReady }">
+                    {{ claritySummary.passed }} / {{ claritySummary.total }} 通过
+                  </span>
+                </div>
+                <div class="feedback-check-list">
+                  <section
+                    v-for="item in clarityChecks"
+                    :key="item.label"
+                    class="feedback-check-row"
+                    :class="{ passed: item.passed, failed: !item.passed }"
+                  >
+                    <div>
+                      <strong>{{ item.label }}</strong>
+                      <span>{{ item.passed ? '通过' : '待补' }}</span>
+                    </div>
+                    <p>{{ item.detail }}</p>
+                  </section>
+                </div>
+              </section>
+
+              <section class="admin-review-card">
+                <h4>提交审核</h4>
+                <p>{{ publishingReviewStatus.body }}</p>
+                <div class="card-actions">
+                  <button class="primary-action" type="button" @click="submitTaskDraftForReview">
+                    提交给管理员审核
+                  </button>
+                  <button class="quiet-action" type="button" @click="selectPublishingIssue(selectedPublishingIssue)">
+                    重新带入 Issue
+                  </button>
+                </div>
+              </section>
+            </div>
+          </article>
+
           <article class="maintainer-brief-card">
             <div>
               <p class="kicker">Submission Detail</p>
@@ -548,7 +1226,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
           <article class="detail-card maintainer-repository-card">
             <h3>仓库状态</h3>
             <div class="maintainer-list">
-              <section v-for="repository in repositories" :key="repository.name">
+              <section v-for="repository in repositoryList" :key="repository.name">
                 <strong>{{ repository.name }}</strong>
                 <span :class="{ warning: repository.syncStatus.includes('warning') }">
                   {{ repository.syncStatus }} · Issue {{ repository.issues }} · PR {{ repository.pullRequests }}
@@ -578,10 +1256,10 @@ function openFeedback(feedbackId, source = '审核反馈') {
       <section v-if="selectedFeedback" class="workbench-panel task-detail-panel feedback-detail-panel">
         <div class="panel-head inline">
           <div>
-            <p class="kicker">Review Feedback</p>
+            <p class="kicker">审核反馈</p>
             <h2>{{ selectedFeedback.questId }} · {{ selectedFeedback.questTitle }}</h2>
           </div>
-          <span class="status-pill warning">{{ selectedFeedback.conclusion }}</span>
+          <span class="status-pill" :class="selectedFeedbackStatusMeta.tone">{{ selectedFeedbackStatusMeta.label }}</span>
         </div>
 
         <div class="feedback-detail-grid">
@@ -612,11 +1290,26 @@ function openFeedback(feedbackId, source = '审核反馈') {
                 <dd>{{ selectedFeedback.conclusion }}</dd>
               </div>
               <div>
+                <dt>获得 XP</dt>
+                <dd>{{ selectedFeedback.xpEarned > 0 ? `+${selectedFeedback.xpEarned} XP` : '待复审后结算' }}</dd>
+              </div>
+              <div>
+                <dt>等级进度</dt>
+                <dd>{{ selectedFeedback.xpProgressAfter }}</dd>
+              </div>
+              <div>
                 <dt>审核时间</dt>
                 <dd>{{ selectedFeedback.reviewedAt }}</dd>
               </div>
             </dl>
           </article>
+
+          <QuestStatusFlow
+            class="feedback-flow-card"
+            :status="selectedFeedbackFlowStatus"
+            :context="selectedFeedbackFlowContext"
+            compact
+          />
 
           <article class="detail-card feedback-check-card">
             <h3>逐项检查结果</h3>
@@ -638,7 +1331,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
 
           <article class="detail-card action-note-card">
             <h3>工作台与提交柜台分工</h3>
-            <p>代码文件上传、commit 和 PR 更新仍在工作台完成；完成修改后，成果记录需要到 Submission Counter / 提交柜台重新提交。</p>
+            <p>代码文件上传、commit 和 PR 更新仍在工作台完成；完成修改后，成果记录需要到提交柜台重新提交。</p>
           </article>
 
           <article class="detail-card required-change-card">
@@ -668,9 +1361,10 @@ function openFeedback(feedbackId, source = '审核反馈') {
               <button
                 class="primary-action"
                 type="button"
+                :disabled="!canResubmitSelectedFeedback"
                 @click="runAction({ type: 'submit', questId: selectedFeedback.questId }, `${selectedFeedback.questId} ${selectedFeedback.questTitle}`)"
               >
-                重新提交成果
+                {{ canResubmitSelectedFeedback ? '重新提交成果' : '无需重新提交' }}
               </button>
               <button
                 class="quiet-action"
@@ -681,6 +1375,10 @@ function openFeedback(feedbackId, source = '审核反馈') {
               </button>
             </div>
             <p v-if="selectedFeedbackTask">当前待办状态：{{ selectedFeedbackTask.statusLabel }} · {{ selectedFeedbackTask.nextStep }}</p>
+            <p>
+              代码和 PR 更新在工作台完成；任务成果重新提交在提交柜台完成。通过后可展示贡献记录：
+              {{ selectedFeedback.contributionRecord }}
+            </p>
           </article>
 
           <article class="detail-card feedback-operation-card">
@@ -792,13 +1490,103 @@ function openFeedback(feedbackId, source = '审核反馈') {
       <section v-else-if="selectedTask" class="workbench-panel task-detail-panel">
         <div class="panel-head inline">
           <div>
-            <p class="kicker">Quest Detail</p>
+            <p class="kicker">悬赏任务详情</p>
             <h2>{{ selectedTask.id }} · {{ selectedTask.title }}</h2>
           </div>
           <span class="status-pill">{{ selectedTask.statusLabel }}</span>
         </div>
 
         <div class="detail-grid">
+          <QuestStatusFlow
+            class="task-flow-card"
+            :status="selectedTask.workflowState"
+            :context="selectedTaskFlowContext"
+            compact
+          />
+
+          <article v-if="linkPanelTask" class="detail-card wide link-ledger-card">
+            <div class="link-ledger-head">
+              <div>
+                <p class="kicker">PR × Quest Ledger</p>
+                <h3>PR 与任务联动面板</h3>
+              </div>
+              <span class="status-pill" :class="{ warning: !canOpenSubmissionCounter }">
+                {{ linkPanelTask.counterLink }}
+              </span>
+            </div>
+            <dl class="link-ledger-grid">
+              <div>
+                <dt>任务 ID</dt>
+                <dd>{{ linkPanelTask.id }}</dd>
+              </div>
+              <div>
+                <dt>关联 Issue</dt>
+                <dd>{{ linkPanelTask.issue }}</dd>
+              </div>
+              <div>
+                <dt>当前分支</dt>
+                <dd>{{ linkPanelTask.branch || '未创建' }}</dd>
+              </div>
+              <div>
+                <dt>最近 commit</dt>
+                <dd>{{ linkPanelTask.recentCommit }}</dd>
+              </div>
+              <div>
+                <dt>PR 编号 / 状态</dt>
+                <dd>{{ linkPanelTask.prNumber || '未创建' }} · {{ linkPanelTask.prState }}</dd>
+              </div>
+              <div>
+                <dt>检查结果</dt>
+                <dd>{{ linkPanelTask.checkResult }}</dd>
+              </div>
+              <div>
+                <dt>关联仓库</dt>
+                <dd>{{ linkPanelRepository?.name ?? linkPanelTask.repository }}</dd>
+              </div>
+              <div>
+                <dt>提交柜台</dt>
+                <dd>{{ linkPanelTask.counterLink }}</dd>
+              </div>
+            </dl>
+            <div class="link-check-list">
+              <section
+                v-for="check in linkPanelChecks"
+                :key="check.label"
+                class="link-check-row"
+                :class="{ passed: check.passed, blocked: !check.passed }"
+              >
+                <strong>{{ check.label }}</strong>
+                <span>{{ check.passed ? '已就绪' : '待完成' }}</span>
+                <p>{{ check.detail }}</p>
+              </section>
+            </div>
+            <p class="link-ledger-note">
+              工作台负责项目提交：创建分支、上传 commit、创建并同步 PR。提交柜台负责任务成果提交：登记任务、PR、说明和截图。
+            </p>
+            <div class="card-actions detail-actions">
+              <button class="quiet-action" type="button" @click="runAction({ type: 'branch' }, `${linkPanelTask.id} 联动面板`)">
+                创建分支
+              </button>
+              <button class="quiet-action" type="button" @click="runAction({ type: 'commit' }, `${linkPanelTask.id} 联动面板`)">
+                上传提交
+              </button>
+              <button class="quiet-action" type="button" @click="runAction({ type: 'pull-request' }, `${linkPanelTask.id} 联动面板`)">
+                创建 PR
+              </button>
+              <button class="quiet-action" type="button" @click="runAction({ type: 'sync-pr' }, `${linkPanelTask.id} 联动面板`)">
+                同步 PR 状态
+              </button>
+              <button
+                class="primary-action"
+                type="button"
+                :disabled="!canOpenSubmissionCounter"
+                @click="runAction({ type: 'submit', questId: linkPanelTask.id }, `${linkPanelTask.id} 联动面板`)"
+              >
+                去提交柜台
+              </button>
+            </div>
+          </article>
+
           <article class="detail-card wide">
             <h3>任务信息</h3>
             <dl>
@@ -956,6 +1744,92 @@ function openFeedback(feedbackId, source = '审核反馈') {
             </ol>
           </article>
 
+          <article v-if="linkPanelTask" class="detail-card repository-link-card link-ledger-card">
+            <div class="link-ledger-head">
+              <div>
+                <p class="kicker">PR × Quest Ledger</p>
+                <h3>仓库联动任务</h3>
+              </div>
+              <span class="status-pill" :class="{ warning: !canOpenSubmissionCounter }">
+                {{ linkPanelTask.counterLink }}
+              </span>
+            </div>
+            <div v-if="selectedRepositoryTasks.length > 1" class="repository-task-strip">
+              <button
+                v-for="task in selectedRepositoryTasks"
+                :key="task.id"
+                class="quiet-action"
+                type="button"
+                @click="selectTask(task)"
+              >
+                {{ task.id }} · {{ task.statusLabel }}
+              </button>
+            </div>
+            <dl class="link-ledger-grid">
+              <div>
+                <dt>任务 ID</dt>
+                <dd>{{ linkPanelTask.id }}</dd>
+              </div>
+              <div>
+                <dt>关联 Issue</dt>
+                <dd>{{ linkPanelTask.issue }}</dd>
+              </div>
+              <div>
+                <dt>当前分支</dt>
+                <dd>{{ linkPanelTask.branch || '未创建' }}</dd>
+              </div>
+              <div>
+                <dt>最近 commit</dt>
+                <dd>{{ linkPanelTask.recentCommit }}</dd>
+              </div>
+              <div>
+                <dt>PR 编号 / 状态</dt>
+                <dd>{{ linkPanelTask.prNumber || '未创建' }} · {{ linkPanelTask.prState }}</dd>
+              </div>
+              <div>
+                <dt>检查结果</dt>
+                <dd>{{ linkPanelTask.checkResult }}</dd>
+              </div>
+            </dl>
+            <div class="link-check-list">
+              <section
+                v-for="check in linkPanelChecks"
+                :key="check.label"
+                class="link-check-row"
+                :class="{ passed: check.passed, blocked: !check.passed }"
+              >
+                <strong>{{ check.label }}</strong>
+                <span>{{ check.passed ? '已就绪' : '待完成' }}</span>
+                <p>{{ check.detail }}</p>
+              </section>
+            </div>
+            <p class="link-ledger-note">
+              当前仓库操作默认联动 {{ linkPanelTask.id }}。工作台完成代码与 PR，提交柜台完成课程任务成果登记。
+            </p>
+            <div class="card-actions detail-actions">
+              <button class="quiet-action" type="button" @click="runAction({ type: 'branch' }, `${linkPanelTask.id} 仓库联动`)">
+                创建分支
+              </button>
+              <button class="quiet-action" type="button" @click="runAction({ type: 'commit' }, `${linkPanelTask.id} 仓库联动`)">
+                上传提交
+              </button>
+              <button class="quiet-action" type="button" @click="runAction({ type: 'pull-request' }, `${linkPanelTask.id} 仓库联动`)">
+                创建 PR
+              </button>
+              <button class="quiet-action" type="button" @click="runAction({ type: 'sync-pr' }, `${linkPanelTask.id} 仓库联动`)">
+                同步 PR 状态
+              </button>
+              <button
+                class="primary-action"
+                type="button"
+                :disabled="!canOpenSubmissionCounter"
+                @click="runAction({ type: 'submit', questId: linkPanelTask.id }, `${linkPanelTask.id} 仓库联动`)"
+              >
+                去提交柜台
+              </button>
+            </div>
+          </article>
+
           <article class="detail-card repository-sync-detail">
             <h3>同步状态</h3>
             <p v-if="selectedRepository.syncStatus.includes('warning')">
@@ -1004,13 +1878,25 @@ function openFeedback(feedbackId, source = '审核反馈') {
 
           <article class="detail-card">
             <h3>完成任务</h3>
-            <p>已完成 {{ workbenchUser.completedQuests }} 个任务，最近贡献会写入个人成长记录。</p>
+            <p>
+              已完成 {{ workbenchUser.completedQuests }} 个任务，反馈归档中已确认获得 {{ archivedXpEarned }} XP。
+              待复审任务通过后会继续更新等级进度。
+            </p>
           </article>
 
           <article class="detail-card">
             <h3>最近贡献</h3>
             <ul class="contribution-list">
               <li v-for="record in recentContributions" :key="record">{{ record }}</li>
+            </ul>
+          </article>
+
+          <article class="detail-card">
+            <h3>可展示贡献记录</h3>
+            <ul class="contribution-list">
+              <li v-for="feedback in displayableContributionRecords" :key="feedback.id">
+                {{ feedback.contributionRecord }} · +{{ feedback.xpEarned }} XP
+              </li>
             </ul>
           </article>
 
@@ -1541,6 +2427,175 @@ dd {
   line-height: 1.36;
 }
 
+.feedback-archive-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(240, 198, 118, 0.2);
+  border-radius: 7px;
+  margin-top: 4px;
+  padding: 12px;
+  background:
+    linear-gradient(180deg, rgba(39, 22, 10, 0.58), rgba(12, 7, 4, 0.42)),
+    radial-gradient(circle at 100% 0%, rgba(255, 217, 138, 0.1), transparent 0 32%, transparent 58%);
+}
+
+.archive-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.archive-head h3 {
+  margin: 0;
+  color: #ffe8b9;
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.archive-head > span {
+  border: 1px solid rgba(238, 184, 91, 0.42);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #ffe4ad;
+  font-size: 0.72rem;
+  background: rgba(80, 43, 18, 0.44);
+}
+
+.archive-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.archive-stat-grid div {
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(240, 198, 118, 0.16);
+  border-radius: 5px;
+  padding: 7px;
+  background: rgba(7, 4, 2, 0.28);
+}
+
+.archive-stat-grid dt,
+.archive-filter-group > span {
+  color: rgba(255, 231, 183, 0.62);
+  font-size: 0.72rem;
+}
+
+.archive-stat-grid dd {
+  margin: 0;
+  color: #ffe2a0;
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.archive-filter-group {
+  display: grid;
+  gap: 6px;
+}
+
+.archive-filter-group select {
+  width: 100%;
+  border: 1px solid rgba(240, 198, 118, 0.22);
+  border-radius: 5px;
+  padding: 8px 9px;
+  color: #ffe8b9;
+  background: rgba(11, 6, 3, 0.54);
+  outline: none;
+}
+
+.archive-filter-group select:focus {
+  border-color: var(--gold-bright);
+}
+
+.archive-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.archive-filter-chips button {
+  min-height: 28px;
+  border: 1px solid rgba(240, 198, 118, 0.22);
+  border-radius: 999px;
+  padding: 0 9px;
+  color: rgba(255, 231, 183, 0.78);
+  font-size: 0.74rem;
+  background: rgba(11, 6, 3, 0.34);
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.archive-filter-chips button:hover,
+.archive-filter-chips button:focus-visible,
+.archive-filter-chips button.active {
+  border-color: var(--gold-bright);
+  color: #ffe8b9;
+  background: rgba(82, 45, 16, 0.58);
+  transform: translateY(-1px);
+}
+
+.feedback-archive-list {
+  display: grid;
+  gap: 7px;
+}
+
+.feedback-archive-row {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  border: 1px solid rgba(240, 198, 118, 0.18);
+  border-radius: 5px;
+  padding: 9px;
+  color: inherit;
+  text-align: left;
+  background: rgba(7, 4, 2, 0.3);
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.feedback-archive-row:hover,
+.feedback-archive-row:focus-visible,
+.feedback-archive-row.active {
+  border-color: var(--gold-bright);
+  background: rgba(82, 45, 16, 0.54);
+  transform: translateY(-1px);
+}
+
+.feedback-archive-row.approved {
+  border-color: rgba(111, 158, 87, 0.42);
+}
+
+.feedback-archive-row.warning {
+  border-color: rgba(204, 95, 65, 0.5);
+}
+
+.feedback-archive-row.review {
+  border-color: rgba(102, 152, 204, 0.46);
+}
+
+.feedback-archive-row span {
+  width: fit-content;
+  border: 1px solid rgba(238, 184, 91, 0.34);
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: #ffe4ad;
+  font-size: 0.68rem;
+  background: rgba(80, 43, 18, 0.36);
+}
+
+.feedback-archive-row strong {
+  color: #ffe8b9;
+  line-height: 1.2;
+}
+
+.feedback-archive-row small,
+.archive-empty {
+  color: rgba(255, 231, 183, 0.7);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .status-pill,
 .notice-row span {
   display: inline-flex;
@@ -1557,6 +2612,18 @@ dd {
   border-color: rgba(204, 95, 65, 0.72);
   color: #ffd7c9;
   background: rgba(110, 42, 36, 0.44);
+}
+
+.status-pill.approved {
+  border-color: rgba(129, 184, 98, 0.68);
+  color: #dcf4c2;
+  background: rgba(44, 91, 36, 0.44);
+}
+
+.status-pill.review {
+  border-color: rgba(102, 152, 204, 0.68);
+  color: #d7ecff;
+  background: rgba(32, 62, 92, 0.44);
 }
 
 .status-pill {
@@ -1613,6 +2680,111 @@ dd {
 
 .detail-card dd {
   overflow-wrap: anywhere;
+}
+
+.link-ledger-card {
+  gap: 14px;
+  border-color: rgba(238, 184, 91, 0.34);
+  background:
+    linear-gradient(135deg, rgba(72, 38, 14, 0.62), rgba(11, 6, 3, 0.46)),
+    radial-gradient(circle at 92% 0%, rgba(255, 217, 138, 0.13), transparent 0 30%, transparent 58%);
+}
+
+.link-ledger-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.link-ledger-head h3 {
+  margin-top: 2px;
+}
+
+.link-ledger-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+}
+
+.link-ledger-grid div {
+  min-width: 0;
+  border: 1px solid rgba(240, 198, 118, 0.16);
+  border-radius: 5px;
+  padding: 9px 10px;
+  background: rgba(7, 4, 2, 0.28);
+}
+
+.link-check-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.link-check-row {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(240, 198, 118, 0.18);
+  border-radius: 5px;
+  padding: 10px;
+  background: rgba(7, 4, 2, 0.3);
+}
+
+.link-check-row.passed {
+  border-color: rgba(111, 158, 87, 0.58);
+  background: rgba(44, 73, 36, 0.24);
+}
+
+.link-check-row.blocked {
+  border-color: rgba(204, 95, 65, 0.58);
+  background: rgba(88, 31, 23, 0.28);
+}
+
+.link-check-row strong {
+  color: #ffe8b9;
+  line-height: 1.2;
+}
+
+.link-check-row span {
+  width: fit-content;
+  border: 1px solid rgba(238, 184, 91, 0.36);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #ffe4ad;
+  font-size: 0.7rem;
+  background: rgba(80, 43, 18, 0.42);
+}
+
+.link-check-row.passed span {
+  border-color: rgba(129, 184, 98, 0.64);
+  color: #dcf4c2;
+  background: rgba(44, 91, 36, 0.42);
+}
+
+.link-check-row.blocked span {
+  border-color: rgba(238, 120, 82, 0.66);
+  color: #ffd7c9;
+  background: rgba(110, 42, 36, 0.46);
+}
+
+.link-check-row p,
+.link-ledger-note {
+  color: rgba(255, 231, 183, 0.76);
+  line-height: 1.4;
+}
+
+.repository-task-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.primary-action:disabled,
+.quiet-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none;
 }
 
 .detail-actions {
@@ -1673,6 +2845,7 @@ dd {
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.72fr);
   grid-template-areas:
     "brief brief"
+    "flow flow"
     "checks note"
     "checks required"
     "tips actions"
@@ -1694,6 +2867,14 @@ dd {
   background:
     linear-gradient(135deg, rgba(91, 50, 19, 0.58), rgba(11, 6, 3, 0.46)),
     radial-gradient(circle at 92% 12%, rgba(255, 217, 138, 0.14), transparent 0 30%, transparent 56%);
+}
+
+.feedback-flow-card {
+  grid-area: flow;
+}
+
+.task-flow-card {
+  grid-column: 1 / -1;
 }
 
 .feedback-brief-card h3 {
@@ -1847,10 +3028,15 @@ dd {
   gap: 6px;
 }
 
+.issue-draft-item small:last-child {
+  color: rgba(255, 214, 143, 0.82);
+}
+
 .maintainer-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.72fr);
   grid-template-areas:
+    "publisher publisher"
     "brief brief"
     "checks feedback"
     "actions quests"
@@ -1860,6 +3046,165 @@ dd {
   min-height: 0;
   overflow: auto;
   padding-right: 3px;
+}
+
+.maintainer-publisher-card {
+  grid-area: publisher;
+  gap: 16px;
+  border-color: rgba(238, 184, 91, 0.34);
+  background:
+    linear-gradient(135deg, rgba(72, 38, 14, 0.64), rgba(11, 6, 3, 0.48)),
+    radial-gradient(circle at 8% 0%, rgba(255, 217, 138, 0.16), transparent 0 28%, transparent 56%);
+}
+
+.publisher-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.publisher-hero h3,
+.publisher-grid h4 {
+  margin: 0;
+  color: #ffe8b9;
+  font-family: var(--font-display);
+}
+
+.publisher-hero h3 {
+  margin-top: 2px;
+  font-size: 1.28rem;
+}
+
+.publisher-hero p {
+  max-width: 76ch;
+  margin-top: 8px;
+}
+
+.publisher-status-card {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  border: 1px solid rgba(238, 184, 91, 0.34);
+  border-radius: 6px;
+  padding: 13px;
+  background: rgba(7, 4, 2, 0.34);
+}
+
+.publisher-status-card span,
+.publisher-status-card small,
+.quest-draft-form label span {
+  color: rgba(255, 231, 183, 0.64);
+  font-size: 0.76rem;
+}
+
+.publisher-status-card strong {
+  color: #ffe2a0;
+  font-family: var(--font-display);
+  font-size: 1.08rem;
+  line-height: 1.2;
+}
+
+.publisher-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(320px, 1fr) minmax(260px, 0.82fr);
+  grid-template-areas:
+    "issue form clarity"
+    "review form clarity";
+  gap: 12px;
+}
+
+.issue-context-card,
+.clarity-check-card,
+.admin-review-card {
+  display: grid;
+  align-content: start;
+  gap: 11px;
+  border: 1px solid rgba(240, 198, 118, 0.18);
+  border-radius: 5px;
+  padding: 12px;
+  background: rgba(7, 4, 2, 0.3);
+}
+
+.issue-context-card {
+  grid-area: issue;
+}
+
+.issue-context-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.issue-context-card dd {
+  overflow-wrap: anywhere;
+}
+
+.quest-draft-form {
+  grid-area: form;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quest-draft-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.quest-draft-form .wide-field {
+  grid-column: 1 / -1;
+}
+
+.quest-draft-form input,
+.quest-draft-form textarea {
+  width: 100%;
+  border: 1px solid rgba(240, 198, 118, 0.22);
+  border-radius: 5px;
+  padding: 9px 10px;
+  color: #ffe8b9;
+  font: inherit;
+  background: rgba(11, 6, 3, 0.45);
+  outline: none;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.quest-draft-form textarea {
+  min-height: 0;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.quest-draft-form input:focus,
+.quest-draft-form textarea:focus {
+  border-color: var(--gold-bright);
+  background: rgba(82, 45, 16, 0.42);
+}
+
+.quest-draft-form input::placeholder,
+.quest-draft-form textarea::placeholder {
+  color: rgba(255, 231, 183, 0.42);
+}
+
+.clarity-check-card {
+  grid-area: clarity;
+}
+
+.clarity-check-card > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-review-card {
+  grid-area: review;
+  border-color: rgba(238, 184, 91, 0.32);
+  background:
+    linear-gradient(180deg, rgba(39, 22, 10, 0.62), rgba(12, 7, 4, 0.4)),
+    linear-gradient(135deg, rgba(216, 154, 50, 0.1), transparent 58%);
 }
 
 .maintainer-brief-card {
@@ -2041,6 +3386,7 @@ dd {
     "overview overview"
     "metrics metrics"
     "actions flow"
+    "link link"
     "sync operation";
   gap: 12px;
   min-height: 0;
@@ -2131,6 +3477,10 @@ dd {
 
 .repository-flow-card {
   grid-area: flow;
+}
+
+.repository-link-card {
+  grid-area: link;
 }
 
 .repository-sync-detail {
@@ -2363,6 +3713,7 @@ dd {
     grid-template-columns: 1fr;
     grid-template-areas:
       "brief"
+      "flow"
       "checks"
       "note"
       "required"
@@ -2382,6 +3733,7 @@ dd {
   .maintainer-detail-grid {
     grid-template-columns: 1fr;
     grid-template-areas:
+      "publisher"
       "brief"
       "checks"
       "feedback"
@@ -2390,6 +3742,23 @@ dd {
       "repos"
       "notices"
       "operation";
+  }
+
+  .publisher-hero,
+  .publisher-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .publisher-grid {
+    grid-template-areas:
+      "issue"
+      "form"
+      "clarity"
+      "review";
+  }
+
+  .quest-draft-form {
+    grid-template-columns: 1fr;
   }
 
   .maintainer-brief-card {
@@ -2407,6 +3776,7 @@ dd {
       "metrics"
       "actions"
       "flow"
+      "link"
       "sync"
       "operation";
   }
@@ -2417,6 +3787,11 @@ dd {
 
   .repo-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .link-ledger-grid,
+  .link-check-list {
+    grid-template-columns: 1fr;
   }
 
   .repository-shortcuts {
