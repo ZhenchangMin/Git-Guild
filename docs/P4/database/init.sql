@@ -166,16 +166,12 @@ CREATE TABLE quest_assignments (
                                    quest_id BIGINT NOT NULL,
                                    assignee_id BIGINT NOT NULL,
                                    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
-                                   active_quest_id BIGINT GENERATED ALWAYS AS (
-                                       CASE WHEN status = 'ACTIVE' THEN quest_id ELSE NULL END
-                                       ) STORED,
                                    accepted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                    completed_at DATETIME NULL,
                                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                                    CONSTRAINT fk_assignments_quest FOREIGN KEY (quest_id) REFERENCES quests(quest_id),
                                    CONSTRAINT fk_assignments_assignee FOREIGN KEY (assignee_id) REFERENCES users(user_id),
-                                   UNIQUE KEY uk_assignments_active_quest (active_quest_id),
                                    KEY idx_assignments_assignee_status (assignee_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -183,7 +179,7 @@ CREATE TABLE submissions (
                              submission_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                              quest_id BIGINT NOT NULL,
                              submitter_id BIGINT NOT NULL,
-                             pull_request_id BIGINT NULL,
+                             pull_request_id BIGINT NOT NULL,
                              description TEXT NOT NULL,
                              status VARCHAR(32) NOT NULL DEFAULT 'PENDING_REVIEW',
                              submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
