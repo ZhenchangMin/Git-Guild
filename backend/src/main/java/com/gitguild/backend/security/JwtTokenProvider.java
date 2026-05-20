@@ -61,19 +61,20 @@ public class JwtTokenProvider {
             throw new IllegalArgumentException("JWT subject 不能为空");
         }
 
-        // 生成 Token 时，遍历所有角色，强行在前面拼接 “ROLE_” 字符串
         List<String> normalizedRoles = roles == null ? List.of() : roles.stream()
-                .filter(Object::nonNull)
+                .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(role -> !role.isBlank())
-                .map(role -> role.startsWith("ROLE_")) ? role "ROLE_" + role
- 
+                .map(role -> role.startsWith("ROLE_") ? role : "ROLE_" + role)
+                .distinct()
+                .toList();
+
         Date now = new Date();
         Date expiresAt = new Date(now.getTime() + expirationMs);
 
         return Jwts.builder()
                 .subject(subject)
-                .claim(ROLES_CLAIM, roles == null ? List.of() : roles)
+                .claim(ROLES_CLAIM, normalizedRoles)
                 .issuedAt(now)
                 .expiration(expiresAt)
                 .signWith(secretKey, Jwts.SIG.HS256)
