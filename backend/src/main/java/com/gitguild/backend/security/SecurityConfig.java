@@ -1,5 +1,7 @@
 package com.gitguild.backend.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gitguild.backend.common.ApiResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
 import org.springframework.context.annotation.Bean;
@@ -36,9 +38,11 @@ import org.springframework.web.cors.*;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final ObjectMapper objectMapper;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, ObjectMapper objectMapper) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.objectMapper = objectMapper;
     }
 
     @Bean
@@ -55,12 +59,10 @@ public class SecurityConfig {
                 // JWT 是无状态认证，服务端不创建也不使用 Session。
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exception -> exception
-                        .authenticationEntryPoint((request, response, authException) -> {
-                            writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED", "未登录或访问令牌无效");
-                        })
-                        .accessDeniedHandler((request, response, accessDeniedException) -> {
-                            writeJsonError(response, HttpServletResponse.SC_FORBIDDEN, "FORBIDDEN", "当前用户无权限访问该资源");
-                        }))
+                        .authenticationEntryPoint((request, response, authException) ->
+                            writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, "UNAUTHORIZED", "未登录或访问令牌无效"))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                            writeJsonError(response, HttpServletResponse.SC_FORBIDDEN, "FORBIDDEN", "当前用户无权限访问该资源")))
                 .authorizeHttpRequests(authorize -> authorize
                         // 浏览器跨域预检请求必须放行，否则前端无法正常调用带 Authorization 的接口。
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
@@ -110,7 +112,7 @@ public class SecurityConfig {
         return configuration.getAuthenticationManager();
     }
 
-    private static void writeJsonError(
+    private void writeJsonError(
             HttpServletResponse response,
             int status,
             String code,
@@ -118,18 +120,6 @@ public class SecurityConfig {
         response.setStatus(status);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        
-        // 加入了 timestamp 和 traceId
-        String body = """
-                {
-                  "code": "%s",
-                  "message": "%s",
-                  "data": null,
-                  "timestamp": "%s",
-                  "traceId": null
-                }
-                """.formatted(code, message, java.time.OffsetDateTime.now());
-
-        response.getWriter().write(body);
+        response.getWriter().write(objectMapper.writeValueAsString(ApiResponse.error(code, message)));
     }
 }
