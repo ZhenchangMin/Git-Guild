@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import QuestStatusFlow from './QuestStatusFlow.vue'
 import {
@@ -21,7 +21,20 @@ import {
 
 const emit = defineEmits(['open-submission', 'open-id-card'])
 
-const workbenchView = ref('adventurer')
+const props = defineProps({
+  initialView: {
+    type: String,
+    default: 'adventurer',
+  },
+})
+
+const workbenchModes = ['adventurer', 'guild-master']
+
+function normalizeWorkbenchView(view) {
+  return workbenchModes.includes(view) ? view : 'adventurer'
+}
+
+const workbenchView = ref(normalizeWorkbenchView(props.initialView))
 const maintainerReviews = ref(reviewQueue.map((review) => ({ ...review, checklist: [...review.checklist] })))
 const mailboxMessages = ref(workbenchEmails.map((email) => ({ ...email, body: [...email.body] })))
 const taskGroupList = ref(
@@ -327,6 +340,13 @@ function switchWorkbenchView(view) {
           body: '我的待办、仓库操作、邮件通知和成长记录已恢复。',
         }
 }
+
+watch(
+  () => props.initialView,
+  (nextView) => {
+    workbenchView.value = normalizeWorkbenchView(nextView)
+  },
+)
 
 function selectReview(review) {
   selectedReviewId.value = review.id

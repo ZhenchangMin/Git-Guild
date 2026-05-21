@@ -2356,7 +2356,202 @@ h2 {
   transform: translateY(16px) scale(0.98);
 }
 
+.standalone-page-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 18px;
+  width: min(1120px, calc(100vw - 64px));
+  max-height: calc(100svh - 112px);
+  margin: 0 auto;
+  overflow: auto;
+  padding: 28px;
+}
+
+.standalone-page-panel.compact {
+  width: min(880px, calc(100vw - 64px));
+}
+
+.standalone-hero-card {
+  gap: 10px;
+  border-color: rgba(238, 184, 91, 0.34);
+  background:
+    linear-gradient(135deg, rgba(91, 50, 19, 0.68), rgba(11, 6, 3, 0.5)),
+    radial-gradient(circle at 92% 12%, rgba(255, 217, 138, 0.16), transparent 0 30%, transparent 58%);
+}
+
+.standalone-hero-card h1 {
+  margin: 0;
+  color: #ffe8b9;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 0.95;
+}
+
+.standalone-hero-card p {
+  max-width: 70ch;
+  line-height: 1.58;
+}
+
+.standalone-progress {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.standalone-progress div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: rgba(255, 231, 183, 0.72);
+}
+
+.standalone-progress strong {
+  color: #ffe2a0;
+  font-family: var(--font-display);
+  font-size: 1.22rem;
+}
+
+.standalone-progress i {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f1b756, #ffe0a3);
+  box-shadow: 0 0 18px rgba(255, 197, 89, 0.28);
+}
+
+.standalone-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.standalone-stat-card {
+  display: grid;
+  gap: 6px;
+  min-height: 118px;
+}
+
+.standalone-stat-card span {
+  color: rgba(80, 43, 18, 0.72);
+}
+
+.standalone-stat-card strong {
+  color: #4b2a13;
+  font-family: var(--font-display);
+  font-size: 2rem;
+}
+
+.standalone-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.standalone-list {
+  display: grid;
+  gap: 9px;
+  margin: 10px 0 0;
+  padding: 0;
+  color: rgba(255, 231, 183, 0.78);
+  line-height: 1.5;
+  list-style: none;
+}
+
+.parchment-panel .standalone-list {
+  color: rgba(80, 43, 18, 0.82);
+}
+
+.standalone-list.ordered {
+  padding-left: 1.2rem;
+  list-style: decimal;
+}
+
+.standalone-list li {
+  border-bottom: 1px solid rgba(240, 198, 118, 0.16);
+  padding-bottom: 8px;
+}
+
+.standalone-dl {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+}
+
+.standalone-dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid rgba(80, 43, 18, 0.18);
+  padding-bottom: 8px;
+}
+
+.standalone-dl dt {
+  color: rgba(80, 43, 18, 0.62);
+}
+
+.standalone-dl dd {
+  margin: 0;
+  color: #4b2a13;
+  font-weight: 700;
+}
+
+.standalone-table {
+  display: grid;
+  gap: 8px;
+}
+
+.standalone-table-row {
+  display: grid;
+  grid-template-columns: 0.5fr 1.4fr 1fr 0.8fr 0.9fr;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid rgba(240, 198, 118, 0.18);
+  border-radius: 6px;
+  padding: 12px;
+  color: rgba(255, 231, 183, 0.78);
+  background: rgba(7, 4, 2, 0.32);
+}
+
+.standalone-table-row.head {
+  color: #ffe2a0;
+  font-family: var(--font-display);
+  background: rgba(82, 45, 16, 0.5);
+}
+
+.standalone-table-row strong {
+  color: #ffe8b9;
+}
+
+.profile-route-mode::before,
+.leaderboard-route-mode::before,
+.help-route-mode::before {
+  background:
+    radial-gradient(circle at 50% 38%, rgba(22, 12, 5, 0.08) 0 28%, rgba(8, 4, 2, 0.42) 68%, rgba(5, 2, 1, 0.76) 100%),
+    linear-gradient(90deg, rgba(7, 3, 1, 0.68), transparent 30%, transparent 70%, rgba(7, 3, 1, 0.68));
+}
+
 @media (max-width: 980px) {
+  .standalone-page-panel,
+  .standalone-page-panel.compact {
+    width: min(100%, calc(100vw - 28px));
+    max-height: none;
+    padding: 96px 0 20px;
+  }
+
+  .standalone-card-grid,
+  .standalone-two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .standalone-table-row {
+    grid-template-columns: 0.5fr 1.2fr;
+  }
+
+  .standalone-table-row span:nth-child(n + 4) {
+    display: none;
+  }
+
   .work-scene {
     align-items: start;
     overflow: auto;
