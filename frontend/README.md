@@ -11,22 +11,53 @@ Vue 3 + Vite 单页应用。
 
 > 检查版本：`node -v` 和 `npm -v`
 
-## 启动步骤
+## 本地预览
+
+当前项目处于开发阶段，暂未部署线上网站。前端页面需要在本地通过 npm 启动后预览。
+
+### 开发预览（推荐）
+
+适合日常开发和调试，代码保存后会自动热更新。
 
 ```bash
-# 1. 进入前端目录
+# 从仓库根目录进入前端目录
 cd frontend
 
-# 2. 安装依赖（首次 clone 或 package.json 更新后执行）
+# 首次运行或依赖变化后安装依赖
 npm install
 
-# 3. 启动开发服务器
+# 启动 Vite 开发服务器
 npm run dev
 ```
 
-启动成功后，浏览器访问 **http://localhost:5173**
+启动成功后，终端会显示本地访问地址，默认通常是：
 
-> 前端的 `/api/*` 请求会代理到后端 `http://localhost:8080`，请先启动后端和 `docker-compose`（见 `backend/README.md`）。
+```text
+http://localhost:5173
+```
+
+### 构建后预览
+
+适合在提交前检查生产构建结果。该方式会先生成 `dist/`，再用本地预览服务器查看构建后的静态资源。
+
+```bash
+cd frontend
+npm install
+npm run build
+npm run preview
+```
+
+启动成功后，终端会显示预览地址，默认通常是：
+
+```text
+http://localhost:4173
+```
+
+如果端口被占用，可以手动指定端口：
+
+```bash
+npm run preview -- --host 127.0.0.1 --port 4174
+```
 
 ## 安装项目所需 UI 依赖
 
@@ -62,8 +93,3 @@ src/
 ├── main.js       # 入口文件
 └── style.css     # 全局样式
 ```
-
-## IDE 推荐
-
-- **VS Code** + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) 插件（Vue 官方支持，需禁用 Vetur）
-- **WebStorm** — 内置 Vue 支持，开箱即用
