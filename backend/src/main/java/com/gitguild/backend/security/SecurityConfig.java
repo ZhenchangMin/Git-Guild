@@ -68,6 +68,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // 用户注册、登录、刷新令牌等认证入口允许匿名访问。
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        // P3 任务大厅要求任务列表和已发布任务详情可公开浏览。
+                        .requestMatchers(HttpMethod.GET, "/api/v1/quests", "/api/v1/quests/*").permitAll()
                         // Swagger / OpenAPI 文档允许匿名访问，方便开发阶段调试接口。
                         .requestMatchers("/api-docs/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // Spring Boot 默认错误路径放行，避免异常处理再次被安全链拦截。

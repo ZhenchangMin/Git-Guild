@@ -1,6 +1,7 @@
 -- GitGuild MySQL Schema Initialization Script
 -- Target: MySQL 8.0+
 -- Description: Create database and core tables for GitGuild P4 implementation.
+-- Note: Table creation uses IF NOT EXISTS so the script is safer to rerun during local development.
 
 CREATE DATABASE IF NOT EXISTS gitguild
 DEFAULT CHARACTER SET utf8mb4
@@ -10,13 +11,14 @@ USE gitguild;
 
 SET NAMES utf8mb4;
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
                        user_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                        username VARCHAR(32) NOT NULL,
                        email VARCHAR(128) NOT NULL,
                        password_hash VARCHAR(255) NOT NULL,
                        role VARCHAR(32) NOT NULL,
                        status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+                       token_version INT NOT NULL DEFAULT 0,
                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                        UNIQUE KEY uk_users_username (username),
@@ -24,7 +26,7 @@ CREATE TABLE users (
                        KEY idx_users_role_status (role, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE code_host_account_bindings (
+CREATE TABLE IF NOT EXISTS code_host_account_bindings (
                                             binding_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                             user_id BIGINT NOT NULL,
                                             host_type VARCHAR(32) NOT NULL,
@@ -38,7 +40,7 @@ CREATE TABLE code_host_account_bindings (
                                             KEY idx_bindings_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE repositories (
+CREATE TABLE IF NOT EXISTS repositories (
                               repository_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                               owner_id BIGINT NOT NULL,
                               name VARCHAR(128) NOT NULL,
@@ -57,7 +59,7 @@ CREATE TABLE repositories (
                               KEY idx_repositories_sync_status (sync_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE issues (
+CREATE TABLE IF NOT EXISTS issues (
                         issue_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         repository_id BIGINT NOT NULL,
                         external_issue_id VARCHAR(128) NOT NULL,
@@ -73,7 +75,7 @@ CREATE TABLE issues (
                         KEY idx_issues_repository_status (repository_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE pull_requests (
+CREATE TABLE IF NOT EXISTS pull_requests (
                                pull_request_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                repository_id BIGINT NOT NULL,
                                external_pr_id VARCHAR(128) NOT NULL,
@@ -90,7 +92,7 @@ CREATE TABLE pull_requests (
                                KEY idx_pr_repository_status (repository_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE project_guides (
+CREATE TABLE IF NOT EXISTS project_guides (
                                 guide_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                 repository_id BIGINT NOT NULL,
                                 project_structure TEXT NOT NULL,
@@ -104,7 +106,7 @@ CREATE TABLE project_guides (
                                 UNIQUE KEY uk_guides_repository (repository_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE quest_categories (
+CREATE TABLE IF NOT EXISTS quest_categories (
                                   category_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                   name VARCHAR(64) NOT NULL,
                                   description VARCHAR(255) NULL,
@@ -114,7 +116,7 @@ CREATE TABLE quest_categories (
                                   UNIQUE KEY uk_categories_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE quest_tags (
+CREATE TABLE IF NOT EXISTS quest_tags (
                             tag_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                             name VARCHAR(64) NOT NULL,
                             color VARCHAR(32) NULL,
@@ -124,7 +126,7 @@ CREATE TABLE quest_tags (
                             UNIQUE KEY uk_tags_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE quests (
+CREATE TABLE IF NOT EXISTS quests (
                         quest_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         publisher_id BIGINT NOT NULL,
                         repository_id BIGINT NOT NULL,
@@ -152,7 +154,7 @@ CREATE TABLE quests (
                         FULLTEXT KEY ft_quests_title_description (title, description)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE quest_tag_relations (
+CREATE TABLE IF NOT EXISTS quest_tag_relations (
                                      quest_id BIGINT NOT NULL,
                                      tag_id BIGINT NOT NULL,
                                      PRIMARY KEY (quest_id, tag_id),
@@ -161,7 +163,7 @@ CREATE TABLE quest_tag_relations (
                                      KEY idx_quest_tags_tag (tag_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE quest_assignments (
+CREATE TABLE IF NOT EXISTS quest_assignments (
                                    assignment_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                    quest_id BIGINT NOT NULL,
                                    assignee_id BIGINT NOT NULL,
@@ -175,7 +177,7 @@ CREATE TABLE quest_assignments (
                                    KEY idx_assignments_assignee_status (assignee_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE submissions (
+CREATE TABLE IF NOT EXISTS submissions (
                              submission_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                              quest_id BIGINT NOT NULL,
                              submitter_id BIGINT NOT NULL,
@@ -192,7 +194,7 @@ CREATE TABLE submissions (
                              KEY idx_submissions_submitter_status (submitter_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE review_records (
+CREATE TABLE IF NOT EXISTS review_records (
                                 review_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                 submission_id BIGINT NOT NULL,
                                 reviewer_id BIGINT NOT NULL,
@@ -206,7 +208,7 @@ CREATE TABLE review_records (
                                 KEY idx_reviews_reviewer (reviewer_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE review_items (
+CREATE TABLE IF NOT EXISTS review_items (
                               item_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                               review_id BIGINT NOT NULL,
                               checkpoint VARCHAR(128) NOT NULL,
@@ -217,7 +219,7 @@ CREATE TABLE review_items (
                               KEY idx_review_items_review (review_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE admin_review_records (
+CREATE TABLE IF NOT EXISTS admin_review_records (
                                       admin_review_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                       quest_id BIGINT NOT NULL,
                                       admin_id BIGINT NOT NULL,
@@ -232,7 +234,7 @@ CREATE TABLE admin_review_records (
                                       KEY idx_admin_reviews_admin (admin_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE recommendation_results (
+CREATE TABLE IF NOT EXISTS recommendation_results (
                                         result_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                         user_id BIGINT NOT NULL,
                                         quest_id BIGINT NOT NULL,
@@ -248,7 +250,7 @@ CREATE TABLE recommendation_results (
                                         KEY idx_recommendations_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE growth_profiles (
+CREATE TABLE IF NOT EXISTS growth_profiles (
                                  profile_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                  user_id BIGINT NOT NULL,
                                  total_xp INT NOT NULL DEFAULT 0,
@@ -260,7 +262,7 @@ CREATE TABLE growth_profiles (
                                  UNIQUE KEY uk_growth_profiles_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE xp_transactions (
+CREATE TABLE IF NOT EXISTS xp_transactions (
                                  transaction_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                  user_id BIGINT NOT NULL,
                                  quest_id BIGINT NULL,
@@ -273,7 +275,7 @@ CREATE TABLE xp_transactions (
                                  KEY idx_xp_quest (quest_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE contribution_records (
+CREATE TABLE IF NOT EXISTS contribution_records (
                                       record_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                       user_id BIGINT NOT NULL,
                                       quest_id BIGINT NOT NULL,
@@ -288,7 +290,7 @@ CREATE TABLE contribution_records (
                                       KEY idx_contributions_user_completed (user_id, completed_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE notification_preferences (
+CREATE TABLE IF NOT EXISTS notification_preferences (
                                           preference_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                           user_id BIGINT NOT NULL,
                                           enable_email BOOLEAN NOT NULL DEFAULT TRUE,
@@ -299,7 +301,7 @@ CREATE TABLE notification_preferences (
                                           UNIQUE KEY uk_preferences_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
                                notification_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                receiver_id BIGINT NOT NULL,
                                type VARCHAR(64) NOT NULL,

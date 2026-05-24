@@ -32,13 +32,17 @@ import org.springframework.stereotype.Component;
 public class JwtTokenProvider {
 
     private static final String ROLES_CLAIM = "roles";
+    private static final String TOKEN_TYPE_CLAIM = "tokenType";
+    private static final String TOKEN_VERSION_CLAIM = "tokenVersion";
 
     private final SecretKey secretKey;
     private final long expirationMs;
+    private final long refreshExpirationMs;
 
     public JwtTokenProvider(
             @Value("${jwt.secret}") String secret,
-            @Value("${jwt.expiration-ms:86400000}") long expirationMs) {
+            @Value("${jwt.expiration-ms:86400000}") long expirationMs,
+            @Value("${jwt.refresh-expiration-ms:604800000}") long refreshExpirationMs) {
         if (secret == null || secret.isBlank()) {
             throw new IllegalStateException("JWT 密钥不能为空，请配置 jwt.secret 或 JWT_SECRET。");
         }
@@ -47,6 +51,7 @@ public class JwtTokenProvider {
         }
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = expirationMs;
+        this.refreshExpirationMs = refreshExpirationMs;
     }
 
     /**
@@ -56,9 +61,12 @@ public class JwtTokenProvider {
      * @param roles 角色集合，例如 ROLE_BEGINNER、ROLE_MAINTAINER、ROLE_ADMIN
      * @return 已签名的 JWT 字符串
      */
-    public String generateToken(String subject, Collection<String> roles) {
-        if (subject == null || subject.isBlank()) {
-            throw new IllegalArgumentException("JWT subject 不能为空");
+    public String generateToken(Long userId, Collection<String> roles, int tokenVersion, TokenType tokenType) {
+        if (userId == null) {
+            throw new IllegalArgumentException("JWT userId 不能为空");
+        }
+        if (tokenType == null) {
+            throw new IllegalArgumentException("JWT tokenType 不能为空");
         }
 
         List<String> normalizedRoles = roles == null ? List.of() : roles.stream()
@@ -70,15 +78,25 @@ public class JwtTokenProvider {
                 .toList();
 
         Date now = new Date();
-        Date expiresAt = new Date(now.getTime() + expirationMs);
+        Date expiresAt = new Date(now.getTime() + expirationMillis(tokenType));
 
         return Jwts.builder()
-                .subject(subject)
+                .subject(userId.toString())
                 .claim(ROLES_CLAIM, normalizedRoles)
+                .claim(TOKEN_TYPE_CLAIM, tokenType.name())
+                .claim(TOKEN_VERSION_CLAIM, tokenVersion)
                 .issuedAt(now)
                 .expiration(expiresAt)
                 .signWith(secretKey, Jwts.SIG.HS256)
                 .compact();
+    }
+
+    public String generateAccessToken(Long userId, Collection<String> roles, int tokenVersion) {
+        return generateToken(userId, roles, tokenVersion, TokenType.ACCESS);
+    }
+
+    public String generateRefreshToken(Long userId, Collection<String> roles, int tokenVersion) {
+        return generateToken(userId, roles, tokenVersion, TokenType.REFRESH);
     }
 
     /**
@@ -102,6 +120,23 @@ public class JwtTokenProvider {
         return parseClaims(token).getSubject();
     }
 
+    public Long getUserId(String token) {
+        return Long.valueOf(getSubject(token));
+    }
+
+    public TokenType getTokenType(String token) {
+        return TokenType.valueOf(parseClaims(token).get(TOKEN_TYPE_CLAIM, String.class));
+    }
+
+    public int getTokenVersion(String token) {
+        Number version = parseClaims(token).get(TOKEN_VERSION_CLAIM, Number.class);
+        return version == null ? 0 : version.intValue();
+    }
+
+    public long getExpirationSeconds() {
+        return expirationMs / 1000;
+    }
+
     /**
      * 将 JWT 转换为 Spring Security 的 Authentication。
      *
@@ -109,10 +144,13 @@ public class JwtTokenProvider {
      */
     public Authentication getAuthentication(String token) {
         Claims claims = parseClaims(token);
-        String subject = claims.getSubject();
+        Long userId = Long.valueOf(claims.getSubject());
         List<GrantedAuthority> authorities = extractAuthorities(claims);
+        List<String> roles = authorities.stream().map(GrantedAuthority::getAuthority).toList();
+        int tokenVersion = getTokenVersion(token);
+        CurrentUserPrincipal principal = new CurrentUserPrincipal(userId, roles, tokenVersion);
 
-        return new UsernamePasswordAuthenticationToken(subject, null, authorities);
+        return new UsernamePasswordAuthenticationToken(principal, null, authorities);
     }
 
     private Claims parseClaims(String token) {
@@ -136,5 +174,9 @@ public class JwtTokenProvider {
                 .map(SimpleGrantedAuthority::new)
                 .map(GrantedAuthority.class::cast)
                 .toList();
+    }
+
+    private long expirationMillis(TokenType tokenType) {
+        return tokenType == TokenType.REFRESH ? refreshExpirationMs : expirationMs;
     }
 }
