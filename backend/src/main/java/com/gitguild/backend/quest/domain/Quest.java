@@ -132,7 +132,7 @@ public class Quest {
     }
 
     public boolean canBeAccepted() {
-        return status == QuestStatus.PUBLISHED;
+        return status == QuestStatus.PUBLISHED || status == QuestStatus.IN_PROGRESS;
     }
 
     public void markInProgress() {

@@ -172,9 +172,6 @@ public class QuestServiceImpl implements QuestService {
         if (assignmentRepository.existsByQuestAndAssigneeUserIdAndStatusIn(quest, assigneeId, ACTIVE_ASSIGNMENT_STATUSES)) {
             throw new BusinessException("DUPLICATE_ASSIGNMENT", HttpStatus.CONFLICT, "当前用户已接取该任务", "questId=" + questId);
         }
-        if (assignmentRepository.existsByQuestAndStatusIn(quest, ACTIVE_ASSIGNMENT_STATUSES)) {
-            throw new BusinessException("QUEST_ALREADY_ASSIGNED", HttpStatus.CONFLICT, "任务已被其他用户接取", "questId=" + questId);
-        }
 
         QuestAssignment assignment = assignmentRepository.save(new QuestAssignment(quest, assignee));
         quest.markInProgress();
