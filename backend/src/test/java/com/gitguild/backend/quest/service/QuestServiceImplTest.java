@@ -91,7 +91,7 @@ class QuestServiceImplTest {
         CreateQuestResponse response = questService.createQuest(2001L, request);
 
         assertThat(response.questId()).isEqualTo(5001L);
-        assertThat(response.status()).isEqualTo(QuestStatus.PENDING_ADMIN_REVIEW);
+        assertThat(response.status()).isEqualTo(QuestStatus.DRAFT);
         ArgumentCaptor<Quest> questCaptor = ArgumentCaptor.forClass(Quest.class);
         verify(questRepository).save(questCaptor.capture());
         assertThat(questCaptor.getValue().getTitle()).isEqualTo("实现 Issue 同步状态页面");
@@ -133,7 +133,6 @@ class QuestServiceImplTest {
         when(userRepository.findById(3001L)).thenReturn(Optional.of(assignee));
         when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
         when(assignmentRepository.existsByQuestAndAssigneeUserIdAndStatusIn(any(), any(), any())).thenReturn(false);
-        when(assignmentRepository.existsByQuestAndStatusIn(any(), any())).thenReturn(false);
         when(assignmentRepository.save(any(QuestAssignment.class))).thenAnswer(invocation -> {
             QuestAssignment assignment = invocation.getArgument(0);
             assignment.setAssignmentId(7001L);
@@ -149,20 +148,40 @@ class QuestServiceImplTest {
     }
 
     @Test
-    void acceptQuestShouldRejectAlreadyAssignedQuest() {
+    void acceptQuestShouldRejectDuplicateAssignmentBySameUser() {
         User maintainer = user(2001L, UserRole.MAINTAINER);
         User assignee = user(3001L, UserRole.BEGINNER);
         Quest quest = publishedQuest(maintainer);
 
         when(userRepository.findById(3001L)).thenReturn(Optional.of(assignee));
         when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
-        when(assignmentRepository.existsByQuestAndAssigneeUserIdAndStatusIn(any(), any(), any())).thenReturn(false);
-        when(assignmentRepository.existsByQuestAndStatusIn(any(), any())).thenReturn(true);
+        when(assignmentRepository.existsByQuestAndAssigneeUserIdAndStatusIn(any(), any(), any())).thenReturn(true);
 
         assertThatThrownBy(() -> questService.acceptQuest(5001L, 3001L))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
-                .isEqualTo("QUEST_ALREADY_ASSIGNED");
+                .isEqualTo("DUPLICATE_ASSIGNMENT");
+    }
+
+    @Test
+    void acceptQuestShouldAllowMultipleAdventurersOnSameQuest() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User secondAdventurer = user(3002L, UserRole.BEGINNER);
+        Quest quest = inProgressQuest(maintainer);
+
+        when(userRepository.findById(3002L)).thenReturn(Optional.of(secondAdventurer));
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+        when(assignmentRepository.existsByQuestAndAssigneeUserIdAndStatusIn(any(), any(), any())).thenReturn(false);
+        when(assignmentRepository.save(any(QuestAssignment.class))).thenAnswer(invocation -> {
+            QuestAssignment assignment = invocation.getArgument(0);
+            assignment.setAssignmentId(7002L);
+            return assignment;
+        });
+
+        AssignmentResponse response = questService.acceptQuest(5001L, 3002L);
+
+        assertThat(response.assignmentId()).isEqualTo(7002L);
+        assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
     }
 
     private CreateQuestRequest createQuestRequest() {
@@ -179,6 +198,12 @@ class QuestServiceImplTest {
         request.setCategoryId(2L);
         request.setTagIds(List.of());
         return request;
+    }
+
+    private Quest inProgressQuest(User maintainer) {
+        Quest quest = publishedQuest(maintainer);
+        quest.setStatus(QuestStatus.IN_PROGRESS);
+        return quest;
     }
 
     private Quest publishedQuest(User maintainer) {
