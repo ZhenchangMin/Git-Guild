@@ -1,10 +1,17 @@
 <script setup>
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import hallImg from '../../assets/hall.png'
+import { questCommissions } from '../../data/questBoard'
 
 const router = useRouter()
+
+// Number of commissions an adventurer can pick up right now — stamped on the
+// quest board in the hall so the hero feature advertises live activity.
+const openQuestCount = computed(
+  () => questCommissions.filter((quest) => quest.status === '可接取').length || questCommissions.length,
+)
 const hallViewport = ref(null)
 const hallTrack = ref(null)
 const hallOffset = ref(0)
@@ -149,14 +156,35 @@ onUnmounted(() => {
             v-for="room in rooms"
             :key="room.id"
             class="hotspot"
+            :class="{ 'has-shape': room.id === 'quest' }"
             type="button"
             :aria-label="room.label"
             :style="{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }"
             @click="openRoom(room)"
           >
-            <span class="tooltip">
+            <!-- The quest board is not a plain rectangle, so trace its actual
+                 silhouette (wooden frame + arched "QUEST BOARD" header) on hover
+                 instead of the default rectangular highlight box. -->
+            <svg
+              v-if="room.id === 'quest'"
+              class="hotspot-shape"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path d="M2.5 13 L6 13 L6 4 Q31 1 56 4 L56 13 L60 13 L60 84 L2.5 84 Z" />
+            </svg>
+
+            <!-- Wax seal stamped on the board header, advertising live commissions. -->
+            <span v-if="room.id === 'quest'" class="quest-seal" aria-hidden="true">
+              <span class="quest-seal-count">{{ openQuestCount }}</span>
+              <span class="quest-seal-label">委托</span>
+            </span>
+
+            <span class="tooltip" :class="{ 'tooltip-quest': room.id === 'quest' }">
               <strong>{{ room.label }}</strong>
               <small>{{ room.hint }}</small>
+              <em v-if="room.id === 'quest'" class="tooltip-cta">{{ openQuestCount }} 份委托待接取 ›</em>
             </span>
           </button>
         </div>
@@ -164,3 +192,37 @@ onUnmounted(() => {
     </section>
   </main>
 </template>
+
+<style scoped>
+/* Quest board hotspot: suppress the default rectangular highlight and use the
+   board-shaped outline instead. */
+.hotspot.has-shape::after {
+  content: none;
+}
+
+.hotspot-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.hotspot-shape path {
+  fill: rgba(255, 220, 132, 0);
+  stroke: rgba(255, 211, 116, 0);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  transition: stroke 180ms ease, fill 180ms ease, filter 180ms ease;
+}
+
+.hotspot.has-shape:hover .hotspot-shape path,
+.hotspot.has-shape:focus-visible .hotspot-shape path {
+  fill: rgba(255, 220, 132, 0.1);
+  stroke: rgba(255, 211, 116, 0.78);
+  filter: drop-shadow(0 0 7px rgba(255, 190, 82, 0.42));
+}
+</style>

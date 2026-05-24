@@ -166,11 +166,7 @@ function getStepState(step, index) {
 <template>
   <section class="beginner-checklist-card" aria-label="新手任务执行清单">
     <header class="checklist-head">
-      <div>
-        <p class="kicker">Beginner Execution List</p>
-        <h2>接取任务后怎么做</h2>
-        <p>按课堂演示顺序勾选。工作台处理项目与 Git 操作，提交柜台只处理平台内成果提交。</p>
-      </div>
+      <p>按课堂演示顺序勾选。工作台处理项目与 Git 操作，提交柜台只处理平台内成果提交。</p>
       <div class="checklist-meter" :aria-label="`已完成 ${completedCount} / ${checklistSteps.length}`">
         <strong>{{ completedCount }} / {{ checklistSteps.length }}</strong>
         <span>{{ progressPercent }}%</span>
@@ -220,17 +216,9 @@ function getStepState(step, index) {
 </template>
 
 <style scoped>
+/* Nested inside QuestJourney's card shell — no outer chrome of its own. */
 .beginner-checklist-card {
-  border: 1px solid rgba(238, 184, 91, 0.58);
-  border-radius: var(--radius);
-  padding: 16px;
   color: #ffe7b5;
-  background:
-    linear-gradient(180deg, rgba(32, 17, 8, 0.82), rgba(15, 8, 4, 0.76)),
-    radial-gradient(circle at 10% 0%, rgba(255, 231, 163, 0.14), transparent 0 32%),
-    linear-gradient(135deg, rgba(216, 154, 50, 0.13), transparent 58%);
-  box-shadow: 0 20px 46px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 229, 163, 0.14);
-  backdrop-filter: blur(6px);
 }
 
 .checklist-head {
@@ -376,10 +364,27 @@ function getStepState(step, index) {
   font-weight: 700;
 }
 
+.step-check span {
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
 .beginner-step.done .step-check span {
   border-color: rgba(129, 184, 98, 0.68);
   color: #f1ffd6;
   background: rgba(67, 97, 58, 0.78);
+  animation: step-check-pop 240ms ease;
+}
+
+@keyframes step-check-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .step-body {
