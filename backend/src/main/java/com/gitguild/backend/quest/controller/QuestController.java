@@ -10,6 +10,7 @@ import com.gitguild.backend.quest.dto.QuestResponses.AssignmentResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestDetailResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestPageResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.SubmitQuestResponse;
 import com.gitguild.backend.quest.dto.QuestSearchCriteria;
 import com.gitguild.backend.quest.service.QuestService;
 import jakarta.validation.Valid;
@@ -43,6 +44,13 @@ public class QuestController {
         CreateQuestResponse response = questService.createQuest(SecurityPrincipalUtils.currentUserId(authentication), request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("任务已创建，等待管理员审核", response));
+    }
+
+    @PostMapping("/{questId}/submit")
+    public ApiResponse<SubmitQuestResponse> submitQuest(
+            @PathVariable Long questId,
+            Authentication authentication) {
+        return ApiResponse.success("已提交审核", questService.submitQuest(questId, SecurityPrincipalUtils.currentUserId(authentication)));
     }
 
     @GetMapping

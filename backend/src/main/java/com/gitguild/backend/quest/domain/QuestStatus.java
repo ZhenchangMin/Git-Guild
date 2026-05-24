@@ -7,5 +7,6 @@ public enum QuestStatus {
     IN_PROGRESS,
     IN_REVIEW,
     COMPLETED,
+    REJECTED,
     CLOSED
 }
