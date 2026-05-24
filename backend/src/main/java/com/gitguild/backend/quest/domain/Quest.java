@@ -116,7 +116,7 @@ public class Quest {
         this.techStackJson = techStackJson;
         this.rewardXp = rewardXp;
         this.estimatedHours = estimatedHours;
-        this.status = QuestStatus.PENDING_ADMIN_REVIEW;
+        this.status = QuestStatus.DRAFT;
     }
 
     @PrePersist
@@ -129,6 +129,14 @@ public class Quest {
     @PreUpdate
     void preUpdate() {
         this.updatedAt = OffsetDateTime.now();
+    }
+
+    public boolean canSubmitForReview() {
+        return status == QuestStatus.DRAFT || status == QuestStatus.REJECTED;
+    }
+
+    public void submitForReview() {
+        this.status = QuestStatus.PENDING_ADMIN_REVIEW;
     }
 
     public boolean canBeAccepted() {

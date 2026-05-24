@@ -21,6 +21,7 @@ import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestDetailResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestPageResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestSummaryResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.SubmitQuestResponse;
 import com.gitguild.backend.quest.dto.QuestSearchCriteria;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestCategoryRepository;
@@ -131,6 +132,21 @@ public class QuestServiceImpl implements QuestService {
                 saved.getDifficulty(),
                 saved.getRewardXp(),
                 saved.getCreatedAt());
+    }
+
+    @Override
+    @Transactional
+    public SubmitQuestResponse submitQuest(Long questId, Long publisherId) {
+        Quest quest = findQuest(questId);
+        if (!quest.getPublisher().getUserId().equals(publisherId)) {
+            throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN, "当前用户无权限", "只有发布者可以提交审核");
+        }
+        if (!quest.canSubmitForReview()) {
+            throw new BusinessException("QUEST_NOT_SUBMITTABLE", HttpStatus.CONFLICT, "任务当前状态不可提交审核", "currentStatus=" + quest.getStatus());
+        }
+        quest.submitForReview();
+        questRepository.save(quest);
+        return new SubmitQuestResponse(quest.getQuestId(), quest.getStatus(), quest.getUpdatedAt());
     }
 
     @Override

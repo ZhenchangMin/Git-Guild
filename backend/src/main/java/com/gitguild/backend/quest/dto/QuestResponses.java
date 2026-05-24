@@ -28,6 +28,9 @@ public final class QuestResponses {
     public record AssignmentBrief(boolean assigned, UserBrief assignee, OffsetDateTime acceptedAt) {
     }
 
+    public record SubmitQuestResponse(Long questId, QuestStatus status, OffsetDateTime updatedAt) {
+    }
+
     public record CreateQuestResponse(
             Long questId,
             String title,
