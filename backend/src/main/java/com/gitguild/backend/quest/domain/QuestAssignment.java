@@ -91,6 +91,10 @@ public class QuestAssignment {
         return acceptedAt;
     }
 
+    public void cancel() {
+        this.status = AssignmentStatus.CANCELLED;
+    }
+
     public void setAssignmentId(Long assignmentId) {
         this.assignmentId = assignmentId;
     }

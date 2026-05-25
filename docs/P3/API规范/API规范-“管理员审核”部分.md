@@ -327,7 +327,8 @@ HTTP 状态码：`409 Conflict`
 2. 当 `decision` 为 `APPROVE_PUBLISH` 时，任务状态必须为 `PENDING_ADMIN_REVIEW`。
 3. 管理员审核通过后，任务状态变更为 `PUBLISHED`。
 4. 当 `decision` 为 `REJECT_PUBLISH` 时，任务状态从 `PENDING_ADMIN_REVIEW` 变更为 `REJECTED`，发布者需要修改后重新提交审核。
-5. 当 `decision` 为 `TAKE_DOWN` 时，任务状态通常从 `PUBLISHED` 变更为 `CLOSED`。
+5. 当 `decision` 为 `TAKE_DOWN` 时，任务可从任意非 `CLOSED` 状态变更为 `CLOSED`。
+9. `TAKE_DOWN` 执行后，该任务所有 `ACTIVE` 状态的接取记录自动置为 `CANCELLED`。
 6. 每次管理员审核都会生成一条 `AdminReviewRecord`，用于记录管理员、审核结论、审核原因和审核时间。
 7. 管理员审核完成后，系统应向任务发布者发送通知，告知任务发布申请通过、退回或已下架。
 8. 已完成的任务原则上不允许被管理员重新审核发布；如需处理，应由后台管理流程单独处理。

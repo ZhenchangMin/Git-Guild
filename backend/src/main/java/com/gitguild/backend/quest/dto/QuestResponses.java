@@ -1,5 +1,6 @@
 package com.gitguild.backend.quest.dto;
 
+import com.gitguild.backend.quest.domain.AdminDecision;
 import com.gitguild.backend.quest.domain.Difficulty;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import java.time.OffsetDateTime;
@@ -92,5 +93,34 @@ public final class QuestResponses {
             QuestStatus questStatus,
             String assignmentStatus,
             OffsetDateTime acceptedAt) {
+    }
+
+    public record AdminReviewResponse(
+            Long adminReviewId,
+            Long questId,
+            Long adminId,
+            AdminDecision decision,
+            String reason,
+            QuestStatus questStatus,
+            OffsetDateTime reviewedAt) {
+    }
+
+    public record AdminQuestSummaryResponse(
+            Long questId,
+            String title,
+            String descriptionPreview,
+            Difficulty difficulty,
+            Integer rewardXp,
+            QuestStatus status,
+            UserBrief publisher,
+            OffsetDateTime createdAt) {
+    }
+
+    public record AdminQuestPageResponse(
+            List<AdminQuestSummaryResponse> items,
+            int page,
+            int size,
+            long totalItems,
+            int totalPages) {
     }
 }
