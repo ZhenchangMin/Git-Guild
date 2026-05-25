@@ -16,8 +16,15 @@ const activeQuest = computed(() => {
 
 const activeQuestIntent = computed(() => (route.query.intent === 'accept' ? 'accept' : 'view'))
 
-function backToQuestBoard() {
-  router.push({ name: 'quest-board' })
+// Default to returning to whatever page the adventurer came from (quest board,
+// hall, workbench…). Fall back to the quest board when there's no history entry
+// to go back to (e.g. the detail page was opened directly via URL).
+function goBack() {
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push({ name: 'quest-board' })
+  }
 }
 
 function openWorkbench() {
@@ -35,11 +42,11 @@ function openSubmission(questId = activeQuest.value.id) {
 <template>
   <main class="app-shell">
     <section class="scene quest-detail-mode" :style="{ backgroundImage: `url(${questBoardImg})` }">
-      <button class="back-orb" type="button" aria-label="返回悬赏任务板" @click="backToQuestBoard">
+      <button class="back-orb" type="button" aria-label="返回上一页" @click="goBack">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
         </svg>
-        <span>返回悬赏任务板</span>
+        <span>返回上一页</span>
       </button>
 
       <QuestDetail

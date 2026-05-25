@@ -21,6 +21,17 @@ const emit = defineEmits(['open-workbench', 'open-submission'])
 const localWorkflowState = ref('available')
 const inlineNotice = ref('')
 
+// Map each workflow status label to a seal colour, matching the quest board so
+// the same state reads identically across the board and the detail scroll.
+const STATUS_TONE = {
+  可接取: 'open',
+  进行中: 'active',
+  待提交成果: 'ready',
+  等待维护者审核: 'review',
+  需要修改: 'returned',
+  已完成: 'done',
+}
+
 const detail = computed(() => questDetails[props.quest.id] ?? {})
 const repository = computed(
   () =>
@@ -118,6 +129,8 @@ const workflowConfig = computed(() => {
   return configs[localWorkflowState.value] ?? configs.available
 })
 
+const heroTone = computed(() => STATUS_TONE[workflowConfig.value.status] ?? 'open')
+
 watch(
   () => [props.quest.id, props.intent],
   () => {
@@ -182,7 +195,7 @@ function showIssueHint() {
       <p class="kicker">悬赏任务详情</p>
       <div class="hero-title-row">
         <h1>{{ quest.id }} · {{ quest.title }}</h1>
-        <span class="hero-state" :class="{ completed: localWorkflowState === 'completed' }">
+        <span class="hero-state" :class="`tone-${heroTone}`">
           {{ workflowConfig.status }}
         </span>
       </div>
@@ -345,19 +358,18 @@ function showIssueHint() {
 
 .quest-detail-hero::before {
   position: absolute;
-  left: 20px;
+  left: 18px;
   top: 14px;
-  width: 11px;
-  height: 11px;
-  border: 1px solid rgba(95, 47, 11, 0.5);
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   content: '';
-  background: linear-gradient(180deg, #ffd88d, #9e5a19);
-  box-shadow: 0 2px 5px rgba(65, 28, 5, 0.4);
+  background: radial-gradient(circle at 35% 30%, #ffe6a6, #b56c22 60%, #6e3c12);
+  box-shadow: 0 3px 6px rgba(40, 18, 4, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.55);
 }
 
 .quest-detail-hero .kicker {
-  margin-left: 20px;
+  margin-left: 28px;
 }
 
 .hero-title-row {
@@ -374,18 +386,42 @@ function showIssueHint() {
 .hero-state {
   flex: 0 0 auto;
   margin-top: 6px;
-  border: 1px solid rgba(238, 184, 91, 0.46);
+  border: 1px solid currentColor;
   border-radius: 999px;
-  padding: 4px 12px;
-  color: #ffe4ad;
-  background: rgba(80, 43, 18, 0.46);
+  padding: 5px 14px;
   font-size: 0.82rem;
+  font-weight: 700;
   font-family: var(--font-display);
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
-.hero-state.completed {
-  border-color: rgba(129, 184, 98, 0.6);
+.hero-state.tone-open {
+  color: #a6e08e;
+  background: rgba(108, 167, 96, 0.22);
+}
+
+.hero-state.tone-active {
+  color: #f2c06f;
+  background: rgba(232, 170, 60, 0.2);
+}
+
+.hero-state.tone-ready {
+  color: #8fbce8;
+  background: rgba(70, 116, 178, 0.22);
+}
+
+.hero-state.tone-review {
+  color: #c8a8e0;
+  background: rgba(140, 104, 168, 0.24);
+}
+
+.hero-state.tone-returned {
+  color: #f0a18f;
+  background: rgba(178, 86, 70, 0.24);
+}
+
+.hero-state.tone-done {
   color: #f1ffd6;
   background: rgba(67, 97, 58, 0.6);
 }
@@ -436,6 +472,28 @@ function showIssueHint() {
   color: #ffe8b9;
   font-size: 0.84rem;
   font-weight: 700;
+}
+
+/* The reward chip reads as treasure: warm border + gold coin marker. */
+.chip-reward {
+  border-color: rgba(242, 192, 111, 0.5) !important;
+  background: rgba(122, 61, 12, 0.34) !important;
+}
+
+.chip-reward .chip-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #ffd98a;
+}
+
+.chip-reward .chip-value::before {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  content: '';
+  background: radial-gradient(circle at 35% 30%, #ffe39a, #d89a32 65%, #9e5a19);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6);
 }
 
 .workflow-boundary {
@@ -566,6 +624,56 @@ function showIssueHint() {
   border-radius: 5px;
   padding: 10px;
   background: rgba(11, 6, 3, 0.28);
+}
+
+/* Orchestrated page-load: the scroll unfurls top-to-bottom, cards rise in.
+   Targets the columns' direct children (not the wrappers) so the sticky
+   action rail keeps an untransformed ancestor and stays pinned. */
+@media (prefers-reduced-motion: no-preference) {
+  .quest-detail-hero,
+  .quest-main-column > *,
+  .quest-side-column > * {
+    animation: quest-rise 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .quest-detail-hero {
+    animation-delay: 40ms;
+  }
+
+  .quest-main-column > *:nth-child(1) {
+    animation-delay: 150ms;
+  }
+
+  .quest-main-column > *:nth-child(2) {
+    animation-delay: 230ms;
+  }
+
+  .quest-main-column > *:nth-child(3) {
+    animation-delay: 310ms;
+  }
+
+  .quest-side-column > *:nth-child(1) {
+    animation-delay: 200ms;
+  }
+
+  .quest-side-column > *:nth-child(2) {
+    animation-delay: 280ms;
+  }
+
+  .quest-side-column > *:nth-child(3) {
+    animation-delay: 360ms;
+  }
+}
+
+@keyframes quest-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 980px) {

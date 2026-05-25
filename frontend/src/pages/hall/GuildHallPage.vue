@@ -175,12 +175,6 @@ onUnmounted(() => {
               <path d="M2.5 13 L6 13 L6 4 Q31 1 56 4 L56 13 L60 13 L60 84 L2.5 84 Z" />
             </svg>
 
-            <!-- Wax seal stamped on the board header, advertising live commissions. -->
-            <span v-if="room.id === 'quest'" class="quest-seal" aria-hidden="true">
-              <span class="quest-seal-count">{{ openQuestCount }}</span>
-              <span class="quest-seal-label">委托</span>
-            </span>
-
             <span class="tooltip" :class="{ 'tooltip-quest': room.id === 'quest' }">
               <strong>{{ room.label }}</strong>
               <small>{{ room.hint }}</small>
@@ -210,19 +204,57 @@ onUnmounted(() => {
 }
 
 .hotspot-shape path {
-  fill: rgba(255, 220, 132, 0);
-  stroke: rgba(255, 211, 116, 0);
+  /* Persistent faint outline so the quest board — the platform's hero feature —
+     is discoverable at rest, not invisible until hover like the other rooms. */
+  fill: rgba(255, 220, 132, 0.04);
+  stroke: rgba(255, 211, 116, 0.32);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
   stroke-linejoin: round;
   stroke-linecap: round;
-  transition: stroke 180ms ease, fill 180ms ease, filter 180ms ease;
+  filter: drop-shadow(0 0 5px rgba(255, 190, 82, 0.18));
+  transition: stroke 220ms ease, fill 220ms ease, filter 220ms ease;
+  animation: quest-board-breathe 4.2s ease-in-out infinite;
 }
 
 .hotspot.has-shape:hover .hotspot-shape path,
 .hotspot.has-shape:focus-visible .hotspot-shape path {
-  fill: rgba(255, 220, 132, 0.1);
-  stroke: rgba(255, 211, 116, 0.78);
-  filter: drop-shadow(0 0 7px rgba(255, 190, 82, 0.42));
+  fill: rgba(255, 220, 132, 0.12);
+  stroke: rgba(255, 217, 128, 0.92);
+  filter: drop-shadow(0 0 10px rgba(255, 190, 82, 0.55));
+  animation: none;
+}
+
+@keyframes quest-board-breathe {
+  0%,
+  100% {
+    stroke: rgba(255, 211, 116, 0.3);
+    filter: drop-shadow(0 0 4px rgba(255, 190, 82, 0.14));
+  }
+  50% {
+    stroke: rgba(255, 217, 128, 0.6);
+    filter: drop-shadow(0 0 9px rgba(255, 190, 82, 0.4));
+  }
+}
+
+/* Quest tooltip gets a parchment call-to-action line. */
+.tooltip-quest {
+  min-width: 218px;
+}
+
+.tooltip-cta {
+  margin-top: 4px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(244, 190, 92, 0.32);
+  color: #ffd98a;
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hotspot-shape path {
+    animation: none;
+  }
 }
 </style>
