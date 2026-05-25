@@ -8,7 +8,7 @@ import { questCommissions, questFilterGroups } from '../../data/questBoard'
 const router = useRouter()
 const questSearch = ref('')
 const questPage = ref(1)
-const questPageSize = 4
+const questPageSize = 9
 const selectedQuestFilters = ref({
   category: [],
   tag: [],
@@ -16,6 +16,23 @@ const selectedQuestFilters = ref({
   stack: [],
   status: [],
 })
+
+// Map each quest status to a seal colour so the board reads at a glance.
+const STATUS_TONE = {
+  可接取: 'open',
+  进行中: 'active',
+  'PR 已就绪': 'ready',
+  待审核: 'review',
+  退回修改: 'returned',
+}
+
+function statusTone(status) {
+  return STATUS_TONE[status] || 'open'
+}
+
+const activeFilterCount = computed(() =>
+  Object.values(selectedQuestFilters.value).reduce((total, list) => total + list.length, 0),
+)
 
 const rankedQuestCommissions = computed(() => {
   const selected = selectedQuestFilters.value
@@ -144,108 +161,107 @@ watch(questPageCount, (pageCount) => {
       </button>
 
       <div class="quest-board-workspace" aria-label="悬赏板">
-        <div class="quest-search-band">
-          <label for="quest-search">搜索委托</label>
-          <input
-            id="quest-search"
-            v-model="questSearch"
-            type="search"
-            autocomplete="off"
-            placeholder="输入任务、技术栈、完成标准..."
-          />
-          <span>{{ rankedQuestCommissions.length }} 条匹配</span>
+        <header class="board-header">
+          <p class="kicker">冒险者公会 · 悬赏板</p>
+          <h1>委托清单</h1>
+          <p class="board-sub">挑选一份契约，开启你的冒险旅程。</p>
+        </header>
+
+        <div class="quest-toolbar">
+          <label class="quest-search" for="quest-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              id="quest-search"
+              v-model="questSearch"
+              type="search"
+              autocomplete="off"
+              placeholder="搜索任务、技术栈或完成标准…"
+            />
+          </label>
+          <span class="quest-count">{{ rankedQuestCommissions.length }} 份委托</span>
         </div>
 
-        <aside class="quest-filter-rail" aria-label="筛选条件">
-          <div class="filter-rail-head">
-            <div>
-              <p class="kicker">筛选条件</p>
+        <div class="board-body">
+          <aside class="quest-filter-rail" aria-label="筛选条件">
+            <div class="filter-rail-head">
               <h2>筛选条件</h2>
+              <button type="button" :disabled="activeFilterCount === 0" @click="clearQuestFilters">
+                清空<template v-if="activeFilterCount"> · {{ activeFilterCount }}</template>
+              </button>
             </div>
-            <button type="button" @click="clearQuestFilters">清空</button>
-          </div>
 
-          <div class="quest-filter-list">
-            <section v-for="group in questFilterGroups" :key="group.id" class="quest-filter-group">
-              <h3>{{ group.title }}</h3>
-              <div class="quest-filter-options">
-                <button
-                  v-for="option in group.options"
-                  :key="option"
-                  type="button"
-                  class="quest-filter-chip"
-                  :class="{ active: isQuestFilterSelected(group.id, option) }"
-                  :aria-pressed="isQuestFilterSelected(group.id, option)"
-                  @click="toggleQuestFilter(group.id, option)"
-                >
-                  {{ option }}
-                </button>
-              </div>
-            </section>
-          </div>
-        </aside>
-
-        <section class="commission-panel" aria-live="polite">
-          <header class="commission-panel-head">
-            <div>
-              <p class="kicker">悬赏任务列表</p>
-              <h1>委托清单</h1>
+            <div class="quest-filter-list">
+              <section v-for="group in questFilterGroups" :key="group.id" class="quest-filter-group">
+                <h3>{{ group.title }}</h3>
+                <div class="quest-filter-options">
+                  <button
+                    v-for="option in group.options"
+                    :key="option"
+                    type="button"
+                    class="quest-filter-chip"
+                    :class="{ active: isQuestFilterSelected(group.id, option) }"
+                    :aria-pressed="isQuestFilterSelected(group.id, option)"
+                    @click="toggleQuestFilter(group.id, option)"
+                  >
+                    {{ option }}
+                  </button>
+                </div>
+              </section>
             </div>
-            <span>按关联度排序</span>
-          </header>
+          </aside>
 
-          <div v-if="pagedQuestCommissions.length > 0" class="commission-grid">
-            <article v-for="quest in pagedQuestCommissions" :key="quest.id" class="commission-card">
-              <div class="commission-card-top">
-                <span>{{ quest.id }}</span>
-                <strong>{{ quest.reward }}</strong>
-              </div>
-              <h2>{{ quest.title }}</h2>
-              <p>{{ quest.summary }}</p>
-              <div class="commission-tags">
-                <span>{{ quest.category }}</span>
-                <span v-for="tag in quest.tags.slice(0, 2)" :key="tag">{{ tag }}</span>
-              </div>
-              <dl>
-                <div>
-                  <dt>分类</dt>
-                  <dd>{{ quest.category }}</dd>
-                </div>
-                <div>
-                  <dt>难度</dt>
-                  <dd>{{ quest.difficulty }}</dd>
-                </div>
-                <div>
-                  <dt>技术栈</dt>
-                  <dd>{{ quest.stack }}</dd>
-                </div>
-                <div>
-                  <dt>状态</dt>
-                  <dd>{{ quest.status }}</dd>
-                </div>
-              </dl>
-              <ul>
-                <li v-for="line in quest.criteria.slice(0, 2)" :key="line">{{ line }}</li>
-              </ul>
-              <div class="commission-actions">
-                <button class="primary-action" type="button" @click="openQuestDetail(quest.id, 'accept')">接取</button>
-                <button class="quiet-action" type="button" @click="openQuestDetail(quest.id, 'view')">详情</button>
-              </div>
-            </article>
-          </div>
+          <section class="commission-panel" aria-live="polite">
+            <div v-if="pagedQuestCommissions.length > 0" class="commission-grid">
+              <article v-for="quest in pagedQuestCommissions" :key="quest.id" class="commission-card">
+                <span class="commission-seal" :class="`tone-${statusTone(quest.status)}`">{{ quest.status }}</span>
 
-          <div v-else class="commission-empty">
-            <p class="kicker">没有匹配</p>
-            <h2>没有符合条件的委托</h2>
-            <p>调整搜索内容或关闭部分筛选条件后，右侧清单会同步刷新。</p>
-          </div>
-        </section>
+                <div class="commission-card-top">
+                  <span class="commission-id">{{ quest.id }}</span>
+                  <span class="commission-rank" :title="`难度 ${quest.difficulty} 阶`">{{ quest.difficulty }} 阶</span>
+                </div>
 
-        <nav class="quest-pagination" aria-label="委托分页">
-          <button type="button" :disabled="questPage === 1" @click="prevQuestPage">‹</button>
-          <span>{{ questPage }} / {{ questPageCount }}</span>
-          <button type="button" :disabled="questPage === questPageCount" @click="nextQuestPage">›</button>
-        </nav>
+                <h3 class="commission-title">{{ quest.title }}</h3>
+                <p class="commission-issuer">{{ quest.issuer }}</p>
+                <p class="commission-summary">{{ quest.summary }}</p>
+
+                <div class="commission-criteria">
+                  <p class="commission-label">验收标准</p>
+                  <ul>
+                    <li v-for="line in quest.criteria" :key="line">{{ line }}</li>
+                  </ul>
+                </div>
+
+                <div class="commission-stack">
+                  <span v-for="tech in quest.techStack" :key="tech">{{ tech }}</span>
+                </div>
+
+                <footer class="commission-foot">
+                  <span class="commission-reward">{{ quest.reward }}</span>
+                  <div class="commission-actions">
+                    <button class="quiet-action" type="button" @click="openQuestDetail(quest.id, 'view')">详情</button>
+                    <button class="primary-action" type="button" @click="openQuestDetail(quest.id, 'accept')">接取委托</button>
+                  </div>
+                </footer>
+              </article>
+            </div>
+
+            <div v-else class="commission-empty">
+              <p class="kicker">空空如也</p>
+              <h2>没有符合条件的委托</h2>
+              <p>调整搜索词或清空部分筛选条件，悬赏板会立即刷新。</p>
+              <button class="quiet-action" type="button" @click="clearQuestFilters">清空筛选</button>
+            </div>
+
+            <nav v-if="questPageCount > 1" class="quest-pagination" aria-label="委托分页">
+              <button type="button" :disabled="questPage === 1" @click="prevQuestPage" aria-label="上一页">‹</button>
+              <span>{{ questPage }} / {{ questPageCount }}</span>
+              <button type="button" :disabled="questPage === questPageCount" @click="nextQuestPage" aria-label="下一页">›</button>
+            </nav>
+          </section>
+        </div>
       </div>
     </section>
   </main>
