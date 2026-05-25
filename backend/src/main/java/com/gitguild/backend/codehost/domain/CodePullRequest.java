@@ -13,6 +13,21 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 
+/**
+ * 从 Gitea 同步到本地数据库的 PR 元数据镜像。
+ *
+ * <p>Git-Guild 不持有 PR 内容，仅持有状态快照。{@code externalPrId} 是 Gitea PR 编号
+ * 的字符串形式，与 {@code repository} 联合构成唯一键（DB 约束 uk_pr_repository_external）；
+ * 创建后不可修改。
+ *
+ * <p><b>状态语义：</b>{@code status} 取值与 P4-005 接口契约中 "PR 状态" 一致，核心值为
+ * {@code OPEN}、{@code MERGED}、{@code CLOSED}。{@link #isMerged()} 是唯一的业务谓词，
+ * 其余状态判断应直接比对字符串常量。
+ *
+ * <p><b>同步模式：</b>外部调用应先通过
+ * {@code CodePullRequestRepository.findByRepositoryRepositoryIdAndExternalPrId}
+ * 查找已有记录再更新，禁止重复 INSERT（见已知问题清单 P4-016 问题5）。
+ */
 @Entity
 @Table(name = "pull_requests")
 public class CodePullRequest {

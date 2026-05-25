@@ -14,6 +14,20 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 
+/**
+ * Adventurer 的 Git-Guild 账号与 Gitea 账号之间的绑定关系。
+ *
+ * <p>每条记录存储一个 Git-Guild 用户（{@code user_id}）对应的外部代码托管账号标识
+ * （{@code externalAccountId}、{@code externalUsername}）。当前仅支持 Gitea
+ * （{@code hostType = "GITEA"}），架构预留了多代码托管平台扩展能力。
+ *
+ * <p><b>核心业务用途：</b>在 Adventurer 提交 Submission 时，通过比对
+ * {@code externalUsername} 与 PR 作者登录名，校验"提交的 PR 确实属于该 Adventurer"。
+ *
+ * <p><b>不变量：</b>PR 归属校验必须只使用 {@code status = "ACTIVE"} 的绑定记录；
+ * 已失效绑定（{@code status = "INACTIVE"}）不得通过校验。查询时应使用
+ * {@code findByUserUserIdAndHostTypeAndStatus(userId, hostType, "ACTIVE")}。
+ */
 @Entity
 @Table(name = "code_host_account_bindings")
 public class CodeHostAccountBinding {

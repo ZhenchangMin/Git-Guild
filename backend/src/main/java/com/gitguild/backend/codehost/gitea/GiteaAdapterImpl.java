@@ -10,6 +10,19 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+/**
+ * {@link GiteaAdapter} 的 HTTP 实现，隐藏以下复杂度：
+ * <ul>
+ *   <li>Gitea REST API 的 snake_case 字段名映射到 Java 记录类型</li>
+ *   <li>Jackson 将 JSON integer 反序列化为 {@code Integer}（非 {@code Long}）的类型差异</li>
+ *   <li>{@code head.ref}（裸分支名）与 {@code head.label}（"{owner}:{branch}" 格式）的区别</li>
+ *   <li>{@code merged} 字段为 boolean 而非可空时间戳的 Gitea 特有行为</li>
+ * </ul>
+ *
+ * <p>使用系统级 admin token 认证，与具体 Adventurer 身份无关。
+ * token 通过 {@link GiteaProperties} 从环境变量注入；token 为空时应用可启动，
+ * 但所有调用将收到 401（见已知问题清单 P4-016 问题2）。
+ */
 @Component
 public class GiteaAdapterImpl implements GiteaAdapter {
 
