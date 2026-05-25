@@ -38,6 +38,7 @@ public class GiteaAdapterImpl implements GiteaAdapter {
                 .uri("/repos/{owner}/{repo}/issues?type=issues&state=open&limit=50", owner, repo)
                 .retrieve()
                 .body(Map[].class);
+        if (body == null) return List.of();
         return Arrays.stream(body).map(this::toIssueInfo).toList();
     }
 
@@ -56,6 +57,7 @@ public class GiteaAdapterImpl implements GiteaAdapter {
                 .uri("/repos/{owner}/{repo}/branches", owner, repo)
                 .retrieve()
                 .body(Map[].class);
+        if (body == null) return List.of();
         return Arrays.stream(body).map(this::toBranchInfo).toList();
     }
 
@@ -80,11 +82,12 @@ public class GiteaAdapterImpl implements GiteaAdapter {
     @SuppressWarnings("unchecked")
     private PrInfo toPrInfo(Map m) {
         Map<String, Object> head = (Map<String, Object>) m.get("head");
-        String headBranch = head != null ? (String) head.get("label") : null;
+        // Gitea head.ref is the bare branch name; head.label is "{owner}:{branch}"
+        String headBranch = head != null ? (String) head.get("ref") : null;
         Map<String, Object> user = (Map<String, Object>) m.get("user");
         String authorLogin = user != null ? (String) user.get("login") : null;
-        // Gitea returns merged=null when not merged, a timestamp string when merged
-        boolean merged = m.get("merged") != null && !"null".equals(m.get("merged").toString());
+        // Gitea merged field is a boolean (true/false), not a nullable timestamp
+        boolean merged = Boolean.TRUE.equals(m.get("merged"));
         return new PrInfo(
                 toInt(m.get("number")),
                 (String) m.get("title"),

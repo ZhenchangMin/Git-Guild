@@ -6,5 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CodeHostAccountBindingRepository extends JpaRepository<CodeHostAccountBinding, Long> {
 
-    Optional<CodeHostAccountBinding> findByUserUserIdAndHostType(Long userId, String hostType);
+    Optional<CodeHostAccountBinding> findByUserUserIdAndHostTypeAndStatus(Long userId, String hostType, String status);
 }
