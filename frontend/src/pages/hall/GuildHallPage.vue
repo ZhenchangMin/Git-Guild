@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 
 import hallImg from '../../assets/hall.png'
 import { questCommissions } from '../../data/questBoard'
+import { clearSession } from '../../stores/sessionStore'
 
 const router = useRouter()
 
@@ -111,7 +112,13 @@ function openRoom(room) {
   router.push({ name: room.routeName })
 }
 
-function backToLogin() {
+function switchAccount() {
+  clearSession()
+  router.push({ name: 'login' })
+}
+
+function logout() {
+  clearSession()
   router.push({ name: 'login' })
 }
 
@@ -134,12 +141,22 @@ onUnmounted(() => {
     <button class="help-orb" type="button" aria-label="打开 Git Guild 使用教程" @click="openHelp">?</button>
 
     <section class="hall-scene">
-      <button class="back-orb" type="button" aria-label="返回登录入口" @click="backToLogin">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 6 9 12l6 6" />
-        </svg>
-        <span>返回登录入口</span>
-      </button>
+      <div class="session-action-stack" aria-label="账号操作">
+        <button class="back-orb" type="button" aria-label="切换账号" @click="switchAccount">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 6 9 12l6 6" />
+          </svg>
+          <span>切换账号</span>
+        </button>
+        <button class="back-orb logout-orb" type="button" aria-label="退出登录" @click="logout">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10 7V5a2 2 0 0 1 2-2h6v18h-6a2 2 0 0 1-2-2v-2" />
+            <path d="M3 12h10" />
+            <path d="m6 9-3 3 3 3" />
+          </svg>
+          <span>退出登录</span>
+        </button>
+      </div>
 
       <div
         ref="hallViewport"

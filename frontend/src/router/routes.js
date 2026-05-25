@@ -41,36 +41,43 @@ export const routes = [
     path: '/repositories/sync',
     name: 'repository-sync',
     component: RepositorySyncPage,
+    meta: { requiresAuth: true, roles: ['MAINTAINER', 'ADMIN'] },
   },
   {
     path: '/workbench',
     name: 'adventurer-workbench',
     component: AdventurerWorkbenchPage,
+    meta: { requiresAuth: true, roles: ['ADVENTURER'] },
   },
   {
     path: '/maintainer',
     name: 'maintainer-workbench',
     component: MaintainerWorkbenchPage,
+    meta: { requiresAuth: true, roles: ['MAINTAINER'] },
   },
   {
     path: '/submissions',
     name: 'submission-counter',
     component: SubmissionCounterPage,
+    meta: { requiresAuth: true, roles: ['ADVENTURER'] },
   },
   {
     path: '/admin',
     name: 'admin-review',
     component: AdminReviewPage,
+    meta: { requiresAuth: true, roles: ['ADMIN'] },
   },
   {
     path: '/growth',
     name: 'growth-profile',
     component: GrowthProfilePage,
+    meta: { requiresAuth: true, roles: ['ADVENTURER', 'MAINTAINER', 'ADMIN'] },
   },
   {
     path: '/profile',
     name: 'profile',
     component: ProfilePage,
+    meta: { requiresAuth: true, roles: ['ADVENTURER', 'MAINTAINER', 'ADMIN'] },
   },
   {
     path: '/leaderboard',
