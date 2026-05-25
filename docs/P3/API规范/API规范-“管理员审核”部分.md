@@ -173,7 +173,7 @@ HTTP 状态码：`201 Created`
     "adminId": 1,
     "decision": "REJECT_PUBLISH",
     "reason": "任务缺少明确的完成标准，请补充验收条件和预期提交内容。",
-    "questStatus": "DRAFT",
+    "questStatus": "REJECTED",
     "reviewedAt": "2026-05-10T21:10:00+08:00"
   },
   "timestamp": "2026-05-10T21:10:00+08:00",
@@ -326,7 +326,7 @@ HTTP 状态码：`409 Conflict`
 1. 只有 `ADMIN` 角色可以调用该接口。
 2. 当 `decision` 为 `APPROVE_PUBLISH` 时，任务状态必须为 `PENDING_ADMIN_REVIEW`。
 3. 管理员审核通过后，任务状态变更为 `PUBLISHED`。
-4. 当 `decision` 为 `REJECT_PUBLISH` 时，任务状态从 `PENDING_ADMIN_REVIEW` 回退为 `DRAFT`，发布者需要修改后重新提交审核。
+4. 当 `decision` 为 `REJECT_PUBLISH` 时，任务状态从 `PENDING_ADMIN_REVIEW` 变更为 `REJECTED`，发布者需要修改后重新提交审核。
 5. 当 `decision` 为 `TAKE_DOWN` 时，任务状态通常从 `PUBLISHED` 变更为 `CLOSED`。
 6. 每次管理员审核都会生成一条 `AdminReviewRecord`，用于记录管理员、审核结论、审核原因和审核时间。
 7. 管理员审核完成后，系统应向任务发布者发送通知，告知任务发布申请通过、退回或已下架。
