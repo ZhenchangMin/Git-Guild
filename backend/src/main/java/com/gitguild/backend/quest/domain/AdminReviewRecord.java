@@ -15,6 +15,19 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 
+/**
+ * Admin 每次审核动作的不可变凭证，映射 {@code admin_review_records} 表。
+ *
+ * <p>隐藏的复杂度：{@code reviewedAt} 在构造时由业务层赋值（代表决策发生时刻），
+ * 与 {@code createdAt}（持久化时刻）刻意分离，以便未来支持离线审批场景。
+ *
+ * <p>不变量：
+ * <ul>
+ *   <li>每条记录与一个 Quest 和一个 Admin 强关联，且创建后不可修改。</li>
+ *   <li>{@code reason} 不允许为空，确保每次决策都有可追溯的说明。</li>
+ *   <li>{@code visibleToPublisher} 控制审核意见是否向 Guild Master 公开，默认为 {@code true}。</li>
+ * </ul>
+ */
 @Entity
 @Table(name = "admin_review_records")
 public class AdminReviewRecord {

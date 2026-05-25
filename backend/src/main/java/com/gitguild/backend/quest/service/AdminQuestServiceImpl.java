@@ -3,6 +3,7 @@ package com.gitguild.backend.quest.service;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.AdminDecision;
 import com.gitguild.backend.quest.domain.AdminReviewRecord;
+import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.dto.AdminReviewRequest;
@@ -11,6 +12,7 @@ import com.gitguild.backend.quest.dto.QuestResponses.AdminQuestSummaryResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.UserBrief;
 import com.gitguild.backend.quest.repository.AdminReviewRecordRepository;
+import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
@@ -27,14 +29,17 @@ public class AdminQuestServiceImpl implements AdminQuestService {
 
     private final QuestRepository questRepository;
     private final AdminReviewRecordRepository reviewRecordRepository;
+    private final QuestAssignmentRepository assignmentRepository;
     private final UserRepository userRepository;
 
     public AdminQuestServiceImpl(
             QuestRepository questRepository,
             AdminReviewRecordRepository reviewRecordRepository,
+            QuestAssignmentRepository assignmentRepository,
             UserRepository userRepository) {
         this.questRepository = questRepository;
         this.reviewRecordRepository = reviewRecordRepository;
+        this.assignmentRepository = assignmentRepository;
         this.userRepository = userRepository;
     }
 
@@ -102,6 +107,12 @@ public class AdminQuestServiceImpl implements AdminQuestService {
                             "任务已下架", "questId=" + quest.getQuestId());
                 }
                 quest.takeDown();
+                // Quest 强制下架时，同步取消所有 ACTIVE 接取记录，防止出现已 CLOSED 的 Quest 仍有孤立 Assignment。
+                assignmentRepository.findByQuestAndStatus(quest, AssignmentStatus.ACTIVE)
+                        .forEach(a -> {
+                            a.cancel();
+                            assignmentRepository.save(a);
+                        });
             }
         }
     }

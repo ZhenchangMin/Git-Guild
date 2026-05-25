@@ -19,6 +19,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Admin 审核操作的 HTTP 入口，全部端点均要求 ADMIN 角色（由 {@code @PreAuthorize} 在方法级强制）。
+ * 角色校验失败时由 Spring Security 统一返回 403，不进入业务层。
+ *
+ * <p>端点：
+ * <ul>
+ *   <li>{@code GET /api/v1/admin/quests} — 查询 PENDING_ADMIN_REVIEW 的 Quest 分页列表</li>
+ *   <li>{@code POST /api/v1/quests/{questId}/admin-reviews} — 对 Quest 执行审核决策，成功返回 201</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/v1")
 @PreAuthorize("hasRole('ADMIN')")
