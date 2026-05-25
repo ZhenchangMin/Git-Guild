@@ -139,6 +139,27 @@ public class Quest {
         this.status = QuestStatus.PENDING_ADMIN_REVIEW;
     }
 
+    public boolean canBeApprovedOrRejected() {
+        return status == QuestStatus.PENDING_ADMIN_REVIEW;
+    }
+
+    public void approve() {
+        this.status = QuestStatus.PUBLISHED;
+        this.publishedAt = OffsetDateTime.now();
+    }
+
+    public void reject() {
+        this.status = QuestStatus.REJECTED;
+    }
+
+    public boolean canBeTakenDown() {
+        return status != QuestStatus.CLOSED;
+    }
+
+    public void takeDown() {
+        this.status = QuestStatus.CLOSED;
+    }
+
     public boolean canBeAccepted() {
         return status == QuestStatus.PUBLISHED || status == QuestStatus.IN_PROGRESS;
     }
