@@ -15,7 +15,8 @@ export const roleNavigation = {
     { label: '提交审核', routeName: 'maintainer-workbench' },
   ],
   ADMIN: [
-    { label: '任务上架审核', routeName: 'admin-review' },
-    { label: '异常处理', routeName: 'admin-review' },
+    { label: '任务审核', routeName: 'admin-review' },
+    { label: '异常处理', routeName: 'admin-exceptions' },
+    { label: '平台配置', routeName: 'admin-taxonomy' },
   ],
 }

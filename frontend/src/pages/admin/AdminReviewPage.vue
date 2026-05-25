@@ -1,170 +1,254 @@
 <script setup>
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, ref } from 'vue'
 
-import operationRoomImg from '../../assets/operation room.png'
-import { adminExceptionCases, adminQuestApplications } from '../../data/admin'
+import { adminApi } from '../../api/adminApi'
+import { adminQuestApplications, decisionMeta, questStatusMeta } from '../../data/admin'
 
-const router = useRouter()
-const adminApplications = ref(adminQuestApplications.map((application) => ({ ...application })))
-const adminExceptions = ref(adminExceptionCases.map((exception) => ({ ...exception })))
-const activeAdminApplicationId = ref(adminQuestApplications[0]?.id ?? null)
-const adminActionResult = ref({
+const ADMIN_NAME = '管理员 · 审核台'
+const REASON_MAX = 500
+
+function cloneApplication(application) {
+  return {
+    ...application,
+    clarityChecks: application.clarityChecks.map((check) => ({ ...check })),
+    complianceChecks: application.complianceChecks.map((check) => ({ ...check })),
+    completionStandards: [...application.completionStandards],
+    risks: [...application.risks],
+    reviewRecords: application.reviewRecords.map((record) => ({ ...record })),
+  }
+}
+
+const applications = ref(adminQuestApplications.map(cloneApplication))
+const activeId = ref(applications.value[0]?.id ?? null)
+const statusFilter = ref('ALL')
+
+const reason = ref('')
+const visibleToPublisher = ref(true)
+const reasonError = ref('')
+const submitting = ref(false)
+const reasonField = ref(null)
+
+const actionResult = ref({
+  tone: 'idle',
   title: '等待管理员审核',
-  body: '选择维护者提交的任务发布申请，检查清晰度、合规性、Issue 关联和完成标准后再决定是否上架。',
+  body: '从左侧队列选择任务发布申请，核对清晰度、合规性、Issue 关联与完成标准，填写审核原因后再做决定。',
 })
 
-const activeAdminApplication = computed(
-  () =>
-    adminApplications.value.find((application) => application.id === activeAdminApplicationId.value) ??
-    adminApplications.value[0],
+const statusFilterOptions = [
+  { key: 'ALL', label: '全部' },
+  { key: 'PENDING_ADMIN_REVIEW', label: '待审核' },
+  { key: 'PUBLISHED', label: '已上架' },
+  { key: 'DRAFT', label: '已退回' },
+  { key: 'CLOSED', label: '已下架' },
+]
+
+const statusHint = {
+  DRAFT: '任务已退回草稿，等待发布者补充完成标准后重新提交管理员审核。',
+  CLOSED: '任务已下架关闭，如需重新发布请走后台管理流程单独处理。',
+}
+
+const filteredApplications = computed(() =>
+  statusFilter.value === 'ALL'
+    ? applications.value
+    : applications.value.filter((application) => application.questStatus === statusFilter.value),
 )
 
-const adminQueueStats = computed(() => {
-  const counts = adminApplications.value.reduce(
+const activeApplication = computed(
+  () =>
+    applications.value.find((application) => application.id === activeId.value) ??
+    applications.value[0],
+)
+
+const queueStats = computed(() => {
+  const counts = applications.value.reduce(
     (summary, application) => {
-      if (application.status === '已通过上架') summary.approved += 1
-      else if (application.status === '退回补充') summary.returned += 1
-      else if (application.status === '标记异常') summary.flagged += 1
-      else summary.pending += 1
+      summary[application.questStatus] = (summary[application.questStatus] ?? 0) + 1
       return summary
     },
-    { pending: 0, approved: 0, returned: 0, flagged: 0 },
+    {},
   )
   return [
-    { label: '待处理', value: counts.pending },
-    { label: '已上架', value: counts.approved },
-    { label: '退回补充', value: counts.returned },
-    { label: '异常', value: counts.flagged },
+    { label: '待审核', value: counts.PENDING_ADMIN_REVIEW ?? 0, tone: 'pending' },
+    { label: '已上架', value: counts.PUBLISHED ?? 0, tone: 'approved' },
+    { label: '已退回', value: counts.DRAFT ?? 0, tone: 'return' },
+    { label: '已下架', value: counts.CLOSED ?? 0, tone: 'danger' },
   ]
 })
 
-const adminExceptionStats = computed(() => {
-  const pending = adminExceptions.value.filter((exception) => exception.status === '待处理').length
-  const review = adminExceptions.value.filter((exception) => exception.status === '需复核').length
-  return { pending, review }
-})
-
-const activeAdminPassedChecks = computed(() => {
-  const application = activeAdminApplication.value
+const passedChecks = computed(() => {
+  const application = activeApplication.value
   if (!application) return { passed: 0, total: 0 }
   const checks = [...application.clarityChecks, ...application.complianceChecks]
-  return {
-    passed: checks.filter((check) => check.passed).length,
-    total: checks.length,
-  }
+  return { passed: checks.filter((check) => check.passed).length, total: checks.length }
 })
 
-function selectAdminApplication(application) {
-  activeAdminApplicationId.value = application.id
-  adminActionResult.value = {
-    title: `${application.id} 已调阅`,
-    body: `正在审核 ${application.questId} 的任务发布申请。这里检查的是上架申请，不是冒险家成果提交。`,
+// 当前任务状态允许的管理员决策（业务规则 2-5）。
+const availableDecisions = computed(() => {
+  const application = activeApplication.value
+  if (!application) return []
+  return Object.keys(decisionMeta).filter(
+    (decision) => decisionMeta[decision].requires === application.questStatus,
+  )
+})
+
+function statusOf(application) {
+  return questStatusMeta[application.questStatus] ?? { label: application.questStatus, tone: 'pending' }
+}
+
+function recordLabel(decision) {
+  if (decision === 'SUBMITTED') return '提交申请'
+  return decisionMeta[decision]?.label ?? decision
+}
+
+function recordTone(decision) {
+  if (decision === 'SUBMITTED') return 'pending'
+  return decisionMeta[decision]?.intent === 'primary'
+    ? 'approved'
+    : decisionMeta[decision]?.intent === 'danger'
+      ? 'danger'
+      : 'return'
+}
+
+function formatNow() {
+  const now = new Date()
+  const hh = String(now.getHours()).padStart(2, '0')
+  const mm = String(now.getMinutes()).padStart(2, '0')
+  return `今天 ${hh}:${mm}`
+}
+
+function selectApplication(application) {
+  activeId.value = application.id
+  reason.value = ''
+  reasonError.value = ''
+  visibleToPublisher.value = true
+  actionResult.value = {
+    tone: 'idle',
+    title: `${application.questCode} 已调阅`,
+    body: `正在审核 ${application.questCode} 的任务发布申请。这里审核的是任务上架/下架，不是冒险家成果提交。`,
   }
 }
 
-function runAdminApplicationAction(action) {
-  const application = activeAdminApplication.value
-  if (!application) return
+async function submitDecision(decision) {
+  const application = activeApplication.value
+  if (!application || submitting.value) return
 
-  const statusMap = {
-    approve: {
-      status: '已通过上架',
-      statusTone: 'approved',
-      title: '通过上架',
-      body: `${application.questId} 已通过管理员审核，可进入悬赏任务板供冒险家接取。`,
-    },
-    return: {
-      status: '退回补充',
-      statusTone: 'return',
-      title: '已退回维护者补充',
-      body: `${application.questId} 已退回维护者，需要补齐完成标准、奖励或边界说明后重新提交管理员审核。`,
-    },
-    flag: {
-      status: '标记异常',
-      statusTone: 'danger',
-      title: '已标记异常',
-      body: `${application.questId} 已进入异常处理队列，上架前需要管理员确认合规风险和 Issue 关联。`,
-    },
+  const meta = decisionMeta[decision]
+  if (!meta || meta.requires !== application.questStatus) return
+
+  const trimmed = reason.value.trim()
+  if (trimmed.length < 1) {
+    reasonError.value = '审核原因为必填项，请填写处理说明（1-500 字）。'
+    await nextTick()
+    reasonField.value?.focus()
+    return
   }
-  const result = statusMap[action]
-  if (!result) return
-
-  application.status = result.status
-  application.statusTone = result.statusTone
-  adminActionResult.value = {
-    title: result.title,
-    body: result.body,
+  if (trimmed.length > REASON_MAX) {
+    reasonError.value = `审核原因不能超过 ${REASON_MAX} 字。`
+    return
   }
-}
+  reasonError.value = ''
 
-function resolveAdminException(exception) {
-  exception.status = exception.resultStatus
-  exception.statusTone = exception.resultTone
-  adminActionResult.value = {
-    title: `${exception.type}：${exception.status}`,
-    body: exception.resultMessage,
+  submitting.value = true
+  try {
+    const payload = {
+      decision,
+      reason: trimmed,
+      visibleToPublisher: visibleToPublisher.value,
+    }
+    // 对接 POST /quests/{questId}/admin-reviews（当前为 mock）。
+    await adminApi.submitAdminReview(application.questId, payload)
+
+    application.questStatus = meta.nextStatus
+    application.reviewRecords = [
+      ...application.reviewRecords,
+      {
+        decision,
+        adminName: ADMIN_NAME,
+        reviewedAt: formatNow(),
+        reason: trimmed,
+        visibleToPublisher: visibleToPublisher.value,
+      },
+    ]
+
+    const notify = visibleToPublisher.value
+      ? '审核原因已同步给发布者。'
+      : '审核原因仅内部留档，未展示给发布者。'
+    actionResult.value = {
+      tone: statusOf(application).tone,
+      title: `${application.questCode} · ${meta.label}`,
+      body: `${meta.message}${notify}`,
+    }
+    reason.value = ''
+  } finally {
+    submitting.value = false
   }
-}
-
-function backToLogin() {
-  router.push({ name: 'login' })
 }
 </script>
 
 <template>
-  <main class="app-shell">
-    <section class="scene work-scene" :style="{ backgroundImage: `url(${operationRoomImg})` }">
-      <button class="back-orb" type="button" aria-label="返回登录入口" @click="backToLogin">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 6 9 12l6 6" />
-        </svg>
-        <span>返回登录入口</span>
-      </button>
-
-      <div class="admin-review-workspace">
+  <div class="admin-review-workspace">
+        <!-- 队列 -->
         <aside class="admin-queue-panel" aria-label="任务发布申请队列">
           <div class="admin-panel-head">
             <div>
               <p class="kicker">Admin Clearance</p>
               <h1>任务上架审核</h1>
             </div>
-            <span>发布申请</span>
+            <span>发布 / 下架</span>
           </div>
 
           <dl class="admin-stat-grid">
-            <div v-for="stat in adminQueueStats" :key="stat.label">
+            <div v-for="stat in queueStats" :key="stat.label" :class="stat.tone">
               <dt>{{ stat.label }}</dt>
               <dd>{{ stat.value }}</dd>
             </div>
           </dl>
 
+          <div class="admin-filter-row" role="tablist" aria-label="按状态筛选">
+            <button
+              v-for="option in statusFilterOptions"
+              :key="option.key"
+              type="button"
+              role="tab"
+              class="admin-filter-chip"
+              :class="{ active: statusFilter === option.key }"
+              :aria-selected="statusFilter === option.key"
+              @click="statusFilter = option.key"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+
           <div class="admin-application-list">
             <button
-              v-for="application in adminApplications"
+              v-for="application in filteredApplications"
               :key="application.id"
               class="admin-application-card"
-              :class="[{ active: activeAdminApplication?.id === application.id }, application.statusTone]"
+              :class="[{ active: activeApplication?.id === application.id }, statusOf(application).tone]"
               type="button"
-              @click="selectAdminApplication(application)"
+              @click="selectApplication(application)"
             >
               <span>{{ application.id }} · {{ application.submittedAt }}</span>
-              <strong>{{ application.questId }} · {{ application.title }}</strong>
-              <small>{{ application.maintainer }}</small>
-              <em>{{ application.status }}</em>
+              <strong>{{ application.questCode }} · {{ application.title }}</strong>
+              <small>{{ application.publisher }}</small>
+              <em>{{ statusOf(application).label }}</em>
             </button>
+            <p v-if="filteredApplications.length === 0" class="admin-empty-queue">
+              当前筛选下没有任务发布申请。
+            </p>
           </div>
         </aside>
 
-        <section v-if="activeAdminApplication" class="admin-detail-panel" aria-live="polite">
+        <!-- 详情 -->
+        <section v-if="activeApplication" class="admin-detail-panel" aria-live="polite">
           <header class="admin-detail-hero">
             <div>
               <p class="kicker">Quest Publishing Application</p>
-              <h2>{{ activeAdminApplication.questId }} · {{ activeAdminApplication.title }}</h2>
-              <p>{{ activeAdminApplication.summary }}</p>
+              <h2>{{ activeApplication.questCode }} · {{ activeApplication.title }}</h2>
+              <p>{{ activeApplication.summary }}</p>
             </div>
-            <span class="admin-status-seal" :class="activeAdminApplication.statusTone">
-              {{ activeAdminApplication.status }}
+            <span class="admin-status-seal" :class="statusOf(activeApplication).tone">
+              {{ statusOf(activeApplication).label }}
             </span>
           </header>
 
@@ -174,20 +258,20 @@ function backToLogin() {
               <h3>Issue 关联</h3>
               <dl>
                 <div>
-                  <dt>维护者</dt>
-                  <dd>{{ activeAdminApplication.maintainer }}</dd>
+                  <dt>发布者</dt>
+                  <dd>{{ activeApplication.publisher }}</dd>
                 </div>
                 <div>
                   <dt>仓库</dt>
-                  <dd>{{ activeAdminApplication.repository }}</dd>
+                  <dd>{{ activeApplication.repository }}</dd>
                 </div>
                 <div>
                   <dt>Issue</dt>
-                  <dd>{{ activeAdminApplication.issue }}</dd>
+                  <dd>{{ activeApplication.issue }}</dd>
                 </div>
                 <div>
-                  <dt>难度</dt>
-                  <dd>{{ activeAdminApplication.difficulty }}</dd>
+                  <dt>难度 / 奖励</dt>
+                  <dd>{{ activeApplication.difficulty }} · {{ activeApplication.reward }}</dd>
                 </div>
               </dl>
             </article>
@@ -198,11 +282,11 @@ function backToLogin() {
                   <p class="kicker">Clarity Check</p>
                   <h3>清晰度检查</h3>
                 </div>
-                <span>{{ activeAdminPassedChecks.passed }} / {{ activeAdminPassedChecks.total }}</span>
+                <span>{{ passedChecks.passed }} / {{ passedChecks.total }}</span>
               </div>
               <div class="admin-check-list">
                 <section
-                  v-for="check in activeAdminApplication.clarityChecks"
+                  v-for="check in activeApplication.clarityChecks"
                   :key="check.label"
                   class="admin-check-row"
                   :class="{ passed: check.passed, failed: !check.passed }"
@@ -219,7 +303,7 @@ function backToLogin() {
               <h3>合规性检查</h3>
               <div class="admin-check-list">
                 <section
-                  v-for="check in activeAdminApplication.complianceChecks"
+                  v-for="check in activeApplication.complianceChecks"
                   :key="check.label"
                   class="admin-check-row"
                   :class="{ passed: check.passed, failed: !check.passed }"
@@ -234,92 +318,101 @@ function backToLogin() {
             <article class="admin-ledger-card standards-card">
               <p class="kicker">Acceptance</p>
               <h3>完成标准</h3>
-              <ol v-if="activeAdminApplication.completionStandards.length > 0">
-                <li v-for="standard in activeAdminApplication.completionStandards" :key="standard">{{ standard }}</li>
+              <ol v-if="activeApplication.completionStandards.length > 0">
+                <li v-for="standard in activeApplication.completionStandards" :key="standard">
+                  {{ standard }}
+                </li>
               </ol>
               <p v-else class="admin-empty-note">维护者尚未提供可验收完成标准，建议退回补充。</p>
+            </article>
+
+            <!-- 审核记录（AdminReviewRecord） -->
+            <article class="admin-ledger-card timeline-card">
+              <p class="kicker">Audit Trail</p>
+              <h3>审核记录</h3>
+              <ol class="admin-timeline">
+                <li
+                  v-for="(record, index) in activeApplication.reviewRecords"
+                  :key="index"
+                  :class="recordTone(record.decision)"
+                >
+                  <div class="timeline-head">
+                    <strong>{{ recordLabel(record.decision) }}</strong>
+                    <time>{{ record.reviewedAt }}</time>
+                  </div>
+                  <p class="timeline-reason">{{ record.reason }}</p>
+                  <small>
+                    {{ record.adminName }}
+                    <em v-if="record.decision !== 'SUBMITTED' && record.visibleToPublisher === false">
+                      · 仅内部可见
+                    </em>
+                  </small>
+                </li>
+              </ol>
             </article>
           </div>
         </section>
 
-        <aside v-if="activeAdminApplication" class="admin-action-panel">
-          <section class="glass-ledger admin-risk-ledger">
-            <p class="kicker">Risk Notice</p>
-            <h2>风险提示</h2>
-            <ul>
-              <li v-for="risk in activeAdminApplication.risks" :key="risk">
-                <span>{{ risk }}</span>
-              </li>
-            </ul>
-          </section>
-
-          <section class="glass-ledger admin-exception-ledger">
-            <div class="admin-card-title">
-              <div>
-                <p class="kicker">Exception Docket</p>
-                <h2>异常处理演示</h2>
-              </div>
-              <span>{{ adminExceptionStats.pending }} 待处理 · {{ adminExceptionStats.review }} 复核</span>
-            </div>
-
-            <div class="admin-exception-list">
-              <article
-                v-for="exception in adminExceptions"
-                :key="exception.id"
-                class="admin-exception-card"
-                :class="exception.statusTone"
-              >
-                <div class="exception-card-head">
-                  <span>{{ exception.id }} · {{ exception.type }}</span>
-                  <em>{{ exception.status }}</em>
-                </div>
-                <h3>{{ exception.title }}</h3>
-                <dl>
-                  <div>
-                    <dt>原因</dt>
-                    <dd>{{ exception.reason }}</dd>
-                  </div>
-                  <div>
-                    <dt>影响</dt>
-                    <dd>{{ exception.impact }}</dd>
-                  </div>
-                </dl>
-                <button
-                  class="quiet-action"
-                  type="button"
-                  :disabled="exception.status !== '待处理'"
-                  @click="resolveAdminException(exception)"
-                >
-                  {{ exception.status === '待处理' ? exception.actionLabel : '处理完成' }}
-                </button>
-              </article>
-            </div>
-          </section>
-
+        <!-- 操作 -->
+        <aside v-if="activeApplication" class="admin-action-panel">
           <section class="parchment-panel admin-decision-card">
             <p class="kicker">审核决定</p>
             <h2>管理员操作</h2>
-            <p>通过后进入悬赏任务板；退回或异常都不会上架。</p>
-            <div class="admin-action-buttons">
-              <button class="primary-action" type="button" @click="runAdminApplicationAction('approve')">
-                通过上架
-              </button>
-              <button class="quiet-action" type="button" @click="runAdminApplicationAction('return')">
-                退回补充
-              </button>
-              <button class="quiet-action danger" type="button" @click="runAdminApplicationAction('flag')">
-                标记异常
-              </button>
-            </div>
+
+            <template v-if="availableDecisions.length > 0">
+              <p class="admin-decision-lead">
+                通过后进入悬赏任务板；退回或下架都不会展示给冒险家。审核原因为必填项。
+              </p>
+
+              <label class="admin-reason-field" :class="{ invalid: reasonError }">
+                <span class="admin-reason-label">
+                  审核原因
+                  <small>{{ reason.length }} / {{ REASON_MAX }}</small>
+                </span>
+                <textarea
+                  ref="reasonField"
+                  v-model="reason"
+                  :maxlength="REASON_MAX"
+                  rows="3"
+                  placeholder="说明本次审核结论的依据，将记入审核记录。"
+                  @input="reasonError = ''"
+                ></textarea>
+                <span v-if="reasonError" class="admin-reason-error">{{ reasonError }}</span>
+              </label>
+
+              <label class="admin-visibility-toggle">
+                <input v-model="visibleToPublisher" type="checkbox" />
+                <span>将审核原因展示给任务发布者</span>
+              </label>
+
+              <div class="admin-action-buttons">
+                <button
+                  v-for="decision in availableDecisions"
+                  :key="decision"
+                  type="button"
+                  :class="
+                    decisionMeta[decision].intent === 'primary'
+                      ? 'primary-action'
+                      : decisionMeta[decision].intent === 'danger'
+                        ? 'quiet-action danger'
+                        : 'quiet-action'
+                  "
+                  :disabled="submitting"
+                  @click="submitDecision(decision)"
+                >
+                  {{ decisionMeta[decision].label }}
+                </button>
+              </div>
+            </template>
+
+            <p v-else class="admin-decision-lead muted">{{ statusHint[activeApplication.questStatus] }}</p>
           </section>
 
-          <section class="glass-ledger admin-result-ledger">
+          <section class="glass-ledger admin-result-ledger" :class="actionResult.tone">
             <p class="kicker">操作结果</p>
-            <h2>{{ adminActionResult.title }}</h2>
-            <p>{{ adminActionResult.body }}</p>
+            <h2>{{ actionResult.title }}</h2>
+            <p>{{ actionResult.body }}</p>
           </section>
         </aside>
-      </div>
-    </section>
-  </main>
+  </div>
 </template>

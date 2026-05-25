@@ -623,14 +623,19 @@ h2 {
   align-items: stretch;
 }
 
+/* 背景图按视口（而非随内容变化的元素高度）计算 cover 尺寸，
+   切换审核任务时内容高度变化不再让背景图缩放。 */
+.admin-scene {
+  background-attachment: fixed;
+}
+
 .admin-review-workspace {
   z-index: 1;
   display: grid;
   grid-template-columns: minmax(250px, 320px) minmax(460px, 1fr) minmax(260px, 330px);
   gap: 16px;
-  width: min(1440px, calc(100vw - 56px));
-  min-height: min(720px, calc(100svh - 116px));
-  margin: 0 auto;
+  width: 100%;
+  min-height: min(720px, calc(100svh - 132px));
   color: #ffe7b5;
 }
 
@@ -653,7 +658,7 @@ h2 {
 
 .admin-queue-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 14px;
   padding: 18px;
 }
@@ -713,6 +718,7 @@ h2 {
 
 .admin-application-list {
   display: grid;
+  align-content: start;
   gap: 10px;
   min-height: 0;
   overflow: auto;
@@ -1069,6 +1075,650 @@ h2 {
   color: rgba(255, 231, 183, 0.78);
   line-height: 1.5;
   text-wrap: pretty;
+}
+
+/* === Admin review enhancements === */
+
+/* Stat tiles get a status-colored top accent. */
+.admin-stat-grid div {
+  border-top-width: 2px;
+}
+.admin-stat-grid div.pending {
+  border-top-color: rgba(238, 184, 91, 0.7);
+}
+.admin-stat-grid div.approved {
+  border-top-color: rgba(119, 160, 91, 0.78);
+}
+.admin-stat-grid div.return {
+  border-top-color: rgba(214, 142, 56, 0.78);
+}
+.admin-stat-grid div.danger {
+  border-top-color: rgba(202, 104, 88, 0.82);
+}
+
+/* Status filter chips. */
+.admin-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-filter-chip {
+  border: 1px solid rgba(238, 184, 91, 0.32);
+  border-radius: 999px;
+  padding: 5px 12px;
+  color: rgba(255, 231, 183, 0.72);
+  background: rgba(10, 6, 3, 0.4);
+  font-size: 0.78rem;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.admin-filter-chip:hover,
+.admin-filter-chip:focus-visible {
+  border-color: var(--gold-bright);
+  color: #ffe8b8;
+}
+
+.admin-filter-chip.active {
+  border-color: var(--gold-bright);
+  color: #1a0f06;
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  font-weight: 700;
+}
+
+.admin-empty-queue {
+  margin: 8px 2px 0;
+  color: rgba(255, 231, 183, 0.6);
+  font-size: 0.86rem;
+}
+
+/* Audit timeline (AdminReviewRecord). */
+.timeline-card {
+  grid-column: 1 / -1;
+}
+
+.admin-timeline {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-timeline li {
+  position: relative;
+  border-left: 2px solid rgba(98, 55, 20, 0.32);
+  border-radius: 0 5px 5px 0;
+  padding: 8px 10px 8px 16px;
+  background: rgba(255, 244, 210, 0.42);
+}
+
+.admin-timeline li::before {
+  position: absolute;
+  top: 12px;
+  left: -6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  content: '';
+  background: rgba(98, 55, 20, 0.5);
+}
+
+.admin-timeline li.approved {
+  border-left-color: rgba(67, 97, 58, 0.7);
+}
+.admin-timeline li.approved::before {
+  background: #43613a;
+}
+.admin-timeline li.return {
+  border-left-color: rgba(214, 142, 56, 0.7);
+}
+.admin-timeline li.return::before {
+  background: #b5701c;
+}
+.admin-timeline li.danger {
+  border-left-color: rgba(202, 104, 88, 0.78);
+}
+.admin-timeline li.danger::before {
+  background: #a8392b;
+}
+
+.timeline-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.timeline-head strong {
+  color: #3f2410;
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+}
+
+.timeline-head time {
+  color: rgba(76, 37, 12, 0.6);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.timeline-reason {
+  margin: 5px 0 4px;
+  color: rgba(63, 36, 16, 0.92);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.admin-timeline small {
+  color: rgba(76, 37, 12, 0.62);
+  font-size: 0.76rem;
+}
+
+.admin-timeline small em {
+  color: rgba(110, 42, 36, 0.82);
+  font-style: normal;
+}
+
+/* Decision console. */
+.admin-decision-lead {
+  margin: 12px 0 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.admin-decision-lead.muted {
+  color: rgba(76, 37, 12, 0.7);
+}
+
+.admin-reason-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.admin-reason-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: #4c250c;
+  font-weight: 700;
+}
+
+.admin-reason-label small {
+  color: rgba(76, 37, 12, 0.58);
+  font-weight: 400;
+  font-size: 0.74rem;
+}
+
+.admin-reason-field textarea {
+  width: 100%;
+  border: 1px solid rgba(98, 55, 20, 0.4);
+  border-radius: 5px;
+  padding: 9px 10px;
+  color: #2a180d;
+  background: rgba(255, 249, 232, 0.86);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.admin-reason-field textarea:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 1px;
+  border-color: var(--gold);
+}
+
+.admin-reason-field.invalid textarea {
+  border-color: rgba(168, 57, 43, 0.78);
+  background: rgba(255, 240, 234, 0.9);
+}
+
+.admin-reason-error {
+  color: #8c2f22;
+  font-size: 0.8rem;
+}
+
+.admin-visibility-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+}
+
+.admin-visibility-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--green);
+}
+
+.admin-action-buttons button:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* Result ledger tone accents. */
+.admin-result-ledger {
+  border-left: 3px solid rgba(238, 184, 91, 0.4);
+}
+.admin-result-ledger.approved {
+  border-left-color: rgba(119, 160, 91, 0.82);
+}
+.admin-result-ledger.return {
+  border-left-color: rgba(214, 142, 56, 0.82);
+}
+.admin-result-ledger.danger {
+  border-left-color: rgba(202, 104, 88, 0.86);
+}
+.admin-result-ledger.pending {
+  border-left-color: rgba(238, 184, 91, 0.7);
+}
+
+/* === Admin console shell (routed multi-section) === */
+.admin-console {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 178px minmax(0, 1fr);
+  gap: 16px;
+  width: min(1560px, calc(100vw - 56px));
+  min-height: min(760px, calc(100svh - 116px));
+  margin: 0 auto;
+}
+
+.admin-console-rail {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  padding: 18px 14px;
+  border: 1px solid rgba(238, 184, 91, 0.5);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(31, 17, 9, 0.86), rgba(15, 8, 4, 0.8));
+  backdrop-filter: blur(7px);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 232, 176, 0.16);
+}
+
+.admin-console-brand h1 {
+  margin: 4px 0 0;
+  font-size: 1.3rem;
+  line-height: 1.15;
+}
+
+.admin-console-nav {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-console-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 10px 11px;
+  color: rgba(255, 231, 183, 0.76);
+  text-decoration: none;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.admin-console-link:hover,
+.admin-console-link:focus-visible {
+  border-color: rgba(238, 184, 91, 0.45);
+  background: rgba(63, 34, 13, 0.42);
+  transform: translateX(2px);
+}
+
+.admin-console-link.active {
+  border-color: var(--gold-bright);
+  background:
+    radial-gradient(circle at 0% 50%, rgba(255, 220, 139, 0.2), transparent 60%),
+    rgba(63, 34, 13, 0.66);
+  color: #ffe8b8;
+}
+
+.admin-console-glyph {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid rgba(238, 184, 91, 0.4);
+  color: var(--gold-bright);
+  font-size: 0.9rem;
+}
+
+.admin-console-link-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.admin-console-link-text strong {
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+}
+
+.admin-console-link-text small {
+  color: rgba(255, 231, 183, 0.58);
+  font-size: 0.7rem;
+}
+
+.admin-console-footnote {
+  margin: 0;
+  color: rgba(255, 231, 183, 0.46);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+}
+
+.admin-console-stage {
+  display: grid;
+  min-width: 0;
+}
+
+/* Exceptions + taxonomy workspaces reuse the review panel chrome. */
+.admin-exceptions-workspace {
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(420px, 1fr) minmax(260px, 320px);
+  gap: 16px;
+  width: 100%;
+  min-height: min(760px, calc(100svh - 132px));
+  color: #ffe7b5;
+}
+
+.admin-stat-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-ledger-text {
+  margin: 12px 0 0;
+  color: #3f2410;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.admin-log-list {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: rgba(63, 36, 16, 0.92);
+  font-family: 'Consolas', 'SFMono-Regular', monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.admin-select-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.admin-select-field select {
+  width: 100%;
+  border: 1px solid rgba(98, 55, 20, 0.4);
+  border-radius: 5px;
+  padding: 9px 10px;
+  color: #2a180d;
+  background: rgba(255, 249, 232, 0.86);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+
+.admin-select-field select:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 1px;
+}
+
+/* === Taxonomy (platform config) === */
+.admin-taxonomy-workspace {
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+  align-content: start;
+  color: #ffe7b5;
+}
+
+.admin-tax-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgba(238, 184, 91, 0.5);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(31, 17, 9, 0.82), rgba(15, 8, 4, 0.78)),
+    linear-gradient(135deg, rgba(216, 154, 50, 0.16), transparent 62%);
+  backdrop-filter: blur(7px);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 232, 176, 0.16);
+}
+
+.admin-tax-difficulty {
+  grid-column: 1 / -1;
+}
+
+.admin-tax-add {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+}
+
+.admin-tax-add-tag {
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+}
+
+.admin-tax-add input {
+  border: 1px solid rgba(238, 184, 91, 0.4);
+  border-radius: 5px;
+  padding: 8px 10px;
+  color: #ffe9c4;
+  background: rgba(10, 6, 3, 0.5);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+}
+
+.admin-tax-add input::placeholder {
+  color: rgba(255, 231, 183, 0.42);
+}
+
+.admin-tax-add input:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 1px;
+  border-color: var(--gold);
+}
+
+.admin-tax-add .primary-action {
+  white-space: nowrap;
+}
+
+.admin-tax-palette {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.admin-tax-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.admin-tax-swatch.active {
+  border-color: var(--gold-bright);
+  box-shadow: 0 0 0 2px rgba(242, 192, 111, 0.35);
+}
+
+.admin-tax-notice {
+  margin: 0;
+  border-radius: 5px;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.admin-tax-notice.approved {
+  color: #e9ffd2;
+  background: rgba(67, 97, 58, 0.5);
+}
+
+.admin-tax-notice.return {
+  color: #ffeec6;
+  background: rgba(133, 76, 20, 0.5);
+}
+
+.admin-tax-notice.danger {
+  color: #ffe0da;
+  background: rgba(110, 42, 36, 0.55);
+}
+
+.admin-tax-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-tax-list li {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid rgba(238, 184, 91, 0.22);
+  border-radius: 5px;
+  padding: 9px 11px;
+  background: rgba(7, 4, 2, 0.32);
+  transition: opacity 150ms ease;
+}
+
+.admin-tax-list li.disabled {
+  opacity: 0.5;
+}
+
+.admin-tax-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.admin-tax-row-main strong {
+  color: #ffe6b1;
+}
+
+.admin-tax-row-main small {
+  color: rgba(255, 231, 183, 0.6);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-tax-dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.admin-tax-count {
+  flex: 0 0 auto;
+  color: rgba(255, 231, 183, 0.56);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.admin-tax-toggle {
+  flex: 0 0 auto;
+  border: 1px solid rgba(238, 184, 91, 0.42);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.admin-tax-toggle.on {
+  color: #eaffd6;
+  border-color: rgba(119, 160, 91, 0.62);
+  background: rgba(67, 97, 58, 0.55);
+}
+
+.admin-tax-toggle.off {
+  color: rgba(255, 231, 183, 0.66);
+  background: rgba(28, 16, 8, 0.5);
+}
+
+.admin-difficulty-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-difficulty-grid article {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  border: 1px solid rgba(238, 184, 91, 0.22);
+  border-radius: 5px;
+  padding: 11px;
+  background: rgba(7, 4, 2, 0.32);
+}
+
+.admin-difficulty-grid article > div {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-difficulty-grid strong {
+  color: #ffe6b1;
+}
+
+.admin-difficulty-grid small {
+  color: rgba(255, 231, 183, 0.62);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.admin-difficulty-code {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  border: 1px solid rgba(238, 184, 91, 0.4);
+  color: #ffe2a0;
+  background: rgba(10, 6, 3, 0.4);
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+}
+
+@media (max-width: 880px) {
+  .admin-console {
+    grid-template-columns: 1fr;
+  }
+  .admin-console-nav {
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+  }
+  .admin-console-link {
+    flex-direction: column;
+    text-align: center;
+    gap: 6px;
+  }
+  .admin-console-footnote {
+    display: none;
+  }
+  .admin-taxonomy-workspace {
+    grid-template-columns: 1fr;
+  }
 }
 
 .profile-detail-dock {

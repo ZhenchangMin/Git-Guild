@@ -1,14 +1,52 @@
+// 管理员审核任务发布 / 下架的演示数据。
+// 状态、决策与字段命名对齐 docs/P3/API规范-“管理员审核”部分.md：
+//   questStatus ∈ { PENDING_ADMIN_REVIEW, DRAFT, PUBLISHED, CLOSED }
+//   decision    ∈ { APPROVE_PUBLISH, REJECT_PUBLISH, TAKE_DOWN }
+
+// 任务状态 → 中文标签与展示色调（statusTone 复用既有 CSS：pending/approved/return/danger）。
+export const questStatusMeta = {
+  PENDING_ADMIN_REVIEW: { label: '待管理员审核', tone: 'pending' },
+  DRAFT: { label: '已退回草稿', tone: 'return' },
+  PUBLISHED: { label: '已发布上架', tone: 'approved' },
+  CLOSED: { label: '已下架关闭', tone: 'danger' },
+}
+
+// 每个决策对应的目标状态、要求的前置状态与提示文案（业务规则 2-5）。
+export const decisionMeta = {
+  APPROVE_PUBLISH: {
+    label: '通过上架',
+    requires: 'PENDING_ADMIN_REVIEW',
+    nextStatus: 'PUBLISHED',
+    intent: 'primary',
+    message: '任务审核已通过并发布，已进入悬赏任务板供冒险家接取。',
+  },
+  REJECT_PUBLISH: {
+    label: '退回补充',
+    requires: 'PENDING_ADMIN_REVIEW',
+    nextStatus: 'DRAFT',
+    intent: 'quiet',
+    message: '任务发布申请已退回草稿，发布者需补齐后重新提交管理员审核。',
+  },
+  TAKE_DOWN: {
+    label: '下架处理',
+    requires: 'PUBLISHED',
+    nextStatus: 'CLOSED',
+    intent: 'danger',
+    message: '任务已下架，不再于悬赏任务板展示，并已通知发布者。',
+  },
+}
+
 export const adminQuestApplications = [
   {
     id: 'APP-058',
-    questId: 'QST-0458',
+    questId: 2058,
+    questCode: 'QST-0458',
     title: '提交柜台缺少任务草稿预检',
-    maintainer: '委托人 · 审核台',
+    publisher: '委托人 · 审核台',
     repository: 'git-guild / frontend',
     issue: '#58',
     submittedAt: '今天 10:46',
-    status: '待审核',
-    statusTone: 'pending',
+    questStatus: 'PENDING_ADMIN_REVIEW',
     summary:
       '维护者希望把 Issue #58 上架为悬赏任务，帮助新手补齐任务草稿预检和管理员审核前的清晰度提示。',
     targetAudience: '新手贡献者 · 前端课堂演示',
@@ -31,17 +69,25 @@ export const adminQuestApplications = [
       '提交审核后页面显示管理员审核中的状态。',
     ],
     risks: ['需要确认任务详情页是否也能展示“管理员审核中”的发布状态。', '若维护者重复提交，需要合并同一 Issue 的审核记录。'],
+    reviewRecords: [
+      {
+        decision: 'SUBMITTED',
+        adminName: '委托人 · 审核台',
+        reviewedAt: '今天 10:46',
+        reason: '维护者提交发布申请，等待管理员审核。',
+      },
+    ],
   },
   {
     id: 'APP-061',
-    questId: 'QST-0461',
+    questId: 2061,
+    questCode: 'QST-0461',
     title: '仓库同步异常需要课堂演示入口',
-    maintainer: '委托人 · 导入大厅',
+    publisher: '委托人 · 导入大厅',
     repository: 'git-guild / backend',
     issue: '#61',
     submittedAt: '今天 09:32',
-    status: '待补充',
-    statusTone: 'return',
+    questStatus: 'PENDING_ADMIN_REVIEW',
     summary:
       '将后端同步异常包装为新手任务，但当前完成标准偏少，无法判断学生需要提交什么证据。',
     targetAudience: '后端入门贡献者',
@@ -57,22 +103,74 @@ export const adminQuestApplications = [
       { label: '奖励与难度匹配', passed: false, note: '奖励字段为空，上架前需要补齐。' },
       { label: '未绕过管理员上架流程', passed: true, note: '仍处于管理员审核队列。' },
     ],
-    completionStandards: [
-      '展示异常原因、影响范围和重试入口。',
-      '说明学生需要提交的截图或日志片段。',
-    ],
+    completionStandards: ['展示异常原因、影响范围和重试入口。', '说明学生需要提交的截图或日志片段。'],
     risks: ['同步异常可能涉及后端配置，需限制为 mock 日志或脱敏数据。', '奖励为空，悬赏任务板无法正确排序或展示激励。'],
+    reviewRecords: [
+      {
+        decision: 'SUBMITTED',
+        adminName: '委托人 · 导入大厅',
+        reviewedAt: '今天 09:32',
+        reason: '维护者提交发布申请，等待管理员审核。',
+      },
+    ],
+  },
+  {
+    id: 'APP-052',
+    questId: 2052,
+    questCode: 'QST-0452',
+    title: '悬赏任务板筛选支持多技术栈标签',
+    publisher: '委托人 · 任务板',
+    repository: 'git-guild / frontend',
+    issue: '#52',
+    submittedAt: '昨天 16:08',
+    questStatus: 'PUBLISHED',
+    summary:
+      '该任务已通过管理员审核并发布。近日维护者反馈关联 Issue 已合并关闭，需要管理员判断是否下架。',
+    targetAudience: '前端进阶贡献者',
+    reward: '500 XP · 90 Gold',
+    difficulty: '中级',
+    clarityChecks: [
+      { label: '任务目标明确', passed: true, note: '目标是为任务板增加多标签筛选。' },
+      { label: '完成标准可验收', passed: true, note: '含交互、空态与持久化要求。' },
+      { label: '边界说明充分', passed: true, note: '明确仅改前端筛选逻辑，不动后端检索。' },
+    ],
+    complianceChecks: [
+      { label: '适合课堂公开展示', passed: true, note: '无敏感信息。' },
+      { label: '奖励与难度匹配', passed: true, note: '中级任务奖励合理。' },
+      { label: '关联 Issue 仍然有效', passed: false, note: 'Issue #52 已被合并关闭，任务可能不再需要继续展示。' },
+    ],
+    completionStandards: [
+      '筛选器支持同时选择多个技术栈标签。',
+      '空结果时展示引导文案与清除筛选入口。',
+      '所选标签在刷新后保持。',
+    ],
+    risks: ['关联 Issue 已关闭，继续展示可能误导新手接取已无需求的任务。'],
+    reviewRecords: [
+      {
+        decision: 'SUBMITTED',
+        adminName: '委托人 · 任务板',
+        reviewedAt: '昨天 16:08',
+        reason: '维护者提交发布申请。',
+      },
+      {
+        decision: 'APPROVE_PUBLISH',
+        adminName: '管理员 · 审核台',
+        reviewedAt: '昨天 17:20',
+        reason: '任务描述清晰、完成标准明确，准予发布。',
+        visibleToPublisher: true,
+      },
+    ],
   },
   {
     id: 'APP-064',
-    questId: 'QST-0464',
+    questId: 2064,
+    questCode: 'QST-0464',
     title: '个人成长卡片缺少贡献回放',
-    maintainer: '委托人 · 资料台',
+    publisher: '委托人 · 资料台',
     repository: 'git-guild / frontend',
     issue: '#64',
     submittedAt: '昨天 18:20',
-    status: '异常待查',
-    statusTone: 'danger',
+    questStatus: 'PENDING_ADMIN_REVIEW',
     summary:
       '维护者提交了成长卡片增强任务，但 Issue 缺少完成标准，且申请里混入了“线上用户数据回放”的描述。',
     targetAudience: '前端进阶贡献者',
@@ -90,6 +188,14 @@ export const adminQuestApplications = [
     ],
     completionStandards: [],
     risks: ['可能误用真实用户贡献记录，必须改为 mock 数据。', '缺少验收标准会导致冒险家无法判断完成边界。'],
+    reviewRecords: [
+      {
+        decision: 'SUBMITTED',
+        adminName: '委托人 · 资料台',
+        reviewedAt: '昨天 18:20',
+        reason: '维护者提交发布申请，等待管理员审核。',
+      },
+    ],
   },
 ]
 

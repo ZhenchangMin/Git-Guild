@@ -1,4 +1,7 @@
+import AdminConsoleLayout from '../pages/admin/AdminConsoleLayout.vue'
+import AdminExceptionsPage from '../pages/admin/AdminExceptionsPage.vue'
 import AdminReviewPage from '../pages/admin/AdminReviewPage.vue'
+import AdminTaxonomyPage from '../pages/admin/AdminTaxonomyPage.vue'
 import LoginPage from '../pages/auth/LoginPage.vue'
 import GrowthProfilePage from '../pages/growth/GrowthProfilePage.vue'
 import GuildHallPage from '../pages/hall/GuildHallPage.vue'
@@ -59,8 +62,13 @@ export const routes = [
   },
   {
     path: '/admin',
-    name: 'admin-review',
-    component: AdminReviewPage,
+    component: AdminConsoleLayout,
+    children: [
+      { path: '', redirect: { name: 'admin-review' } },
+      { path: 'review', name: 'admin-review', component: AdminReviewPage },
+      { path: 'exceptions', name: 'admin-exceptions', component: AdminExceptionsPage },
+      { path: 'taxonomy', name: 'admin-taxonomy', component: AdminTaxonomyPage },
+    ],
   },
   {
     path: '/growth',
