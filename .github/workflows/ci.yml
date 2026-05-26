@@ -21,9 +21,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality:
+    name: Static and format checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run static and format checks
+        run: node scripts/ci-static-check.mjs
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest
+    needs: quality
     defaults:
       run:
         working-directory: frontend
@@ -56,6 +73,7 @@ jobs:
   backend:
     name: Backend test and package
     runs-on: ubuntu-latest
+    needs: quality
     defaults:
       run:
         working-directory: backend
