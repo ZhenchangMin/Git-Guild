@@ -6,7 +6,7 @@ import operationRoomImg from '../../assets/operation room.png'
 const router = useRouter()
 
 const sections = [
-  { routeName: 'admin-review', label: '任务审核', hint: '上架 / 退回 / 下架', glyph: '✦' },
+  { routeName: 'admin-review', label: '任务审核', hint: '上架 · 退回 · 下架', glyph: '✦' },
   { routeName: 'admin-exceptions', label: '异常处理', hint: '同步 · 关联 · 权限', glyph: '⚠' },
   { routeName: 'admin-taxonomy', label: '平台配置', hint: '分类 · 标签 · 难度', glyph: '❖' },
 ]
@@ -49,7 +49,7 @@ function backToLogin() {
             </RouterLink>
           </nav>
 
-          <p class="admin-console-footnote">ADMIN · 平台治理席位</p>
+          <p class="admin-console-footnote">ADMIN</p>
         </aside>
 
         <div class="admin-console-stage">

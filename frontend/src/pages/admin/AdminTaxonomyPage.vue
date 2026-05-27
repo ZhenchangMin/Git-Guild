@@ -10,8 +10,18 @@ const difficulties = questDifficulties
 
 const newCategory = ref({ name: '', description: '' })
 const newTag = ref({ name: '', color: tagPalette[0] })
+// 自定义取色：独立保存最近一次自定义值，不被预设点击覆盖。
+const customColor = ref('#c84b8f')
 const categoryNotice = ref(null)
 const tagNotice = ref(null)
+
+// 当前选色不在预设色板中时，视为使用了自定义颜色。
+const usingCustomColor = computed(() => !tagPalette.includes(newTag.value.color))
+
+function pickCustomColor(event) {
+  customColor.value = event.target.value
+  newTag.value.color = event.target.value
+}
 
 let categorySeq = Math.max(0, ...categories.value.map((c) => c.categoryId))
 let tagSeq = Math.max(0, ...tags.value.map((t) => t.tagId))
@@ -134,6 +144,7 @@ async function toggleTag(tag) {
 
       <form class="admin-tax-add admin-tax-add-tag" @submit.prevent="addTag">
         <input v-model="newTag.name" type="text" placeholder="新标签名称" />
+        <button type="submit" class="primary-action">新增标签</button>
         <div class="admin-tax-palette" role="radiogroup" aria-label="标签颜色">
           <button
             v-for="color in tagPalette"
@@ -145,8 +156,21 @@ async function toggleTag(tag) {
             :aria-label="`选择颜色 ${color}`"
             @click="newTag.color = color"
           ></button>
+          <label
+            class="admin-tax-custom"
+            :class="{ active: usingCustomColor }"
+            title="自定义颜色"
+            :style="{ background: customColor }"
+          >
+            <input
+              type="color"
+              :value="customColor"
+              aria-label="自定义标签颜色"
+              @input="pickCustomColor"
+            />
+            <span aria-hidden="true">＋</span>
+          </label>
         </div>
-        <button type="submit" class="primary-action">新增标签</button>
       </form>
 
       <p v-if="tagNotice" class="admin-tax-notice" :class="tagNotice.tone">{{ tagNotice.text }}</p>

@@ -722,7 +722,8 @@ h2 {
   gap: 10px;
   min-height: 0;
   overflow: auto;
-  padding-right: 4px;
+  /* 顶部留白：避免 active 卡片的 translateY(-1px) 抬升 + 1px 边框被滚动容器顶边裁掉。 */
+  padding: 4px 4px 4px 0;
 }
 
 .admin-application-card {
@@ -868,32 +869,69 @@ h2 {
 
 .admin-check-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 5px 10px;
+  gap: 6px;
   border: 1px solid rgba(98, 55, 20, 0.18);
+  /* 左侧色条表示管理员的现场结论：待核验 / 通过 / 存疑。 */
+  border-left: 3px solid rgba(214, 142, 56, 0.5);
   border-radius: 5px;
   padding: 9px 10px;
   background: rgba(255, 244, 210, 0.35);
+}
+
+.admin-check-row.passed {
+  border-left-color: rgba(67, 97, 58, 0.85);
+}
+
+.admin-check-row.failed {
+  border-left-color: rgba(110, 42, 36, 0.85);
+}
+
+.admin-check-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .admin-check-row strong {
   color: #3f2410;
 }
 
-.admin-check-row span {
-  border-radius: 999px;
-  padding: 2px 8px;
-  color: #fff6da;
-  background: rgba(110, 42, 36, 0.72);
-  font-size: 0.74rem;
+.admin-check-verdict {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
 }
 
-.admin-check-row.passed span {
-  background: rgba(67, 97, 58, 0.78);
+.admin-check-verdict button {
+  border: 1px solid rgba(98, 55, 20, 0.3);
+  border-radius: 999px;
+  padding: 3px 11px;
+  color: #5a3414;
+  background: rgba(255, 250, 238, 0.6);
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: border-color 130ms ease, background 130ms ease, color 130ms ease;
+}
+
+.admin-check-verdict button:hover,
+.admin-check-verdict button:focus-visible {
+  border-color: rgba(98, 55, 20, 0.6);
+}
+
+.admin-check-verdict button.on {
+  border-color: rgba(67, 97, 58, 0.85);
+  color: #f1ffd6;
+  background: rgba(67, 97, 58, 0.82);
+}
+
+.admin-check-verdict button.fail.on {
+  border-color: rgba(110, 42, 36, 0.85);
+  color: #ffe0da;
+  background: rgba(110, 42, 36, 0.82);
 }
 
 .admin-check-row p {
-  grid-column: 1 / -1;
   margin: 0;
   color: rgba(69, 37, 15, 0.72);
   font-size: 0.84rem;
@@ -1510,8 +1548,14 @@ h2 {
 }
 
 .admin-tax-add-tag {
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
+}
+
+/* 色板独占一行，随宽度换行，容纳更多预设色 + 自定义取色。 */
+.admin-tax-add-tag .admin-tax-palette {
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
 }
 
 .admin-tax-add input {
@@ -1554,6 +1598,50 @@ h2 {
 .admin-tax-swatch.active {
   border-color: var(--gold-bright);
   box-shadow: 0 0 0 2px rgba(242, 192, 111, 0.35);
+}
+
+/* 自定义取色：圆形色块叠加隐藏的原生取色器，“＋”仅在未选中时提示可自定义。 */
+.admin-tax-custom {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px dashed rgba(238, 184, 91, 0.6);
+  color: rgba(255, 244, 214, 0.92);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.admin-tax-custom.active {
+  border-style: solid;
+  border-color: var(--gold-bright);
+  box-shadow: 0 0 0 2px rgba(242, 192, 111, 0.35);
+}
+
+.admin-tax-custom.active span {
+  display: none;
+}
+
+.admin-tax-custom span {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.admin-tax-custom input[type='color'] {
+  position: absolute;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .admin-tax-notice {

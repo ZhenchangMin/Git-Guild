@@ -10,8 +10,9 @@ const REASON_MAX = 500
 function cloneApplication(application) {
   return {
     ...application,
-    clarityChecks: application.clarityChecks.map((check) => ({ ...check })),
-    complianceChecks: application.complianceChecks.map((check) => ({ ...check })),
+    // verdict 由管理员现场判定（null=待核验 / 'pass'=通过 / 'fail'=存疑），不再由数据预设结论。
+    clarityChecks: application.clarityChecks.map((check) => ({ ...check, verdict: null })),
+    complianceChecks: application.complianceChecks.map((check) => ({ ...check, verdict: null })),
     completionStandards: [...application.completionStandards],
     risks: [...application.risks],
     reviewRecords: application.reviewRecords.map((record) => ({ ...record })),
@@ -43,7 +44,7 @@ const statusFilterOptions = [
 ]
 
 const statusHint = {
-  DRAFT: '任务已退回草稿，等待发布者补充完成标准后重新提交管理员审核。',
+  DRAFT: '任务已退回，等待发布者补充完整后重新提交审核。',
   CLOSED: '任务已下架关闭，如需重新发布请走后台管理流程单独处理。',
 }
 
@@ -75,12 +76,15 @@ const queueStats = computed(() => {
   ]
 })
 
-const passedChecks = computed(() => {
-  const application = activeApplication.value
-  if (!application) return { passed: 0, total: 0 }
-  const checks = [...application.clarityChecks, ...application.complianceChecks]
-  return { passed: checks.filter((check) => check.passed).length, total: checks.length }
-})
+// 单组检查的现场核验进度（清晰度 / 合规性分别统计，避免计数与显示项数不一致）。
+function progressOf(checks) {
+  return { reviewed: checks.filter((check) => check.verdict).length, total: checks.length }
+}
+
+// 设定单项核验结论；再次点击同一结论则取消，回到待核验。
+function setVerdict(check, verdict) {
+  check.verdict = check.verdict === verdict ? null : verdict
+}
 
 // 当前任务状态允许的管理员决策（业务规则 2-5）。
 const availableDecisions = computed(() => {
@@ -124,7 +128,7 @@ function selectApplication(application) {
   actionResult.value = {
     tone: 'idle',
     title: `${application.questCode} 已调阅`,
-    body: `正在审核 ${application.questCode} 的任务发布申请。这里审核的是任务上架/下架，不是冒险家成果提交。`,
+    body: `正在审核 ${application.questCode} 的任务发布申请。`,
   }
 }
 
@@ -254,7 +258,7 @@ async function submitDecision(decision) {
 
           <div class="admin-detail-grid">
             <article class="admin-ledger-card issue-card">
-              <p class="kicker">Issue 关联</p>
+              <p class="kicker">Issue</p>
               <h3>Issue 关联</h3>
               <dl>
                 <div>
@@ -270,7 +274,7 @@ async function submitDecision(decision) {
                   <dd>{{ activeApplication.issue }}</dd>
                 </div>
                 <div>
-                  <dt>难度 / 奖励</dt>
+                  <dt>难度 · 奖励</dt>
                   <dd>{{ activeApplication.difficulty }} · {{ activeApplication.reward }}</dd>
                 </div>
               </dl>
@@ -282,34 +286,75 @@ async function submitDecision(decision) {
                   <p class="kicker">Clarity Check</p>
                   <h3>清晰度检查</h3>
                 </div>
-                <span>{{ passedChecks.passed }} / {{ passedChecks.total }}</span>
+                <span>已核验 {{ progressOf(activeApplication.clarityChecks).reviewed }} / {{ activeApplication.clarityChecks.length }}</span>
               </div>
               <div class="admin-check-list">
                 <section
                   v-for="check in activeApplication.clarityChecks"
                   :key="check.label"
                   class="admin-check-row"
-                  :class="{ passed: check.passed, failed: !check.passed }"
+                  :class="check.verdict === 'pass' ? 'passed' : check.verdict === 'fail' ? 'failed' : 'pending'"
                 >
-                  <strong>{{ check.label }}</strong>
-                  <span>{{ check.passed ? '通过' : '待补' }}</span>
+                  <div class="admin-check-head">
+                    <strong>{{ check.label }}</strong>
+                    <div class="admin-check-verdict" role="group" :aria-label="`${check.label} 审核结论`">
+                      <button
+                        type="button"
+                        :class="{ on: check.verdict === 'pass' }"
+                        @click="setVerdict(check, 'pass')"
+                      >
+                        通过
+                      </button>
+                      <button
+                        type="button"
+                        class="fail"
+                        :class="{ on: check.verdict === 'fail' }"
+                        @click="setVerdict(check, 'fail')"
+                      >
+                        存疑
+                      </button>
+                    </div>
+                  </div>
                   <p>{{ check.note }}</p>
                 </section>
               </div>
             </article>
 
             <article class="admin-ledger-card check-card">
-              <p class="kicker">Compliance</p>
-              <h3>合规性检查</h3>
+              <div class="admin-card-title">
+                <div>
+                  <p class="kicker">Compliance</p>
+                  <h3>合规性检查</h3>
+                </div>
+                <span>已核验 {{ progressOf(activeApplication.complianceChecks).reviewed }} / {{ activeApplication.complianceChecks.length }}</span>
+              </div>
               <div class="admin-check-list">
                 <section
                   v-for="check in activeApplication.complianceChecks"
                   :key="check.label"
                   class="admin-check-row"
-                  :class="{ passed: check.passed, failed: !check.passed }"
+                  :class="check.verdict === 'pass' ? 'passed' : check.verdict === 'fail' ? 'failed' : 'pending'"
                 >
-                  <strong>{{ check.label }}</strong>
-                  <span>{{ check.passed ? '通过' : '风险' }}</span>
+                  <div class="admin-check-head">
+                    <strong>{{ check.label }}</strong>
+                    <div class="admin-check-verdict" role="group" :aria-label="`${check.label} 审核结论`">
+                      <button
+                        type="button"
+                        :class="{ on: check.verdict === 'pass' }"
+                        @click="setVerdict(check, 'pass')"
+                      >
+                        通过
+                      </button>
+                      <button
+                        type="button"
+                        class="fail"
+                        :class="{ on: check.verdict === 'fail' }"
+                        @click="setVerdict(check, 'fail')"
+                      >
+                        存疑
+                      </button>
+                    </div>
+                  </div>
                   <p>{{ check.note }}</p>
                 </section>
               </div>
