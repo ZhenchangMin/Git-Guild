@@ -8,7 +8,7 @@ import { questCommissions, questFilterGroups } from '../../data/questBoard'
 const router = useRouter()
 const questSearch = ref('')
 const questPage = ref(1)
-const questPageSize = 9
+const questPageSize = 18
 const selectedQuestFilters = ref({
   category: [],
   tag: [],
@@ -161,6 +161,7 @@ watch(questPageCount, (pageCount) => {
       </button>
 
       <div class="quest-board-workspace" aria-label="悬赏板">
+        <div class="quest-board-top">
         <header class="board-header">
           <p class="kicker">冒险者公会 · 悬赏板</p>
           <h1>委托清单</h1>
@@ -182,6 +183,7 @@ watch(questPageCount, (pageCount) => {
             />
           </label>
           <span class="quest-count">{{ rankedQuestCommissions.length }} 份委托</span>
+        </div>
         </div>
 
         <div class="board-body">

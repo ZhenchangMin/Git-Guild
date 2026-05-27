@@ -85,6 +85,26 @@ export const questCommissions = [
   },
 ]
 
+questCommissions.push(
+  ...Array.from({ length: 12 }, (_, index) => {
+    const number = String(index + 1).padStart(2, '0')
+    return {
+      id: `QST-P${number}`,
+      title: `占位委托 ${number}`,
+      issuer: '占位委托人',
+      category: '占位',
+      difficulty: 'C',
+      stack: 'Vue / Mock',
+      techStack: ['Vue', 'Mock'],
+      status: '占位',
+      tags: ['占位'],
+      reward: '100 XP',
+      summary: '用于测试委托列表滚动效果的占位内容。',
+      criteria: ['占位验收项', '占位验收项', '占位验收项'],
+    }
+  }),
+)
+
 export const questFilterGroups = [
   { id: 'category', title: '分类', options: ['接入', '流程', '界面', '引导', '体验', '资料'] },
   { id: 'tag', title: '标签', options: ['新手友好', 'Issue', 'PR', '审核', '同步', '异常', '反馈'] },

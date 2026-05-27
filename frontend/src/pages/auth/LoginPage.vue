@@ -1,32 +1,53 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import { authApi } from '../../api'
 import doorImg from '../../assets/door.png'
 import { setSession } from '../../stores/sessionStore'
 
+const ENTRY_ANIMATION_MS = 760
+
 const router = useRouter()
+const route = useRoute()
 const mode = ref('login')
 const selectedRole = ref('BEGINNER')
 const isSubmitting = ref(false)
+const isGateOpen = ref(false)
+const isEntering = ref(false)
 const formMessage = ref('')
 const formError = ref('')
+const accountInput = ref(null)
+let entryTimer = 0
 
 const form = reactive({
   username: '',
-  email: '',
+  account: '',
   password: '',
   remember: true,
 })
 
 const roles = [
-  { id: 'BEGINNER', entryRole: 'ADVENTURER', name: '冒险家', note: '浏览悬赏任务并提交成果' },
-  { id: 'MAINTAINER', entryRole: 'MAINTAINER', name: '委托人', note: '发布悬赏任务并审核成果' },
+  {
+    id: 'BEGINNER',
+    entryRole: 'ADVENTURER',
+    label: 'Adventurer',
+    caption: '接取任务',
+  },
+  {
+    id: 'MAINTAINER',
+    entryRole: 'MAINTAINER',
+    label: 'Maintainer',
+    caption: '发布悬赏',
+  },
 ]
 
 const isRegisterMode = computed(() => mode.value === 'register')
 const activeRole = computed(() => roles.find((role) => role.id === selectedRole.value) ?? roles[0])
+const submitButtonText = computed(() => {
+  if (isSubmitting.value) return isRegisterMode.value ? '正在登记身份...' : '正在开启大门...'
+  return isRegisterMode.value ? `注册为 ${activeRole.value.label}` : `以 ${activeRole.value.label} 身份进入`
+})
 
 function toEntryRole(apiRole) {
   if (apiRole === 'BEGINNER') return 'ADVENTURER'
@@ -41,6 +62,14 @@ function routeForRole(entryRole) {
   return { name: 'hall' }
 }
 
+function routeAfterEntry(entryRole) {
+  const redirect = route.query.redirect
+  if (typeof redirect === 'string' && redirect.startsWith('/') && entryRole !== 'VISITOR') {
+    return redirect
+  }
+  return routeForRole(entryRole)
+}
+
 function normalizeUser(user) {
   const entryRole = toEntryRole(user?.role)
   return {
@@ -51,6 +80,35 @@ function normalizeUser(user) {
   }
 }
 
+function openGate() {
+  if (isEntering.value) return
+  isGateOpen.value = true
+  formError.value = ''
+  formMessage.value = ''
+  nextTick(() => accountInput.value?.focus())
+}
+
+function closeGate() {
+  if (isSubmitting.value || isEntering.value) return
+  isGateOpen.value = false
+}
+
+function switchMode(nextMode) {
+  mode.value = nextMode
+  formError.value = ''
+  formMessage.value = ''
+  nextTick(() => accountInput.value?.focus())
+}
+
+function beginEntryAnimation(targetRoute) {
+  isEntering.value = true
+  isGateOpen.value = true
+  window.clearTimeout(entryTimer)
+  entryTimer = window.setTimeout(() => {
+    router.push(targetRoute)
+  }, ENTRY_ANIMATION_MS)
+}
+
 function saveAuthSession(authData) {
   const user = normalizeUser(authData.user)
   setSession({
@@ -59,13 +117,7 @@ function saveAuthSession(authData) {
     role: user.role,
     user,
   })
-  router.push(routeForRole(user.role))
-}
-
-function switchMode(nextMode) {
-  mode.value = nextMode
-  formError.value = ''
-  formMessage.value = ''
+  beginEntryAnimation(routeAfterEntry(user.role))
 }
 
 async function submitAuth() {
@@ -77,15 +129,15 @@ async function submitAuth() {
     if (isRegisterMode.value) {
       await authApi.register({
         username: form.username.trim(),
-        email: form.email.trim(),
+        email: form.account.trim(),
         password: form.password,
         role: selectedRole.value,
       })
-      formMessage.value = '账号创建成功，正在为你登录。'
+      formMessage.value = '账号已创建，正在开启公会大门。'
     }
 
     const loginResponse = await authApi.login({
-      email: form.email.trim(),
+      email: form.account.trim(),
       password: form.password,
       remember: form.remember,
     })
@@ -101,98 +153,128 @@ function enterAsVisitor() {
   setSession({
     role: 'VISITOR',
     user: {
-      displayName: '访客',
+      displayName: '游客',
       role: 'VISITOR',
     },
   })
-  router.push({ name: 'quest-board' })
+  beginEntryAnimation({ name: 'quest-board' })
 }
+
+onBeforeUnmount(() => {
+  window.clearTimeout(entryTimer)
+})
 </script>
 
 <template>
-  <main class="app-shell">
-    <section class="scene door-scene" :style="{ backgroundImage: `url(${doorImg})` }">
-      <aside class="login-panel" aria-label="登录面板">
-        <p class="kicker">Git Guild 入口</p>
-        <h1>{{ isRegisterMode ? '创建公会身份' : '登录 Git Guild' }}</h1>
-        <p class="login-copy">
-          {{ isRegisterMode ? '注册平台自有账号，选择初始身份后进入对应工作区。' : '使用平台账号登录，系统会根据角色打开对应入口。' }}
-        </p>
+  <main class="app-shell guild-login-shell">
+    <section
+      class="guild-gate-scene"
+      :class="{ 'is-awake': isGateOpen, 'is-entering': isEntering }"
+      aria-label="Git Guild 公会入口"
+    >
+      <div class="guild-gate-art" :style="{ backgroundImage: `url(${doorImg})` }" aria-hidden="true"></div>
 
-        <div class="auth-mode-tabs" aria-label="选择登录或注册">
-          <button type="button" :class="{ active: mode === 'login' }" @click="switchMode('login')">登录</button>
-          <button type="button" :class="{ active: mode === 'register' }" @click="switchMode('register')">注册</button>
+      <button
+        v-if="!isGateOpen && !isEntering"
+        class="guild-gate-hotspot"
+        type="button"
+        aria-label="点击进入公会"
+        @click="openGate"
+      >
+        <span>点击进入公会</span>
+      </button>
+
+      <Transition name="guild-login-modal">
+        <div v-if="isGateOpen && !isEntering" class="guild-login-layer" @click.self="closeGate">
+          <aside class="guild-login-card" aria-label="登录或注册 Git Guild">
+            <header class="guild-login-head">
+              <p class="kicker">Git Guild Gate</p>
+              <h1>{{ isRegisterMode ? '登记公会身份' : '进入公会大厅' }}</h1>
+            </header>
+
+            <div class="guild-auth-tabs" aria-label="登录或注册切换">
+              <button type="button" :class="{ active: mode === 'login' }" @click="switchMode('login')">
+                登录
+              </button>
+              <button type="button" :class="{ active: mode === 'register' }" @click="switchMode('register')">
+                注册
+              </button>
+            </div>
+
+            <form class="guild-auth-form" @submit.prevent="submitAuth">
+              <label v-if="isRegisterMode" class="guild-field">
+                <span>用户名</span>
+                <input
+                  v-model.trim="form.username"
+                  autocomplete="username"
+                  minlength="3"
+                  maxlength="32"
+                  required
+                  placeholder="alice"
+                />
+              </label>
+
+              <label class="guild-field">
+                <span>账号 / 邮箱</span>
+                <input
+                  ref="accountInput"
+                  v-model.trim="form.account"
+                  type="email"
+                  autocomplete="email"
+                  required
+                  placeholder="alice@example.com"
+                />
+              </label>
+
+              <label class="guild-field">
+                <span>密码</span>
+                <input
+                  v-model="form.password"
+                  type="password"
+                  :autocomplete="isRegisterMode ? 'new-password' : 'current-password'"
+                  :minlength="isRegisterMode ? 8 : undefined"
+                  required
+                  placeholder="输入你的公会密钥"
+                />
+              </label>
+
+              <div class="guild-role-block">
+                <span>选择入口身份</span>
+                <div class="guild-role-pills" aria-label="选择角色">
+                  <button
+                    v-for="role in roles"
+                    :key="role.id"
+                    class="guild-role-pill"
+                    :class="{ active: selectedRole === role.id }"
+                    type="button"
+                    @click="selectedRole = role.id"
+                  >
+                    <strong>{{ role.label }}</strong>
+                    <small>{{ role.caption }}</small>
+                  </button>
+                </div>
+              </div>
+
+              <label v-if="!isRegisterMode" class="guild-remember">
+                <input v-model="form.remember" type="checkbox" />
+                <span>保持登录状态</span>
+              </label>
+
+              <p v-if="formMessage" class="guild-auth-notice success">{{ formMessage }}</p>
+              <p v-if="formError" class="guild-auth-notice error">{{ formError }}</p>
+
+              <div class="guild-login-actions">
+                <button class="guild-submit" type="submit" :disabled="isSubmitting || isEntering">
+                  {{ submitButtonText }}
+                </button>
+                <button class="guild-guest-link" type="button" :disabled="isSubmitting" @click="enterAsVisitor">
+                  游客参观
+                </button>
+              </div>
+            </form>
+          </aside>
         </div>
-
-        <form class="auth-form" @submit.prevent="submitAuth">
-          <div v-if="isRegisterMode" class="field-group">
-            <label for="guild-username">用户名</label>
-            <input
-              id="guild-username"
-              v-model.trim="form.username"
-              autocomplete="username"
-              minlength="3"
-              maxlength="32"
-              required
-              placeholder="例如 alice"
-            />
-          </div>
-
-          <div class="field-group">
-            <label for="guild-email">邮箱</label>
-            <input
-              id="guild-email"
-              v-model.trim="form.email"
-              type="email"
-              autocomplete="email"
-              required
-              placeholder="alice@example.com"
-            />
-          </div>
-
-          <div class="field-group">
-            <label for="guild-password">密码</label>
-            <input
-              id="guild-password"
-              v-model="form.password"
-              type="password"
-              autocomplete="current-password"
-              minlength="8"
-              required
-              placeholder="至少 8 位，包含字母和数字"
-            />
-          </div>
-
-          <div v-if="isRegisterMode" class="role-grid" aria-label="选择初始角色">
-            <button
-              v-for="role in roles"
-              :key="role.id"
-              class="role-choice"
-              :class="{ active: selectedRole === role.id }"
-              type="button"
-              @click="selectedRole = role.id"
-            >
-              <strong>{{ role.name }}</strong>
-              <span>{{ role.note }}</span>
-            </button>
-          </div>
-
-          <label v-if="!isRegisterMode" class="remember-row">
-            <input v-model="form.remember" type="checkbox" />
-            <span>保持登录状态</span>
-          </label>
-
-          <p v-if="formMessage" class="auth-notice success">{{ formMessage }}</p>
-          <p v-if="formError" class="auth-notice error">{{ formError }}</p>
-
-          <div class="login-actions">
-            <button class="primary-action" type="submit" :disabled="isSubmitting">
-              {{ isSubmitting ? '正在处理...' : isRegisterMode ? '注册并登录' : '登录' }}
-            </button>
-            <button class="quiet-action" type="button" @click="enterAsVisitor">以访客身份浏览</button>
-          </div>
-        </form>
-      </aside>
+      </Transition>
     </section>
   </main>
 </template>
