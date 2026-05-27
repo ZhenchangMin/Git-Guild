@@ -1,9 +1,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 
-import BeginnerQuestChecklist from './BeginnerQuestChecklist.vue'
-import QuestStatusFlow from './QuestStatusFlow.vue'
-import { defaultContributionSteps, defaultSubmissionRequirements, questDetails } from '../data/quests'
+import QuestActionRail from './QuestActionRail.vue'
+import QuestJourney from './QuestJourney.vue'
+import { defaultSubmissionRequirements, questDetails } from '../data/quests'
 
 const props = defineProps({
   quest: {
@@ -20,6 +20,17 @@ const emit = defineEmits(['open-workbench', 'open-submission'])
 
 const localWorkflowState = ref('available')
 const inlineNotice = ref('')
+
+// Map each workflow status label to a seal colour, matching the quest board so
+// the same state reads identically across the board and the detail scroll.
+const STATUS_TONE = {
+  可接取: 'open',
+  进行中: 'active',
+  待提交成果: 'ready',
+  等待维护者审核: 'review',
+  需要修改: 'returned',
+  已完成: 'done',
+}
 
 const detail = computed(() => questDetails[props.quest.id] ?? {})
 const repository = computed(
@@ -48,29 +59,32 @@ const pullRequest = computed(
 const beginnerTags = computed(() => props.quest.tags.filter((tag) => tag.includes('新手') || tag === '教程'))
 const estimatedHours = computed(() => detail.value.estimatedHours ?? 6)
 const description = computed(() => detail.value.description ?? props.quest.summary)
-const contributionSteps = computed(() => detail.value.contributionSteps ?? defaultContributionSteps)
 const submissionRequirements = computed(() => detail.value.submissionRequirements ?? defaultSubmissionRequirements)
 const hasPullRequest = computed(() => pullRequest.value.number !== 'Not created')
 const isAcceptIntent = computed(() => props.intent === 'accept' && localWorkflowState.value === 'available')
-const statusFlowContext = computed(() => ({
-  quest: `${props.quest.id} · ${props.quest.title}`,
-  repository: repository.value.name,
-  branch: hasPullRequest.value ? `任务分支 → ${repository.value.branch}` : `待创建任务分支，默认从 ${repository.value.branch} 切出`,
-  pullRequest: hasPullRequest.value
-    ? `${pullRequest.value.number} · ${pullRequest.value.status}`
-    : `${pullRequest.value.number} · ${pullRequest.value.status}`,
-  counter:
-    localWorkflowState.value === 'available' || localWorkflowState.value === 'in-progress'
-      ? 'PR 准备好后到提交柜台登记'
-      : '已进入提交柜台材料链路',
-  feedback:
-    localWorkflowState.value === 'changes-requested'
-      ? '维护者已退回，请查看逐项反馈'
-      : localWorkflowState.value === 'completed'
-        ? '审核通过，已写入成长记录'
-        : '等待维护者审核后生成',
-  syncStatus: repository.value.syncStatus,
-}))
+
+// Compact, icon-backed meta chips replace the old 6-column grid.
+const metaChips = computed(() => [
+  { key: 'difficulty', label: '难度', value: props.quest.difficulty },
+  { key: 'reward', label: '奖励', value: props.quest.reward },
+  { key: 'hours', label: '预计时长', value: `${estimatedHours.value}h` },
+  { key: 'stack', label: '技术栈', value: props.quest.stack },
+  { key: 'beginner', label: '新手标签', value: beginnerTags.value.length ? beginnerTags.value.join(' / ') : '普通任务' },
+])
+
+// Single most-relevant exception hint surfaced on the action rail.
+const exceptionHint = computed(() => {
+  if (localWorkflowState.value === 'changes-requested') {
+    return { title: '提交被退回', body: '先阅读逐项反馈，在工作台更新分支和 PR，再回提交柜台重新提交。' }
+  }
+  if (String(repository.value.syncStatus ?? '').toLowerCase().includes('warning')) {
+    return { title: '同步状态滞后', body: '先查看仓库同步日志或手动同步，再判断 Issue、PR 和审核状态。' }
+  }
+  if (!hasPullRequest.value && ['in-progress', 'pr-ready'].includes(localWorkflowState.value)) {
+    return { title: 'PR 未关联', body: '先在工作台发起 PR，再到提交柜台粘贴或选择对应 PR。' }
+  }
+  return null
+})
 
 const workflowConfig = computed(() => {
   const configs = {
@@ -114,6 +128,8 @@ const workflowConfig = computed(() => {
 
   return configs[localWorkflowState.value] ?? configs.available
 })
+
+const heroTone = computed(() => STATUS_TONE[workflowConfig.value.status] ?? 'open')
 
 watch(
   () => [props.quest.id, props.intent],
@@ -176,53 +192,46 @@ function showIssueHint() {
 <template>
   <div class="quest-detail-workspace" aria-label="任务详情">
     <header class="quest-detail-hero">
-      <div class="quest-title-block">
-        <p class="kicker">悬赏任务详情</p>
+      <p class="kicker">悬赏任务详情</p>
+      <div class="hero-title-row">
         <h1>{{ quest.id }} · {{ quest.title }}</h1>
-        <p>{{ description }}</p>
+        <span class="hero-state" :class="`tone-${heroTone}`">
+          {{ workflowConfig.status }}
+        </span>
       </div>
+      <p class="hero-desc">{{ description }}</p>
 
-      <div class="quest-action-panel" :class="{ 'accept-intent': isAcceptIntent }">
-        <span class="quest-state">{{ workflowConfig.status }}</span>
-        <button class="primary-action" type="button" @click="handlePrimaryAction">{{ workflowConfig.primary }}</button>
-        <button class="quiet-action" type="button" @click="handleSecondaryAction">{{ workflowConfig.secondary }}</button>
-        <p>{{ workflowConfig.next }}</p>
-        <p v-if="isAcceptIntent" class="accept-intent-note">确认任务背景和完成标准后接取该任务。</p>
-      </div>
-
-      <dl class="quest-meta-grid">
-        <div>
-          <dt>状态</dt>
-          <dd>{{ workflowConfig.status }}</dd>
-        </div>
-        <div>
-          <dt>难度</dt>
-          <dd>{{ quest.difficulty }}</dd>
-        </div>
-        <div>
-          <dt>奖励</dt>
-          <dd>{{ quest.reward }}</dd>
-        </div>
-        <div>
-          <dt>预计时长</dt>
-          <dd>{{ estimatedHours }}h</dd>
-        </div>
-        <div>
-          <dt>技术栈</dt>
-          <dd>{{ quest.stack }}</dd>
-        </div>
-        <div>
-          <dt>新手标签</dt>
-          <dd>{{ beginnerTags.length ? beginnerTags.join(' / ') : '普通任务' }}</dd>
-        </div>
-      </dl>
+      <ul class="meta-chips">
+        <li v-for="chip in metaChips" :key="chip.key" :class="`chip-${chip.key}`">
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="chip-icon">
+            <template v-if="chip.key === 'difficulty'">
+              <path d="M12 3 4 7v6c0 4 3.5 7 8 8 4.5-1 8-4 8-8V7Z" />
+            </template>
+            <template v-else-if="chip.key === 'reward'">
+              <circle cx="12" cy="12" r="8" />
+              <path d="M12 8v8M9 10.5h6M9 13.5h6" />
+            </template>
+            <template v-else-if="chip.key === 'hours'">
+              <circle cx="12" cy="12" r="8" />
+              <path d="M12 8v4l3 2" />
+            </template>
+            <template v-else-if="chip.key === 'stack'">
+              <path d="M12 4 3 9l9 5 9-5Z" />
+              <path d="M3 14l9 5 9-5" />
+            </template>
+            <template v-else>
+              <path d="M12 4l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4L7.5 17.8l.9-5L4.8 9.3l5-.7Z" />
+            </template>
+          </svg>
+          <span class="chip-label">{{ chip.label }}</span>
+          <span class="chip-value">{{ chip.value }}</span>
+        </li>
+      </ul>
 
       <p class="workflow-boundary">
         项目操作在工作台完成：创建分支、上传文件生成 commit、发起 PR。任务成果提交在提交柜台完成：关联 PR、填写成果说明、完成标准自检、提交审核。
       </p>
     </header>
-
-    <QuestStatusFlow :status="localWorkflowState" :context="statusFlowContext" />
 
     <div class="quest-detail-grid">
       <main class="quest-main-column">
@@ -254,24 +263,25 @@ function showIssueHint() {
           </div>
         </section>
 
-        <BeginnerQuestChecklist
+        <QuestJourney
           :quest="quest"
           :workflow-state="localWorkflowState"
           :repository="repository"
           :pull-request="pullRequest"
         />
-
-        <section class="quest-detail-card">
-          <p class="kicker">Beginner Path</p>
-          <h2>简版路径</h2>
-          <p class="section-note">上方清单用于课堂演示和本地勾选；这里保留快速回看路径。</p>
-          <ol class="contribution-steps">
-            <li v-for="step in contributionSteps" :key="step">{{ step }}</li>
-          </ol>
-        </section>
       </main>
 
       <aside class="quest-side-column">
+        <QuestActionRail
+          :status="localWorkflowState"
+          :config="workflowConfig"
+          :notice="inlineNotice"
+          :accept-intent="isAcceptIntent"
+          :exception-hint="exceptionHint"
+          @primary="handlePrimaryAction"
+          @secondary="handleSecondaryAction"
+        />
+
         <section class="quest-detail-card side-card">
           <p class="kicker">仓库与 Issue</p>
           <h2>关联仓库与 Issue</h2>
@@ -307,18 +317,6 @@ function showIssueHint() {
           </div>
         </section>
 
-        <section class="quest-detail-card side-card progress-card">
-          <p class="kicker">下一步</p>
-          <h2>当前进度 / 下一步</h2>
-          <strong>{{ workflowConfig.status }}</strong>
-          <p>{{ workflowConfig.next }}</p>
-          <div class="progress-actions">
-            <button class="primary-action" type="button" @click="handlePrimaryAction">{{ workflowConfig.primary }}</button>
-            <button class="quiet-action" type="button" @click="handleSecondaryAction">{{ workflowConfig.secondary }}</button>
-          </div>
-          <p v-if="inlineNotice" class="inline-notice">{{ inlineNotice }}</p>
-        </section>
-
         <section class="quest-detail-card side-card">
           <p class="kicker">提交柜台</p>
           <h2>提交要求</h2>
@@ -351,112 +349,159 @@ function showIssueHint() {
   backdrop-filter: blur(6px);
 }
 
+/* Hero takes on a commission-scroll feel with a wax-seal accent. */
 .quest-detail-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 330px);
-  gap: 18px;
-  padding: 18px;
+  position: relative;
+  padding: 22px 20px 18px;
+  overflow: hidden;
 }
 
-.quest-title-block h1 {
+.quest-detail-hero::before {
+  position: absolute;
+  left: 18px;
+  top: 14px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  content: '';
+  background: radial-gradient(circle at 35% 30%, #ffe6a6, #b56c22 60%, #6e3c12);
+  box-shadow: 0 3px 6px rgba(40, 18, 4, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.55);
+}
+
+.quest-detail-hero .kicker {
+  margin-left: 28px;
+}
+
+.hero-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.hero-title-row h1 {
   font-size: clamp(1.7rem, 3vw, 2.6rem);
 }
 
-.quest-title-block p,
-.workflow-boundary,
-.quest-detail-card p,
-.section-note,
-.contribution-steps,
-.submission-requirements {
+.hero-state {
+  flex: 0 0 auto;
+  margin-top: 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.hero-state.tone-open {
+  color: #a6e08e;
+  background: rgba(108, 167, 96, 0.22);
+}
+
+.hero-state.tone-active {
+  color: #f2c06f;
+  background: rgba(232, 170, 60, 0.2);
+}
+
+.hero-state.tone-ready {
+  color: #8fbce8;
+  background: rgba(70, 116, 178, 0.22);
+}
+
+.hero-state.tone-review {
+  color: #c8a8e0;
+  background: rgba(140, 104, 168, 0.24);
+}
+
+.hero-state.tone-returned {
+  color: #f0a18f;
+  background: rgba(178, 86, 70, 0.24);
+}
+
+.hero-state.tone-done {
+  color: #f1ffd6;
+  background: rgba(67, 97, 58, 0.6);
+}
+
+.hero-desc {
+  max-width: 72ch;
+  margin: 10px 0 0;
   color: rgba(255, 231, 183, 0.78);
   line-height: 1.48;
 }
 
-.quest-title-block p {
-  max-width: 72ch;
-  margin: 10px 0 0;
-}
-
-.quest-action-panel {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  border: 1px solid rgba(240, 198, 118, 0.18);
-  border-radius: 6px;
-  padding: 14px;
-  background: rgba(11, 6, 3, 0.34);
-}
-
-.quest-action-panel.accept-intent {
-  border-color: rgba(242, 192, 111, 0.84);
-  background:
-    linear-gradient(180deg, rgba(72, 41, 15, 0.72), rgba(21, 12, 7, 0.72)),
-    radial-gradient(circle at 88% 0%, rgba(255, 217, 138, 0.18), transparent 0 42%);
-  box-shadow: inset 0 0 0 1px rgba(255, 217, 138, 0.18), 0 18px 42px rgba(0, 0, 0, 0.34);
-}
-
-.quest-action-panel .primary-action,
-.quest-action-panel .quiet-action {
-  width: 100%;
-}
-
-.quest-action-panel p {
-  margin: 0;
-  color: rgba(255, 231, 183, 0.72);
-  line-height: 1.4;
-}
-
-.quest-action-panel .accept-intent-note {
-  border-left: 3px solid rgba(242, 192, 111, 0.9);
-  padding-left: 10px;
-  color: #ffe8b9;
-}
-
-.quest-state {
-  display: inline-flex;
-  width: fit-content;
-  border: 1px solid rgba(238, 184, 91, 0.42);
-  border-radius: 999px;
-  padding: 3px 9px;
-  color: #ffe4ad;
-  font-size: 0.78rem;
-  background: rgba(80, 43, 18, 0.44);
-}
-
-.quest-meta-grid,
-.source-summary,
-.quest-detail-card dl {
-  display: grid;
-  margin: 0;
-}
-
-.quest-meta-grid {
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+.meta-chips {
+  display: flex;
+  flex-wrap: wrap;
   gap: 9px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-.quest-meta-grid div,
-.source-summary div,
-.quest-detail-card dl div {
-  min-width: 0;
-  border: 1px solid rgba(240, 198, 118, 0.16);
-  border-radius: 5px;
-  padding: 9px 10px;
-  background: rgba(11, 6, 3, 0.28);
+.meta-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(240, 198, 118, 0.28);
+  border-radius: 999px;
+  padding: 6px 12px 6px 9px;
+  background: rgba(11, 6, 3, 0.36);
 }
 
-.quest-meta-grid dd,
-.source-summary dd,
-.quest-detail-card dd {
-  overflow-wrap: anywhere;
+.chip-icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: var(--gold-bright);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chip-label {
+  color: rgba(255, 231, 183, 0.6);
+  font-size: 0.74rem;
+}
+
+.chip-value {
+  color: #ffe8b9;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+/* The reward chip reads as treasure: warm border + gold coin marker. */
+.chip-reward {
+  border-color: rgba(242, 192, 111, 0.5) !important;
+  background: rgba(122, 61, 12, 0.34) !important;
+}
+
+.chip-reward .chip-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #ffd98a;
+}
+
+.chip-reward .chip-value::before {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  content: '';
+  background: radial-gradient(circle at 35% 30%, #ffe39a, #d89a32 65%, #9e5a19);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6);
 }
 
 .workflow-boundary {
-  grid-column: 1 / -1;
-  margin: 0;
+  margin: 16px 0 0;
   border-left: 3px solid rgba(242, 192, 111, 0.8);
   padding: 10px 12px;
+  color: rgba(255, 231, 183, 0.78);
+  line-height: 1.48;
   background: rgba(9, 5, 2, 0.28);
 }
 
@@ -464,10 +509,6 @@ function showIssueHint() {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(310px, 0.42fr);
   gap: 16px;
-  margin-top: 16px;
-}
-
-.quest-status-flow {
   margin-top: 16px;
 }
 
@@ -486,14 +527,41 @@ function showIssueHint() {
   font-size: 1.18rem;
 }
 
+.quest-detail-card p,
+.section-note,
+.submission-requirements {
+  color: rgba(255, 231, 183, 0.78);
+  line-height: 1.48;
+}
+
 .quest-detail-card p {
   margin: 10px 0 0;
+}
+
+.source-summary,
+.quest-detail-card dl {
+  display: grid;
+  margin: 0;
 }
 
 .source-summary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 14px;
+}
+
+.source-summary div,
+.quest-detail-card dl div {
+  min-width: 0;
+  border: 1px solid rgba(240, 198, 118, 0.16);
+  border-radius: 5px;
+  padding: 9px 10px;
+  background: rgba(11, 6, 3, 0.28);
+}
+
+.source-summary dd,
+.quest-detail-card dd {
+  overflow-wrap: anywhere;
 }
 
 .criteria-list {
@@ -521,17 +589,6 @@ function showIssueHint() {
   accent-color: var(--green);
 }
 
-.contribution-steps {
-  display: grid;
-  gap: 9px;
-  margin: 14px 0 0;
-  padding-left: 1.25rem;
-}
-
-.contribution-steps li {
-  padding-left: 4px;
-}
-
 .side-card dl {
   gap: 9px;
 }
@@ -547,34 +604,6 @@ function showIssueHint() {
 .side-actions .quiet-action {
   min-height: 36px;
   padding: 0 12px;
-}
-
-.progress-card strong {
-  display: block;
-  margin-top: 12px;
-  color: #ffe2a0;
-  font-family: var(--font-display);
-  font-size: 1.3rem;
-}
-
-.progress-actions {
-  display: grid;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.progress-actions .primary-action,
-.progress-actions .quiet-action {
-  width: 100%;
-  min-height: 38px;
-}
-
-.inline-notice {
-  border: 1px solid rgba(67, 97, 58, 0.56);
-  border-radius: 5px;
-  padding: 10px;
-  color: #f2ffd9;
-  background: rgba(67, 97, 58, 0.24);
 }
 
 .submission-requirements {
@@ -597,20 +626,65 @@ function showIssueHint() {
   background: rgba(11, 6, 3, 0.28);
 }
 
+/* Orchestrated page-load: the scroll unfurls top-to-bottom, cards rise in.
+   Targets the columns' direct children (not the wrappers) so the sticky
+   action rail keeps an untransformed ancestor and stays pinned. */
+@media (prefers-reduced-motion: no-preference) {
+  .quest-detail-hero,
+  .quest-main-column > *,
+  .quest-side-column > * {
+    animation: quest-rise 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .quest-detail-hero {
+    animation-delay: 40ms;
+  }
+
+  .quest-main-column > *:nth-child(1) {
+    animation-delay: 150ms;
+  }
+
+  .quest-main-column > *:nth-child(2) {
+    animation-delay: 230ms;
+  }
+
+  .quest-main-column > *:nth-child(3) {
+    animation-delay: 310ms;
+  }
+
+  .quest-side-column > *:nth-child(1) {
+    animation-delay: 200ms;
+  }
+
+  .quest-side-column > *:nth-child(2) {
+    animation-delay: 280ms;
+  }
+
+  .quest-side-column > *:nth-child(3) {
+    animation-delay: 360ms;
+  }
+}
+
+@keyframes quest-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 980px) {
   .quest-detail-workspace {
     width: min(100% - 28px, 760px);
     margin-top: 72px;
   }
 
-  .quest-detail-hero,
   .quest-detail-grid,
   .source-summary {
     grid-template-columns: 1fr;
-  }
-
-  .quest-meta-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

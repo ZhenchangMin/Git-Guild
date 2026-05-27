@@ -3,6 +3,9 @@ import { computed, nextTick, ref } from 'vue'
 
 import { adminApi } from '../../api/adminApi'
 import { adminQuestApplications, decisionMeta, questStatusMeta } from '../../data/admin'
+import operationRoomImg from '../../assets/operation room.png'
+import { adminExceptionCases, adminQuestApplications } from '../../data/admin'
+import { clearSession } from '../../stores/sessionStore'
 
 const ADMIN_NAME = '管理员 · 审核台'
 const REASON_MAX = 500
@@ -186,12 +189,40 @@ async function submitDecision(decision) {
   } finally {
     submitting.value = false
   }
+function switchAccount() {
+  clearSession()
+  router.push({ name: 'login' })
+}
+
+function logout() {
+  clearSession()
+  router.push({ name: 'login' })
 }
 </script>
 
 <template>
   <div class="admin-review-workspace">
         <!-- 队列 -->
+  <main class="app-shell">
+    <section class="scene work-scene" :style="{ backgroundImage: `url(${operationRoomImg})` }">
+      <div class="session-action-stack" aria-label="账号操作">
+        <button class="back-orb" type="button" aria-label="切换账号" @click="switchAccount">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 6 9 12l6 6" />
+          </svg>
+          <span>切换账号</span>
+        </button>
+        <button class="back-orb logout-orb" type="button" aria-label="退出登录" @click="logout">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10 7V5a2 2 0 0 1 2-2h6v18h-6a2 2 0 0 1-2-2v-2" />
+            <path d="M3 12h10" />
+            <path d="m6 9-3 3 3 3" />
+          </svg>
+          <span>退出登录</span>
+        </button>
+      </div>
+
+      <div class="admin-review-workspace">
         <aside class="admin-queue-panel" aria-label="任务发布申请队列">
           <div class="admin-panel-head">
             <div>

@@ -1,6 +1,7 @@
 package com.gitguild.backend.common;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -19,14 +20,20 @@ public class GlobalExceptionHandler {
         String message = ex.getBindingResult().getFieldErrors().stream()
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining("; "));
-        return ApiResponse.error("VALIDATION_ERROR", message);
+        return ApiResponse.error("VALIDATION_FAILED", "请求参数不合法", message);
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex) {
+        return ResponseEntity.status(ex.getStatus())
+                .body(ApiResponse.error(ex.getCode(), ex.getMessage(), ex.getDetails()));
     }
 
     /** 业务层主动抛出的参数错误，返回 400。 */
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     @ExceptionHandler(IllegalArgumentException.class)
     public ApiResponse<Void> handleIllegalArgument(IllegalArgumentException ex) {
-        return ApiResponse.error("BAD_REQUEST", ex.getMessage());
+        return ApiResponse.error("VALIDATION_FAILED", "请求参数不合法", ex.getMessage());
     }
 
     /** 兜底处理，返回 500，不向外暴露内部细节。 */

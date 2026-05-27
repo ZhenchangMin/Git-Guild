@@ -1,10 +1,18 @@
 <script setup>
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import hallImg from '../../assets/hall.png'
+import { questCommissions } from '../../data/questBoard'
+import { clearSession } from '../../stores/sessionStore'
 
 const router = useRouter()
+
+// Number of commissions an adventurer can pick up right now — stamped on the
+// quest board in the hall so the hero feature advertises live activity.
+const openQuestCount = computed(
+  () => questCommissions.filter((quest) => quest.status === '可接取').length || questCommissions.length,
+)
 const hallViewport = ref(null)
 const hallTrack = ref(null)
 const hallOffset = ref(0)
@@ -104,7 +112,13 @@ function openRoom(room) {
   router.push({ name: room.routeName })
 }
 
-function backToLogin() {
+function switchAccount() {
+  clearSession()
+  router.push({ name: 'login' })
+}
+
+function logout() {
+  clearSession()
   router.push({ name: 'login' })
 }
 
@@ -127,12 +141,22 @@ onUnmounted(() => {
     <button class="help-orb" type="button" aria-label="打开 Git Guild 使用教程" @click="openHelp">?</button>
 
     <section class="hall-scene">
-      <button class="back-orb" type="button" aria-label="返回登录入口" @click="backToLogin">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 6 9 12l6 6" />
-        </svg>
-        <span>返回登录入口</span>
-      </button>
+      <div class="session-action-stack" aria-label="账号操作">
+        <button class="back-orb" type="button" aria-label="切换账号" @click="switchAccount">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 6 9 12l6 6" />
+          </svg>
+          <span>切换账号</span>
+        </button>
+        <button class="back-orb logout-orb" type="button" aria-label="退出登录" @click="logout">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10 7V5a2 2 0 0 1 2-2h6v18h-6a2 2 0 0 1-2-2v-2" />
+            <path d="M3 12h10" />
+            <path d="m6 9-3 3 3 3" />
+          </svg>
+          <span>退出登录</span>
+        </button>
+      </div>
 
       <div
         ref="hallViewport"
@@ -149,14 +173,29 @@ onUnmounted(() => {
             v-for="room in rooms"
             :key="room.id"
             class="hotspot"
+            :class="{ 'has-shape': room.id === 'quest' }"
             type="button"
             :aria-label="room.label"
             :style="{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }"
             @click="openRoom(room)"
           >
-            <span class="tooltip">
+            <!-- The quest board is not a plain rectangle, so trace its actual
+                 silhouette (wooden frame + arched "QUEST BOARD" header) on hover
+                 instead of the default rectangular highlight box. -->
+            <svg
+              v-if="room.id === 'quest'"
+              class="hotspot-shape"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path d="M2.5 13 L6 13 L6 4 Q31 1 56 4 L56 13 L60 13 L60 84 L2.5 84 Z" />
+            </svg>
+
+            <span class="tooltip" :class="{ 'tooltip-quest': room.id === 'quest' }">
               <strong>{{ room.label }}</strong>
               <small>{{ room.hint }}</small>
+              <em v-if="room.id === 'quest'" class="tooltip-cta">{{ openQuestCount }} 份委托待接取 ›</em>
             </span>
           </button>
         </div>
@@ -164,3 +203,75 @@ onUnmounted(() => {
     </section>
   </main>
 </template>
+
+<style scoped>
+/* Quest board hotspot: suppress the default rectangular highlight and use the
+   board-shaped outline instead. */
+.hotspot.has-shape::after {
+  content: none;
+}
+
+.hotspot-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.hotspot-shape path {
+  /* Persistent faint outline so the quest board — the platform's hero feature —
+     is discoverable at rest, not invisible until hover like the other rooms. */
+  fill: rgba(255, 220, 132, 0.04);
+  stroke: rgba(255, 211, 116, 0.32);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 5px rgba(255, 190, 82, 0.18));
+  transition: stroke 220ms ease, fill 220ms ease, filter 220ms ease;
+  animation: quest-board-breathe 4.2s ease-in-out infinite;
+}
+
+.hotspot.has-shape:hover .hotspot-shape path,
+.hotspot.has-shape:focus-visible .hotspot-shape path {
+  fill: rgba(255, 220, 132, 0.12);
+  stroke: rgba(255, 217, 128, 0.92);
+  filter: drop-shadow(0 0 10px rgba(255, 190, 82, 0.55));
+  animation: none;
+}
+
+@keyframes quest-board-breathe {
+  0%,
+  100% {
+    stroke: rgba(255, 211, 116, 0.3);
+    filter: drop-shadow(0 0 4px rgba(255, 190, 82, 0.14));
+  }
+  50% {
+    stroke: rgba(255, 217, 128, 0.6);
+    filter: drop-shadow(0 0 9px rgba(255, 190, 82, 0.4));
+  }
+}
+
+/* Quest tooltip gets a parchment call-to-action line. */
+.tooltip-quest {
+  min-width: 218px;
+}
+
+.tooltip-cta {
+  margin-top: 4px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(244, 190, 92, 0.32);
+  color: #ffd98a;
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hotspot-shape path {
+    animation: none;
+  }
+}
+</style>
