@@ -1,6 +1,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 
+import WorkbenchGitOperationPanel from './WorkbenchGitOperationPanel.vue'
+import WorkbenchPrLinkPanel from './WorkbenchPrLinkPanel.vue'
+import WorkbenchRepositoryPanel from './WorkbenchRepositoryPanel.vue'
 import QuestStatusFlow from './QuestStatusFlow.vue'
 import {
   maintainerIssueBacklog,
@@ -104,9 +107,36 @@ const selectedTaskPullRequests = computed(() => {
   const prId = selectedTask.value.prNumber || selectedTask.value.prStatus.match(/PR #\d+/)?.[0]
   return pullRequestList.value.filter((pr) => pr.id === prId || pr.taskId === selectedTask.value.id)
 })
+const selectedTaskGitActions = computed(() => {
+  const actions = selectedTask.value?.actions ?? []
+  const hasGitWorkflow = actions.some((action) =>
+    ['branch', 'commit', 'pull-request', 'sync-pr', 'submit'].includes(action.type),
+  )
+
+  if (!hasGitWorkflow || actions.some((action) => action.type === 'sync-pr')) return actions
+
+  const nextActions = [...actions]
+  const submitIndex = nextActions.findIndex((action) => action.type === 'submit')
+  const syncAction = { label: '同步 PR 状态', type: 'sync-pr' }
+
+  if (submitIndex >= 0) {
+    nextActions.splice(submitIndex, 0, syncAction)
+  } else {
+    nextActions.push(syncAction)
+  }
+
+  return nextActions
+})
 const selectedRepositoryTasks = computed(() =>
   allTasks.value.filter((task) => task.repository === selectedRepository.value?.name),
 )
+const selectedRepositoryPullRequests = computed(() => {
+  if (!selectedRepository.value) return []
+
+  return pullRequestList.value.filter(
+    (pullRequest) => findTaskRecord(pullRequest.taskId)?.repository === selectedRepository.value.name,
+  )
+})
 const selectedFeedbackTask = computed(() =>
   allTasks.value.find((task) => task.id === selectedFeedback.value?.questId) ?? null,
 )
@@ -123,6 +153,18 @@ const feedbackStatusOptions = [
   { value: 'changes-requested', label: '退回修改' },
   { value: 'in-review', label: '待复审' },
 ]
+const repositoryGitActions = [
+  { label: '查看仓库', type: 'repository' },
+  { label: '创建分支', type: 'branch' },
+  { label: '上传提交', type: 'commit' },
+  { label: '发起 PR', type: 'pull-request' },
+  { label: '同步 PR 状态', type: 'sync-pr' },
+  { label: '去提交柜台', type: 'submit', primary: true },
+]
+const taskGitOperationHelper =
+  '工作台负责项目提交：创建分支、上传 commit、创建并同步 PR。提交柜台负责任务成果提交：登记任务、PR、说明和截图。'
+const repositoryGitOperationHelper =
+  '推荐顺序：确认仓库上下文 -> 创建任务分支 -> 上传 commit -> 发起 PR -> 同步 PR 状态 -> 去提交柜台。'
 const feedbackArchiveStats = computed(() => {
   const counts = reviewFeedbacks.reduce(
     (summary, feedback) => {
@@ -231,7 +273,7 @@ const linkPanelChecks = computed(() => {
 const canOpenSubmissionCounter = computed(() => {
   if (!linkPanelTask.value) return false
 
-  return Boolean(linkPanelTask.value.prNumber) && linkPanelTask.value.recentCommit !== '待上传'
+  return isGitActionReady('submit', linkPanelTask.value)
 })
 const selectedFeedbackFlowContext = computed(() => {
   if (!selectedFeedback.value) return {}
@@ -565,8 +607,74 @@ function findTaskRecord(taskId) {
   return findTaskGroup(taskId)?.tasks.find((task) => task.id === taskId) ?? null
 }
 
+function getPullRequestTask(pullRequest) {
+  return pullRequest?.taskId ? findTaskRecord(pullRequest.taskId) : null
+}
+
 function findRepositoryRecord(repositoryName) {
   return repositoryList.value.find((repository) => repository.name === repositoryName) ?? null
+}
+
+function normalizeRepositoryName(name = '') {
+  return name.toLowerCase().replace(/\s+/g, '')
+}
+
+function findRepositoryFromSource(source = '') {
+  const normalizedSource = normalizeRepositoryName(source)
+  return repositoryList.value.find((repository) => normalizedSource.includes(normalizeRepositoryName(repository.name))) ?? null
+}
+
+function hasSyncWarning(repository) {
+  return Boolean(repository?.syncStatus?.toLowerCase().includes('warning'))
+}
+
+function hasTaskCommit(task) {
+  return Boolean(task?.recentCommit && task.recentCommit !== '待上传')
+}
+
+function isGitActionReady(actionType, task = linkPanelTask.value) {
+  if (actionType === 'repository') return true
+  if (!task) return false
+  if (actionType === 'branch') return !task.branch
+  if (actionType === 'commit') return Boolean(task.branch)
+  if (actionType === 'pull-request') return Boolean(task.branch) && hasTaskCommit(task) && !task.prNumber
+  if (actionType === 'sync-pr') return Boolean(task.prNumber)
+  if (actionType === 'submit') {
+    return Boolean(task.prNumber) && hasTaskCommit(task) && !task.checkResult.includes('排队中') && !task.checkResult.includes('等待 PR')
+  }
+
+  return true
+}
+
+function getGitActionDisabledReason(actionType, task = linkPanelTask.value) {
+  if (isGitActionReady(actionType, task)) return ''
+  if (!task) return '当前没有可联动任务。'
+
+  const reasonMap = {
+    branch: '任务分支已经存在。可以继续上传 commit 或创建 PR。',
+    commit: '请先创建任务分支，再上传提交。',
+    'pull-request': !task.branch
+      ? '请先创建任务分支。'
+      : !hasTaskCommit(task)
+        ? '请先上传至少一个 commit。'
+        : '当前任务已经有关联 PR。',
+    'sync-pr': '请先发起 PR，再同步 PR 状态。',
+    submit: !task.prNumber
+      ? '请先发起 PR。'
+      : !hasTaskCommit(task)
+        ? '请先上传 commit。'
+        : 'PR 检查还没有可提交结果，请先同步 PR 状态。',
+  }
+
+  return reasonMap[actionType] ?? '当前状态暂不可执行。'
+}
+
+function getGitActionButtonTitle(actionType, task = linkPanelTask.value) {
+  return getGitActionDisabledReason(actionType, task) || '点击执行当前 Git 操作'
+}
+
+function openPullRequestStatus(pullRequest) {
+  runAction({ type: 'pr-view' }, `${pullRequest.id} ${pullRequest.title}`)
 }
 
 function findActionTaskRecord() {
@@ -603,22 +711,25 @@ function ensureTaskBranch(task) {
 }
 
 function ensureTaskCommit(task) {
-  ensureTaskBranch(task)
   const commitId = `c0ffee${simulatedCommitIndex.value}`
   simulatedCommitIndex.value += 1
   task.recentCommit = commitId
   task.nextStep = task.prNumber ? '同步 PR 状态后去提交柜台登记成果' : '创建 PR 并等待基础检查'
   task.counterLink = task.prNumber ? '待登记成果' : '未登记'
+  task.checkResult = task.prNumber ? '基础检查排队中' : task.checkResult
   task.counterDetail = task.prNumber
     ? '项目提交已上传到当前 PR；任务成果提交仍需到提交柜台完成。'
     : 'commit 已上传，但还没有 PR；提交柜台需要 PR 链接后才能登记成果。'
+  const pullRequest = task.prNumber ? pullRequestList.value.find((item) => item.id === task.prNumber) : null
+  if (pullRequest) {
+    pullRequest.status = task.prState === '退回修改' ? '退回修改' : '打开'
+    pullRequest.checks = task.checkResult
+  }
   updateRepositoryActivity(task)
   return commitId
 }
 
 function ensureTaskPullRequest(task) {
-  ensureTaskCommit(task)
-
   if (!task.prNumber) {
     const prId = `PR #${simulatedPullRequestIndex.value}`
     simulatedPullRequestIndex.value += 1
@@ -645,10 +756,6 @@ function ensureTaskPullRequest(task) {
 }
 
 function syncTaskPullRequest(task) {
-  if (!task.prNumber) {
-    ensureTaskPullRequest(task)
-  }
-
   const pullRequest = pullRequestList.value.find((item) => item.id === task.prNumber)
   const taskGroup = findTaskGroup(task.id)
   const isRevision = taskGroup?.id === 'changes-requested' || ['Changes requested', '退回修改'].includes(task.prState)
@@ -667,6 +774,13 @@ function syncTaskPullRequest(task) {
   }
 }
 
+function blockGitAction(actionType, task, source) {
+  operationResult.value = {
+    title: '当前步骤暂不可执行',
+    body: `${source}：${getGitActionDisabledReason(actionType, task)}`,
+  }
+}
+
 function runLinkedGitAction(actionType, source) {
   const task = findActionTaskRecord()
 
@@ -675,6 +789,11 @@ function runLinkedGitAction(actionType, source) {
       title: '没有可联动的任务',
       body: `${source} 当前没有关联任务，无法模拟任务分支、commit 或 PR。`,
     }
+    return true
+  }
+
+  if (!isGitActionReady(actionType, task)) {
+    blockGitAction(actionType, task, source)
     return true
   }
 
@@ -722,12 +841,10 @@ function runAction(action, source = '当前事项') {
     const taskId = action.questId ?? selectedFeedback.value?.questId ?? selectedTask.value?.id ?? linkPanelTask.value?.id
     const task = taskId ? findTaskRecord(taskId) : null
 
-    if (task && (!task.prNumber || task.recentCommit === '待上传')) {
+    if (task && !isGitActionReady('submit', task)) {
       operationResult.value = {
         title: '暂时不能提交任务成果',
-        body: `${task.id} 还缺少 ${!task.branch ? '任务分支、' : ''}${
-          task.recentCommit === '待上传' ? 'commit、' : ''
-        }${!task.prNumber ? 'PR' : ''}。请先在工作台完成项目提交，再去提交柜台提交任务成果。`,
+        body: `${task.id}：${getGitActionDisabledReason('submit', task)}`,
       }
       return
     }
@@ -749,6 +866,19 @@ function runAction(action, source = '当前事项') {
   if (action.type === 'repository' && selectedTaskRepository.value && !selectedRepository.value) {
     selectRepository(selectedTaskRepository.value)
     return
+  }
+
+  if (action.type === 'exception') {
+    const repository = selectedRepository.value ?? selectedTaskRepository.value ?? findRepositoryFromSource(source)
+    if (repository) {
+      const previousStatus = repository.syncStatus
+      repository.syncStatus = 'Synced'
+      operationResult.value = {
+        title: '同步状态已刷新',
+        body: `${repository.name} 已从 ${previousStatus} 更新为 Synced。Issue、PR 和最近提交状态已恢复为可演示数据。`,
+      }
+      return
+    }
   }
 
   if (['branch', 'commit', 'pull-request', 'sync-pr'].includes(action.type)) {
@@ -844,7 +974,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
           @click="selectRepository(repository)"
         >
           <strong>{{ repository.name.replace('git-guild / ', '') }}</strong>
-          <small :class="{ warning: repository.syncStatus.includes('warning') }">{{ repository.syncStatus }}</small>
+          <small :class="{ warning: hasSyncWarning(repository) }">{{ repository.syncStatus }}</small>
         </button>
       </div>
 
@@ -1248,7 +1378,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
             <div class="maintainer-list">
               <section v-for="repository in repositoryList" :key="repository.name">
                 <strong>{{ repository.name }}</strong>
-                <span :class="{ warning: repository.syncStatus.includes('warning') }">
+                <span :class="{ warning: hasSyncWarning(repository) }">
                   {{ repository.syncStatus }} · Issue {{ repository.issues }} · PR {{ repository.pullRequests }}
                 </span>
               </section>
@@ -1524,164 +1654,33 @@ function openFeedback(feedbackId, source = '审核反馈') {
             compact
           />
 
-          <article v-if="linkPanelTask" class="detail-card wide link-ledger-card">
-            <div class="link-ledger-head">
-              <div>
-                <p class="kicker">PR × Quest Ledger</p>
-                <h3>PR 与任务联动面板</h3>
-              </div>
-              <span class="status-pill" :class="{ warning: !canOpenSubmissionCounter }">
-                {{ linkPanelTask.counterLink }}
-              </span>
-            </div>
-            <dl class="link-ledger-grid">
-              <div>
-                <dt>任务 ID</dt>
-                <dd>{{ linkPanelTask.id }}</dd>
-              </div>
-              <div>
-                <dt>关联 Issue</dt>
-                <dd>{{ linkPanelTask.issue }}</dd>
-              </div>
-              <div>
-                <dt>当前分支</dt>
-                <dd>{{ linkPanelTask.branch || '未创建' }}</dd>
-              </div>
-              <div>
-                <dt>最近 commit</dt>
-                <dd>{{ linkPanelTask.recentCommit }}</dd>
-              </div>
-              <div>
-                <dt>PR 编号 / 状态</dt>
-                <dd>{{ linkPanelTask.prNumber || '未创建' }} · {{ linkPanelTask.prState }}</dd>
-              </div>
-              <div>
-                <dt>检查结果</dt>
-                <dd>{{ linkPanelTask.checkResult }}</dd>
-              </div>
-              <div>
-                <dt>关联仓库</dt>
-                <dd>{{ linkPanelRepository?.name ?? linkPanelTask.repository }}</dd>
-              </div>
-              <div>
-                <dt>提交柜台</dt>
-                <dd>{{ linkPanelTask.counterLink }}</dd>
-              </div>
-            </dl>
-            <div class="link-check-list">
-              <section
-                v-for="check in linkPanelChecks"
-                :key="check.label"
-                class="link-check-row"
-                :class="{ passed: check.passed, blocked: !check.passed }"
-              >
-                <strong>{{ check.label }}</strong>
-                <span>{{ check.passed ? '已就绪' : '待完成' }}</span>
-                <p>{{ check.detail }}</p>
-              </section>
-            </div>
-            <p class="link-ledger-note">
-              工作台负责项目提交：创建分支、上传 commit、创建并同步 PR。提交柜台负责任务成果提交：登记任务、PR、说明和截图。
-            </p>
-            <div class="card-actions detail-actions">
-              <button class="quiet-action" type="button" @click="runAction({ type: 'branch' }, `${linkPanelTask.id} 联动面板`)">
-                创建分支
-              </button>
-              <button class="quiet-action" type="button" @click="runAction({ type: 'commit' }, `${linkPanelTask.id} 联动面板`)">
-                上传提交
-              </button>
-              <button class="quiet-action" type="button" @click="runAction({ type: 'pull-request' }, `${linkPanelTask.id} 联动面板`)">
-                创建 PR
-              </button>
-              <button class="quiet-action" type="button" @click="runAction({ type: 'sync-pr' }, `${linkPanelTask.id} 联动面板`)">
-                同步 PR 状态
-              </button>
-              <button
-                class="primary-action"
-                type="button"
-                :disabled="!canOpenSubmissionCounter"
-                @click="runAction({ type: 'submit', questId: linkPanelTask.id }, `${linkPanelTask.id} 联动面板`)"
-              >
-                去提交柜台
-              </button>
-            </div>
-          </article>
+          <WorkbenchRepositoryPanel
+            v-if="selectedTaskRepository"
+            :repository="selectedTaskRepository"
+            :task="selectedTask"
+          />
 
-          <article class="detail-card wide">
-            <h3>任务信息</h3>
-            <dl>
-              <div>
-                <dt>关联仓库</dt>
-                <dd>{{ selectedTask.repository }}</dd>
-              </div>
-              <div>
-                <dt>关联 Issue</dt>
-                <dd>{{ selectedTask.issue }}</dd>
-              </div>
-              <div>
-                <dt>PR 状态</dt>
-                <dd>{{ selectedTask.prStatus }}</dd>
-              </div>
-              <div>
-                <dt>下一步</dt>
-                <dd>{{ selectedTask.nextStep }}</dd>
-              </div>
-            </dl>
-          </article>
+          <WorkbenchPrLinkPanel
+            v-if="linkPanelTask"
+            :task="linkPanelTask"
+            :repository="linkPanelRepository"
+            :checks="linkPanelChecks"
+            :pull-requests="selectedTaskPullRequests"
+            :counter-ready="canOpenSubmissionCounter"
+            show-repository
+            @open-pr="openPullRequestStatus"
+          />
 
-          <article v-if="selectedTaskRepository" class="detail-card">
-            <h3>仓库摘要</h3>
-            <dl>
-              <div>
-                <dt>同步状态</dt>
-                <dd>{{ selectedTaskRepository.syncStatus }}</dd>
-              </div>
-              <div>
-                <dt>默认分支</dt>
-                <dd>{{ selectedTaskRepository.defaultBranch }}</dd>
-              </div>
-              <div>
-                <dt>分支 / Issue / PR</dt>
-                <dd>{{ selectedTaskRepository.branches }} / {{ selectedTaskRepository.issues }} / {{ selectedTaskRepository.pullRequests }}</dd>
-              </div>
-              <div>
-                <dt>最近 commit</dt>
-                <dd>{{ selectedTaskRepository.lastCommit }}</dd>
-              </div>
-            </dl>
-          </article>
-
-          <article class="detail-card">
-            <h3>PR 状态</h3>
-            <div v-if="selectedTaskPullRequests.length > 0" class="linked-pr-list">
-              <button
-                v-for="pr in selectedTaskPullRequests"
-                :key="pr.id"
-                class="linked-pr-row"
-                type="button"
-                @click="runAction({ type: 'pr-view' }, `${pr.id} ${pr.title}`)"
-              >
-                <strong>{{ pr.id }}</strong>
-                <span>{{ pr.status }}</span>
-              </button>
-            </div>
-            <p v-else>{{ selectedTask.prStatus }}</p>
-          </article>
-
-          <article class="detail-card">
-            <h3>可执行操作</h3>
-            <div class="card-actions detail-actions">
-              <button
-                v-for="action in selectedTask.actions"
-                :key="action.label"
-                :class="action.primary ? 'primary-action' : 'quiet-action'"
-                type="button"
-                @click="runAction(action, `${selectedTask.id} ${selectedTask.title}`)"
-              >
-                {{ action.label }}
-              </button>
-            </div>
-          </article>
+          <WorkbenchGitOperationPanel
+            :task="selectedTask"
+            :actions="selectedTaskGitActions"
+            :counter-ready="canOpenSubmissionCounter"
+            :helper="taskGitOperationHelper"
+            :source="`${selectedTask.id} ${selectedTask.title}`"
+            :is-action-ready="isGitActionReady"
+            :get-action-title="getGitActionButtonTitle"
+            @run-action="runAction"
+          />
 
           <article class="detail-card wide">
             <h3>{{ operationResult.title }}</h3>
@@ -1696,163 +1695,42 @@ function openFeedback(feedbackId, source = '审核反馈') {
             <p class="kicker">Repository Detail</p>
             <h2>{{ selectedRepository.name }}</h2>
           </div>
-          <span class="status-pill" :class="{ warning: selectedRepository.syncStatus.includes('warning') }">
+          <span class="status-pill" :class="{ warning: hasSyncWarning(selectedRepository) }">
             {{ selectedRepository.syncStatus }}
           </span>
         </div>
 
         <div class="repository-detail-grid">
-          <article class="repository-overview-card">
-            <div>
-              <p class="kicker">Repository Workspace</p>
-              <h3>{{ selectedRepository.name }}</h3>
-              <p>用于查看仓库状态、创建分支、上传文件生成 commit，并从这里发起 PR。这里不提供在线代码编辑器。</p>
-            </div>
-            <div class="repository-sync-card" :class="{ warning: selectedRepository.syncStatus.includes('warning') }">
-              <span>同步状态</span>
-              <strong>{{ selectedRepository.syncStatus }}</strong>
-            </div>
-          </article>
+          <WorkbenchRepositoryPanel :repository="selectedRepository" variant="repository" />
 
-          <div class="repo-metric-grid" aria-label="仓库关键指标">
-            <article class="repo-metric">
-              <span>默认分支</span>
-              <strong>{{ selectedRepository.defaultBranch }}</strong>
-            </article>
-            <article class="repo-metric">
-              <span>分支</span>
-              <strong>{{ selectedRepository.branches }}</strong>
-            </article>
-            <article class="repo-metric">
-              <span>Issue</span>
-              <strong>{{ selectedRepository.issues }}</strong>
-            </article>
-            <article class="repo-metric">
-              <span>PR</span>
-              <strong>{{ selectedRepository.pullRequests }}</strong>
-            </article>
-            <article class="repo-metric">
-              <span>最近 commit</span>
-              <strong>{{ selectedRepository.lastCommit }}</strong>
-            </article>
-          </div>
+          <WorkbenchPrLinkPanel
+            :task="linkPanelTask"
+            :checks="linkPanelChecks"
+            :pull-requests="selectedRepositoryPullRequests"
+            :repository-tasks="selectedRepositoryTasks"
+            :counter-ready="canOpenSubmissionCounter"
+            :resolve-pull-request-task="getPullRequestTask"
+            empty-mode="repository"
+            show-task-strip
+            @select-task="selectTask"
+            @open-pr="openPullRequestStatus"
+          />
 
-          <article class="detail-card repository-actions-card">
-            <h3>常用 Git 操作</h3>
-            <div class="card-actions detail-actions">
-              <button class="quiet-action" type="button" @click="runAction({ type: 'repository' }, selectedRepository.name)">
-                查看仓库
-              </button>
-              <button class="quiet-action" type="button" @click="runAction({ type: 'branch' }, selectedRepository.name)">
-                创建分支
-              </button>
-              <button class="quiet-action" type="button" @click="runAction({ type: 'commit' }, selectedRepository.name)">
-                上传提交
-              </button>
-              <button class="primary-action" type="button" @click="runAction({ type: 'pull-request' }, selectedRepository.name)">
-                发起 PR
-              </button>
-            </div>
-          </article>
-
-          <article class="detail-card repository-flow-card">
-            <h3>推荐操作顺序</h3>
-            <ol>
-              <li>查看仓库、Issue 和最近提交，确认任务上下文。</li>
-              <li>创建任务分支，上传文件生成 commit。</li>
-              <li>发起 PR，再到提交柜台关联任务成果。</li>
-            </ol>
-          </article>
-
-          <article v-if="linkPanelTask" class="detail-card repository-link-card link-ledger-card">
-            <div class="link-ledger-head">
-              <div>
-                <p class="kicker">PR × Quest Ledger</p>
-                <h3>仓库联动任务</h3>
-              </div>
-              <span class="status-pill" :class="{ warning: !canOpenSubmissionCounter }">
-                {{ linkPanelTask.counterLink }}
-              </span>
-            </div>
-            <div v-if="selectedRepositoryTasks.length > 1" class="repository-task-strip">
-              <button
-                v-for="task in selectedRepositoryTasks"
-                :key="task.id"
-                class="quiet-action"
-                type="button"
-                @click="selectTask(task)"
-              >
-                {{ task.id }} · {{ task.statusLabel }}
-              </button>
-            </div>
-            <dl class="link-ledger-grid">
-              <div>
-                <dt>任务 ID</dt>
-                <dd>{{ linkPanelTask.id }}</dd>
-              </div>
-              <div>
-                <dt>关联 Issue</dt>
-                <dd>{{ linkPanelTask.issue }}</dd>
-              </div>
-              <div>
-                <dt>当前分支</dt>
-                <dd>{{ linkPanelTask.branch || '未创建' }}</dd>
-              </div>
-              <div>
-                <dt>最近 commit</dt>
-                <dd>{{ linkPanelTask.recentCommit }}</dd>
-              </div>
-              <div>
-                <dt>PR 编号 / 状态</dt>
-                <dd>{{ linkPanelTask.prNumber || '未创建' }} · {{ linkPanelTask.prState }}</dd>
-              </div>
-              <div>
-                <dt>检查结果</dt>
-                <dd>{{ linkPanelTask.checkResult }}</dd>
-              </div>
-            </dl>
-            <div class="link-check-list">
-              <section
-                v-for="check in linkPanelChecks"
-                :key="check.label"
-                class="link-check-row"
-                :class="{ passed: check.passed, blocked: !check.passed }"
-              >
-                <strong>{{ check.label }}</strong>
-                <span>{{ check.passed ? '已就绪' : '待完成' }}</span>
-                <p>{{ check.detail }}</p>
-              </section>
-            </div>
-            <p class="link-ledger-note">
-              当前仓库操作默认联动 {{ linkPanelTask.id }}。工作台完成代码与 PR，提交柜台完成课程任务成果登记。
-            </p>
-            <div class="card-actions detail-actions">
-              <button class="quiet-action" type="button" @click="runAction({ type: 'branch' }, `${linkPanelTask.id} 仓库联动`)">
-                创建分支
-              </button>
-              <button class="quiet-action" type="button" @click="runAction({ type: 'commit' }, `${linkPanelTask.id} 仓库联动`)">
-                上传提交
-              </button>
-              <button class="quiet-action" type="button" @click="runAction({ type: 'pull-request' }, `${linkPanelTask.id} 仓库联动`)">
-                创建 PR
-              </button>
-              <button class="quiet-action" type="button" @click="runAction({ type: 'sync-pr' }, `${linkPanelTask.id} 仓库联动`)">
-                同步 PR 状态
-              </button>
-              <button
-                class="primary-action"
-                type="button"
-                :disabled="!canOpenSubmissionCounter"
-                @click="runAction({ type: 'submit', questId: linkPanelTask.id }, `${linkPanelTask.id} 仓库联动`)"
-              >
-                去提交柜台
-              </button>
-            </div>
-          </article>
+          <WorkbenchGitOperationPanel
+            class="repository-actions-card"
+            :task="linkPanelTask"
+            :actions="repositoryGitActions"
+            :counter-ready="canOpenSubmissionCounter"
+            :helper="repositoryGitOperationHelper"
+            :source="selectedRepository.name"
+            :is-action-ready="isGitActionReady"
+            :get-action-title="getGitActionButtonTitle"
+            @run-action="runAction"
+          />
 
           <article class="detail-card repository-sync-detail">
             <h3>同步状态</h3>
-            <p v-if="selectedRepository.syncStatus.includes('warning')">
+            <p v-if="hasSyncWarning(selectedRepository)">
               最近同步存在异常，Issue 或 PR 状态可能不是最新。可以先手动同步，再查看异常日志。
             </p>
             <p v-else>
@@ -2702,104 +2580,6 @@ dd {
   overflow-wrap: anywhere;
 }
 
-.link-ledger-card {
-  gap: 14px;
-  border-color: rgba(238, 184, 91, 0.34);
-  background:
-    linear-gradient(135deg, rgba(72, 38, 14, 0.62), rgba(11, 6, 3, 0.46)),
-    radial-gradient(circle at 92% 0%, rgba(255, 217, 138, 0.13), transparent 0 30%, transparent 58%);
-}
-
-.link-ledger-head {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.link-ledger-head h3 {
-  margin-top: 2px;
-}
-
-.link-ledger-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 9px;
-  margin: 0;
-}
-
-.link-ledger-grid div {
-  min-width: 0;
-  border: 1px solid rgba(240, 198, 118, 0.16);
-  border-radius: 5px;
-  padding: 9px 10px;
-  background: rgba(7, 4, 2, 0.28);
-}
-
-.link-check-list {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.link-check-row {
-  display: grid;
-  gap: 5px;
-  border: 1px solid rgba(240, 198, 118, 0.18);
-  border-radius: 5px;
-  padding: 10px;
-  background: rgba(7, 4, 2, 0.3);
-}
-
-.link-check-row.passed {
-  border-color: rgba(111, 158, 87, 0.58);
-  background: rgba(44, 73, 36, 0.24);
-}
-
-.link-check-row.blocked {
-  border-color: rgba(204, 95, 65, 0.58);
-  background: rgba(88, 31, 23, 0.28);
-}
-
-.link-check-row strong {
-  color: #ffe8b9;
-  line-height: 1.2;
-}
-
-.link-check-row span {
-  width: fit-content;
-  border: 1px solid rgba(238, 184, 91, 0.36);
-  border-radius: 999px;
-  padding: 2px 8px;
-  color: #ffe4ad;
-  font-size: 0.7rem;
-  background: rgba(80, 43, 18, 0.42);
-}
-
-.link-check-row.passed span {
-  border-color: rgba(129, 184, 98, 0.64);
-  color: #dcf4c2;
-  background: rgba(44, 91, 36, 0.42);
-}
-
-.link-check-row.blocked span {
-  border-color: rgba(238, 120, 82, 0.66);
-  color: #ffd7c9;
-  background: rgba(110, 42, 36, 0.46);
-}
-
-.link-check-row p,
-.link-ledger-note {
-  color: rgba(255, 231, 183, 0.76);
-  line-height: 1.4;
-}
-
-.repository-task-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
 .primary-action:disabled,
 .quiet-action:disabled {
   cursor: not-allowed;
@@ -2809,39 +2589,6 @@ dd {
 
 .detail-actions {
   align-content: start;
-}
-
-.linked-pr-list {
-  display: grid;
-  gap: 8px;
-}
-
-.linked-pr-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  border: 1px solid rgba(240, 198, 118, 0.2);
-  border-radius: 5px;
-  padding: 9px 10px;
-  color: #ffe8b9;
-  text-align: left;
-  background: rgba(7, 4, 2, 0.32);
-  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
-}
-
-.linked-pr-row:hover,
-.linked-pr-row:focus-visible {
-  border-color: var(--gold-bright);
-  background: rgba(82, 45, 16, 0.5);
-  transform: translateY(-1px);
-}
-
-.linked-pr-row span {
-  flex: 0 0 auto;
-  color: rgba(255, 231, 183, 0.68);
-  font-size: 0.78rem;
 }
 
 .email-detail-body {
@@ -3405,90 +3152,13 @@ dd {
   grid-template-areas:
     "overview overview"
     "metrics metrics"
-    "actions flow"
     "link link"
+    "actions actions"
     "sync operation";
   gap: 12px;
   min-height: 0;
   overflow: auto;
   padding-right: 3px;
-}
-
-.repository-overview-card {
-  grid-area: overview;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(170px, 220px);
-  gap: 14px;
-  align-items: stretch;
-  border: 1px solid rgba(240, 198, 118, 0.24);
-  border-radius: 7px;
-  padding: 16px;
-  background:
-    linear-gradient(135deg, rgba(91, 50, 19, 0.56), rgba(11, 6, 3, 0.44)),
-    radial-gradient(circle at 90% 10%, rgba(255, 217, 138, 0.16), transparent 0 28%, transparent 54%);
-}
-
-.repository-overview-card h3 {
-  margin: 2px 0 8px;
-  color: #ffe8b9;
-  font-family: var(--font-display);
-  font-size: 1.42rem;
-}
-
-.repository-overview-card p {
-  max-width: 62ch;
-  margin: 0;
-  color: rgba(255, 231, 183, 0.75);
-  line-height: 1.48;
-}
-
-.repository-sync-card {
-  display: grid;
-  align-content: center;
-  gap: 8px;
-  border: 1px solid rgba(238, 184, 91, 0.32);
-  border-radius: 6px;
-  padding: 14px;
-  background: rgba(7, 4, 2, 0.34);
-}
-
-.repository-sync-card.warning {
-  border-color: rgba(204, 95, 65, 0.68);
-  background: rgba(79, 30, 24, 0.38);
-}
-
-.repository-sync-card span,
-.repo-metric span {
-  color: rgba(255, 231, 183, 0.62);
-  font-size: 0.76rem;
-}
-
-.repository-sync-card strong,
-.repo-metric strong {
-  color: #ffe2a0;
-  font-family: var(--font-display);
-  font-size: 1.08rem;
-}
-
-.repo-metric-grid {
-  grid-area: metrics;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.repo-metric {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-  border: 1px solid rgba(240, 198, 118, 0.2);
-  border-radius: 5px;
-  padding: 11px 12px;
-  background: rgba(11, 6, 3, 0.34);
-}
-
-.repo-metric strong {
-  overflow-wrap: anywhere;
 }
 
 .repository-actions-card {
@@ -3799,19 +3469,6 @@ dd {
       "link"
       "sync"
       "operation";
-  }
-
-  .repository-overview-card {
-    grid-template-columns: 1fr;
-  }
-
-  .repo-metric-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .link-ledger-grid,
-  .link-check-list {
-    grid-template-columns: 1fr;
   }
 
   .repository-shortcuts {

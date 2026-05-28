@@ -168,6 +168,7 @@ export const pullRequests = [
   { id: 'PR #18', taskId: 'QST-0412', title: 'QST-0412 Issue 同步状态页', status: '打开', checks: '等待委托人审核', action: '查看 PR' },
   { id: 'PR #21', taskId: 'QST-0431', title: 'QST-0431 repository import error view', status: '待审核', checks: '基础检查通过', action: '查看 PR' },
   { id: 'PR #23', taskId: 'QST-0444', title: 'QST-0444 审核反馈归档', status: '退回修改', checks: '2 项检查未通过', action: '查看 PR' },
+  { id: 'PR #12', taskId: 'QST-0398', title: 'QST-0398 empty filter state', status: 'Merged', checks: '全部通过', action: '查看 PR' },
 ]
 
 export const reviewFeedbacks = [
