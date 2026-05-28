@@ -65,17 +65,20 @@ export const routes = [
     meta: { requiresAuth: true, roles: ['ADVENTURER'] },
   },
   {
+    // The admin console uses a nested layout: AdminConsoleLayout renders the
+    // shared rail + <router-view>, and each child route names itself. The
+    // parent must NOT carry `name: 'admin-review'` — Vue Router 4 throws if a
+    // nested route reuses an ancestor's name, which would prevent the whole
+    // router from initializing and blank-screen the app.
     path: '/admin',
     component: AdminConsoleLayout,
+    meta: { requiresAuth: true, roles: ['ADMIN'] },
     children: [
       { path: '', redirect: { name: 'admin-review' } },
       { path: 'review', name: 'admin-review', component: AdminReviewPage },
       { path: 'exceptions', name: 'admin-exceptions', component: AdminExceptionsPage },
       { path: 'taxonomy', name: 'admin-taxonomy', component: AdminTaxonomyPage },
     ],
-    name: 'admin-review',
-    component: AdminReviewPage,
-    meta: { requiresAuth: true, roles: ['ADMIN'] },
   },
   {
     path: '/growth',
