@@ -56,6 +56,18 @@ public class QuestServiceImpl implements QuestService {
             QuestStatus.IN_PROGRESS,
             QuestStatus.IN_REVIEW);
     private static final List<AssignmentStatus> ACTIVE_ASSIGNMENT_STATUSES = List.of(AssignmentStatus.ACTIVE);
+    private static final List<AssignmentStatus> ANY_ASSIGNMENT_STATUSES = List.of(
+            AssignmentStatus.ACTIVE,
+            AssignmentStatus.ABANDONED,
+            AssignmentStatus.COMPLETED,
+            AssignmentStatus.CANCELLED);
+    private static final List<QuestStatus> QUEST_BOARD_DEFAULT_STATUSES = List.of(
+            QuestStatus.PUBLISHED,
+            QuestStatus.IN_PROGRESS);
+    private static final List<QuestStatus> PUBLIC_DETAIL_STATUSES = List.of(
+            QuestStatus.PUBLISHED,
+            QuestStatus.IN_PROGRESS,
+            QuestStatus.COMPLETED);
 
     private final QuestRepository questRepository;
     private final QuestAssignmentRepository assignmentRepository;
@@ -168,8 +180,8 @@ public class QuestServiceImpl implements QuestService {
     @Transactional(readOnly = true)
     public QuestDetailResponse getQuestDetail(Long questId, Long currentUserId) {
         Quest quest = findQuest(questId);
-        if (quest.getStatus() != QuestStatus.PUBLISHED && !canViewUnpublished(quest, currentUserId)) {
-            throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN, "当前用户无权限", "未上架任务仅发布者或管理员可查看");
+        if (!isPublicDetailVisible(quest) && !canViewRestrictedQuest(quest, currentUserId)) {
+            throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN, "当前用户无权限", "该任务当前不可公开查看");
         }
         return toDetail(quest);
     }
@@ -204,8 +216,11 @@ public class QuestServiceImpl implements QuestService {
     private Specification<Quest> toSpecification(QuestSearchCriteria criteria) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            QuestStatus status = criteria.status() == null ? QuestStatus.PUBLISHED : criteria.status();
-            predicates.add(cb.equal(root.get("status"), status));
+            if (criteria.status() == null) {
+                predicates.add(root.get("status").in(QUEST_BOARD_DEFAULT_STATUSES));
+            } else {
+                predicates.add(cb.equal(root.get("status"), criteria.status()));
+            }
             if (criteria.keyword() != null && !criteria.keyword().isBlank()) {
                 String pattern = "%" + criteria.keyword().toLowerCase() + "%";
                 predicates.add(cb.or(
@@ -261,12 +276,19 @@ public class QuestServiceImpl implements QuestService {
                 .orElseThrow(() -> new BusinessException("QUEST_NOT_FOUND", HttpStatus.NOT_FOUND, "任务不存在", "questId=" + questId));
     }
 
-    private boolean canViewUnpublished(Quest quest, Long currentUserId) {
+    private boolean isPublicDetailVisible(Quest quest) {
+        return PUBLIC_DETAIL_STATUSES.contains(quest.getStatus());
+    }
+
+    private boolean canViewRestrictedQuest(Quest quest, Long currentUserId) {
         if (currentUserId == null) {
             return false;
         }
         User user = findUser(currentUserId);
-        return user.getRole() == UserRole.ADMIN || quest.getPublisher().getUserId().equals(currentUserId);
+        if (user.getRole() == UserRole.ADMIN || quest.getPublisher().getUserId().equals(currentUserId)) {
+            return true;
+        }
+        return assignmentRepository.existsByQuestAndAssigneeUserIdAndStatusIn(quest, currentUserId, ANY_ASSIGNMENT_STATUSES);
     }
 
     private QuestSummaryResponse toSummary(Quest quest) {
