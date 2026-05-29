@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { authApi } from '../../api'
@@ -13,7 +13,10 @@ const route = useRoute()
 const mode = ref('login')
 const selectedRole = ref('BEGINNER')
 const isSubmitting = ref(false)
-const isGateOpen = ref(false)
+// When a guarded action (e.g. a guest tapping "接取委托") bounces the user
+// here with a `redirect` query, skip the closed-gate intro and open the login
+// modal immediately so they don't have to click the door first.
+const isGateOpen = ref(typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/'))
 const isEntering = ref(false)
 const formMessage = ref('')
 const formError = ref('')
@@ -159,6 +162,14 @@ function enterAsVisitor() {
   })
   beginEntryAnimation({ name: 'quest-board' })
 }
+
+onMounted(() => {
+  // Match openGate()'s focus handoff so an auto-opened modal lands focus on
+  // the email field instead of the page body.
+  if (isGateOpen.value) {
+    nextTick(() => accountInput.value?.focus())
+  }
+})
 
 onBeforeUnmount(() => {
   window.clearTimeout(entryTimer)

@@ -1,9 +1,14 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import QuestActionRail from './QuestActionRail.vue'
 import QuestJourney from './QuestJourney.vue'
 import { defaultSubmissionRequirements, questDetails } from '../data/quests'
+import { sessionStore } from '../stores/sessionStore'
+
+const router = useRouter()
+const route = useRoute()
 
 const props = defineProps({
   quest: {
@@ -145,6 +150,12 @@ watch(
 
 function handlePrimaryAction() {
   if (localWorkflowState.value === 'available') {
+    // Guests can browse the commission scroll but must register before
+    // claiming a quest — bounce them to the gate with a redirect back here.
+    if (sessionStore.role === 'VISITOR') {
+      router.push({ name: 'login', query: { redirect: route.fullPath } })
+      return
+    }
     localWorkflowState.value = 'in-progress'
     inlineNotice.value = '已接取该任务，下一步请进入工作台创建任务分支。任务已加入你的工作台待办。'
     return

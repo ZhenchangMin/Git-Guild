@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 
 import questBoardImg from '../../assets/quest board.png'
 import { questCommissions, questFilterGroups } from '../../data/questBoard'
+import { sessionStore } from '../../stores/sessionStore'
 
 const router = useRouter()
 const questSearch = ref('')
@@ -128,6 +129,16 @@ function nextQuestPage() {
 }
 
 function openQuestDetail(questId, intent = 'view') {
+  // Guests can browse but must sign in before accepting a commission — send
+  // them to the gate, preserving the accept intent so the detail page picks
+  // up where they left off after login.
+  if (intent === 'accept' && sessionStore.role === 'VISITOR') {
+    router.push({
+      name: 'login',
+      query: { redirect: `/quests/${questId}?intent=accept` },
+    })
+    return
+  }
   router.push({
     name: 'quest-detail',
     params: { questId },
