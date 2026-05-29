@@ -123,9 +123,36 @@ function saveAuthSession(authData) {
   beginEntryAnimation(routeAfterEntry(user.role))
 }
 
+// Pre-flight checks so we can surface friendly errors via the existing
+// guild-auth-notice strip instead of the browser's native validation bubble
+// (the form uses `novalidate` to suppress that bubble).
+function validateInputs() {
+  const account = form.account.trim()
+  if (!account) return '请填写账号 / 邮箱。'
+  // Lightweight email shape check — mirrors the input type=email semantics
+  // we lost when disabling native validation.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account)) return '账号 / 邮箱格式不正确。'
+  if (!form.password) return '请填写密码。'
+  if (isRegisterMode.value) {
+    const username = form.username.trim()
+    if (!username) return '请填写用户名。'
+    if (username.length < 3 || username.length > 32) return '用户名长度需为 3-32 位。'
+    if (form.password.length < 8 || form.password.length > 64) return '密码长度需为 8-64 位。'
+    if (!/(?=.*[A-Za-z])(?=.*\d)/.test(form.password)) return '密码需同时包含字母和数字。'
+  }
+  return ''
+}
+
 async function submitAuth() {
   formError.value = ''
   formMessage.value = ''
+
+  const validationError = validateInputs()
+  if (validationError) {
+    formError.value = validationError
+    return
+  }
+
   isSubmitting.value = true
 
   try {
@@ -212,7 +239,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
-            <form class="guild-auth-form" @submit.prevent="submitAuth">
+            <form class="guild-auth-form" novalidate @submit.prevent="submitAuth">
               <label v-if="isRegisterMode" class="guild-field">
                 <span>用户名</span>
                 <input
@@ -244,9 +271,14 @@ onBeforeUnmount(() => {
                   type="password"
                   :autocomplete="isRegisterMode ? 'new-password' : 'current-password'"
                   :minlength="isRegisterMode ? 8 : undefined"
+                  :maxlength="isRegisterMode ? 64 : undefined"
+                  :pattern="isRegisterMode ? '(?=.*[A-Za-z])(?=.*\\d).{8,64}' : undefined"
                   required
-                  placeholder="输入你的公会密钥"
+                  :placeholder="isRegisterMode ? '8-64 位，含字母和数字' : '输入你的公会密钥'"
                 />
+                <small v-if="isRegisterMode" class="guild-field-hint">
+                  长度 8-64 位，需同时包含字母和数字
+                </small>
               </label>
 
               <div class="guild-role-block">
