@@ -3,6 +3,7 @@ package com.gitguild.backend.quest.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -12,6 +13,7 @@ import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
 import com.gitguild.backend.common.BusinessException;
+import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Difficulty;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.quest.domain.QuestAssignment;
@@ -20,6 +22,8 @@ import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.dto.CreateQuestRequest;
 import com.gitguild.backend.quest.dto.QuestResponses.AssignmentResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.QuestDetailResponse;
+import com.gitguild.backend.quest.dto.QuestSearchCriteria;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestCategoryRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
@@ -27,6 +31,11 @@ import com.gitguild.backend.quest.repository.QuestTagRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +44,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 @ExtendWith(MockitoExtension.class)
 class QuestServiceImplTest {
@@ -184,6 +196,92 @@ class QuestServiceImplTest {
         assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
     }
 
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void searchQuestsShouldIncludePublishedAndInProgressByDefault() {
+        when(questRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        QuestSearchCriteria criteria = questSearchCriteria(null);
+
+        questService.searchQuests(criteria);
+
+        ArgumentCaptor<Specification<Quest>> specificationCaptor = ArgumentCaptor.forClass(Specification.class);
+        verify(questRepository).findAll(specificationCaptor.capture(), any(Pageable.class));
+
+        Root<Quest> root = mock(Root.class);
+        CriteriaQuery<?> query = mock(CriteriaQuery.class);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class);
+        Path<QuestStatus> statusPath = mock(Path.class);
+        Predicate statusPredicate = mock(Predicate.class);
+        Predicate finalPredicate = mock(Predicate.class);
+        when(root.get("status")).thenReturn((Path) statusPath);
+        when(statusPath.in(List.of(QuestStatus.PUBLISHED, QuestStatus.IN_PROGRESS))).thenReturn(statusPredicate);
+        when(cb.and(any(Predicate[].class))).thenReturn(finalPredicate);
+
+        specificationCaptor.getValue().toPredicate(root, query, cb);
+
+        verify(statusPath).in(List.of(QuestStatus.PUBLISHED, QuestStatus.IN_PROGRESS));
+    }
+
+    @Test
+    void getQuestDetailShouldAllowPublicInProgressQuest() {
+        Quest quest = inProgressQuest(user(2001L, UserRole.MAINTAINER));
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+        when(assignmentRepository.findFirstByQuestQuestIdAndStatus(5001L, AssignmentStatus.ACTIVE))
+                .thenReturn(Optional.empty());
+
+        QuestDetailResponse response = questService.getQuestDetail(5001L, null);
+
+        assertThat(response.questId()).isEqualTo(5001L);
+        assertThat(response.status()).isEqualTo(QuestStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void getQuestDetailShouldAllowPublicCompletedQuest() {
+        Quest quest = publishedQuest(user(2001L, UserRole.MAINTAINER));
+        quest.setStatus(QuestStatus.COMPLETED);
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+        when(assignmentRepository.findFirstByQuestQuestIdAndStatus(5001L, AssignmentStatus.ACTIVE))
+                .thenReturn(Optional.empty());
+
+        QuestDetailResponse response = questService.getQuestDetail(5001L, null);
+
+        assertThat(response.questId()).isEqualTo(5001L);
+        assertThat(response.status()).isEqualTo(QuestStatus.COMPLETED);
+    }
+
+    @Test
+    void getQuestDetailShouldRejectPublicClosedQuest() {
+        Quest quest = publishedQuest(user(2001L, UserRole.MAINTAINER));
+        quest.setStatus(QuestStatus.CLOSED);
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+
+        assertThatThrownBy(() -> questService.getQuestDetail(5001L, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("FORBIDDEN");
+    }
+
+    @Test
+    void getQuestDetailShouldAllowAssignedUserToViewClosedQuest() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User assignee = user(3001L, UserRole.BEGINNER);
+        Quest quest = publishedQuest(maintainer);
+        quest.setStatus(QuestStatus.CLOSED);
+
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+        when(userRepository.findById(3001L)).thenReturn(Optional.of(assignee));
+        when(assignmentRepository.existsByQuestAndAssigneeUserIdAndStatusIn(any(), any(), any()))
+                .thenReturn(true);
+        when(assignmentRepository.findFirstByQuestQuestIdAndStatus(5001L, AssignmentStatus.ACTIVE))
+                .thenReturn(Optional.empty());
+
+        QuestDetailResponse response = questService.getQuestDetail(5001L, 3001L);
+
+        assertThat(response.questId()).isEqualTo(5001L);
+        assertThat(response.status()).isEqualTo(QuestStatus.CLOSED);
+    }
+
     private CreateQuestRequest createQuestRequest() {
         CreateQuestRequest request = new CreateQuestRequest();
         request.setRepositoryId(1001L);
@@ -198,6 +296,20 @@ class QuestServiceImplTest {
         request.setCategoryId(2L);
         request.setTagIds(List.of());
         return request;
+    }
+
+    private QuestSearchCriteria questSearchCriteria(QuestStatus status) {
+        return new QuestSearchCriteria(
+                null,
+                null,
+                List.of(),
+                null,
+                List.of(),
+                status,
+                "createdAt",
+                "desc",
+                1,
+                10);
     }
 
     private Quest inProgressQuest(User maintainer) {
