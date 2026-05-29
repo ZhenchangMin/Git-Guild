@@ -14,6 +14,8 @@ public interface QuestAssignmentRepository extends JpaRepository<QuestAssignment
 
     boolean existsByQuestAndAssigneeUserIdAndStatusIn(Quest quest, Long assigneeId, Collection<AssignmentStatus> statuses);
 
+    Optional<QuestAssignment> findByQuestAndAssigneeUserIdAndStatus(Quest quest, Long assigneeId, AssignmentStatus status);
+
     Optional<QuestAssignment> findFirstByQuestQuestIdAndStatus(Long questId, AssignmentStatus status);
 
     List<QuestAssignment> findByQuestAndStatus(Quest quest, AssignmentStatus status);

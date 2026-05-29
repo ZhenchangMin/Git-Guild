@@ -168,6 +168,14 @@ public class Quest {
         this.status = QuestStatus.IN_PROGRESS;
     }
 
+    public void markInReview() {
+        this.status = QuestStatus.IN_REVIEW;
+    }
+
+    public void markCompleted() {
+        this.status = QuestStatus.COMPLETED;
+    }
+
     public void addTags(Set<QuestTag> tags) {
         this.tags.addAll(tags);
     }
