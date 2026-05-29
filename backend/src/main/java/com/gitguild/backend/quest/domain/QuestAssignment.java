@@ -95,6 +95,11 @@ public class QuestAssignment {
         this.status = AssignmentStatus.CANCELLED;
     }
 
+    public void complete() {
+        this.status = AssignmentStatus.COMPLETED;
+        this.completedAt = OffsetDateTime.now();
+    }
+
     public void setAssignmentId(Long assignmentId) {
         this.assignmentId = assignmentId;
     }

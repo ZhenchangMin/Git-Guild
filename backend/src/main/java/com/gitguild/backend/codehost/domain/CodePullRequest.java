@@ -141,4 +141,8 @@ public class CodePullRequest {
     public void setMergedAt(OffsetDateTime mergedAt) {
         this.mergedAt = mergedAt;
     }
+
+    public void setPullRequestId(Long pullRequestId) {
+        this.pullRequestId = pullRequestId;
+    }
 }
