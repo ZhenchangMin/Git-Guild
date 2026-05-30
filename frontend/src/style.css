@@ -3317,8 +3317,8 @@ h2 {
   inset: 0;
   border: 0;
   padding: 0;
-  background: radial-gradient(circle at 50% 42%, rgba(39, 20, 8, 0.24), rgba(4, 2, 1, 0.68));
-  backdrop-filter: blur(3px);
+  background: radial-gradient(circle at 50% 42%, rgba(39, 20, 8, 0.03), rgba(4, 2, 1, 0.15));
+  backdrop-filter: blur(1px);
 }
 
 .submission-modal-sheet {
@@ -3367,6 +3367,26 @@ h2 {
     drop-shadow(0 0 4px rgba(0, 0, 0, 0.72))
     drop-shadow(0 10px 24px rgba(0, 0, 0, 0.48))
     drop-shadow(0 32px 58px rgba(0, 0, 0, 0.62));
+}
+
+/* The parchment PNG has the guild crest (key + sigil) printed faintly in its
+   centre. Over the writing area it competes with the text. This ::after lays a
+   soft cream wash *above* the parchment image (::before, z-index -1) but
+   *below* the in-flow text — same negative z-index, later in DOM, so it paints
+   on top of ::before yet under the content — fading the watermark while leaving
+   the decorative border/edges of the sheet untouched. */
+.submission-modal-sheet::after {
+  position: absolute;
+  inset: 7% 9%;
+  z-index: -1;
+  content: '';
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 66% 56% at 50% 54%,
+    rgba(243, 231, 202, 0.88) 0%,
+    rgba(243, 231, 202, 0.62) 46%,
+    rgba(243, 231, 202, 0) 80%
+  );
 }
 
 .submission-sheet-close {
