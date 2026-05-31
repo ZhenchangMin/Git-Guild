@@ -63,4 +63,19 @@ public interface GiteaAdapter {
      * @return 分支列表，含分支名和最新 commit SHA，Gitea 无数据时返回空列表
      */
     List<BranchInfo> listBranches(String owner, String repo);
+
+    /**
+     * 列出仓库的所有 PR（含 open / closed / merged），供 PR 同步服务落库使用。
+     *
+     * <p>核心用途：Adventurer 打开提交柜台（{@code submission-draft}）时，将该仓库的 PR
+     * upsert 进本地 {@code pull_requests} 表，使 Submission 能引用本地 {@code pullRequestId}。
+     *
+     * <p><b>已知限制：</b>依赖 Gitea 默认分页，PR 数量超过单页时结果不完整（见已知问题清单
+     * P4-016 问题3，Demo 仓库不触发）。
+     *
+     * @param owner Gitea 仓库所有者用户名
+     * @param repo  仓库名称
+     * @return PR 快照列表（{@code state=all}），Gitea 无数据时返回空列表
+     */
+    List<PrInfo> listPulls(String owner, String repo);
 }
