@@ -107,6 +107,10 @@ public class CodeRepository {
         return syncStatus;
     }
 
+    public String getDefaultBranch() {
+        return defaultBranch;
+    }
+
     public void setRepositoryId(Long repositoryId) {
         this.repositoryId = repositoryId;
     }
