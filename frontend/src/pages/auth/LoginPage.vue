@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { authApi } from '../../api'
@@ -13,10 +13,7 @@ const route = useRoute()
 const mode = ref('login')
 const selectedRole = ref('BEGINNER')
 const isSubmitting = ref(false)
-// When a guarded action (e.g. a guest tapping "接取委托") bounces the user
-// here with a `redirect` query, skip the closed-gate intro and open the login
-// modal immediately so they don't have to click the door first.
-const isGateOpen = ref(typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/'))
+const isGateOpen = ref(false)
 const isEntering = ref(false)
 const formMessage = ref('')
 const formError = ref('')
@@ -34,13 +31,13 @@ const roles = [
   {
     id: 'BEGINNER',
     entryRole: 'ADVENTURER',
-    label: 'Adventurer',
+    label: '冒险家',
     caption: '接取任务',
   },
   {
     id: 'MAINTAINER',
     entryRole: 'MAINTAINER',
-    label: 'Maintainer',
+    label: '委托人',
     caption: '发布悬赏',
   },
 ]
@@ -49,19 +46,18 @@ const isRegisterMode = computed(() => mode.value === 'register')
 const activeRole = computed(() => roles.find((role) => role.id === selectedRole.value) ?? roles[0])
 const submitButtonText = computed(() => {
   if (isSubmitting.value) return isRegisterMode.value ? '正在登记身份...' : '正在开启大门...'
-  return isRegisterMode.value ? `注册为 ${activeRole.value.label}` : `以 ${activeRole.value.label} 身份进入`
+  return isRegisterMode.value ? `注册为${activeRole.value.label}` : '进入公会'
 })
 
 function toEntryRole(apiRole) {
   if (apiRole === 'BEGINNER') return 'ADVENTURER'
   if (apiRole === 'ADMIN') return 'ADMIN'
   if (apiRole === 'MAINTAINER') return 'MAINTAINER'
-  return activeRole.value.entryRole
+  return 'ADVENTURER'
 }
 
 function routeForRole(entryRole) {
   if (entryRole === 'ADMIN') return { name: 'admin-review' }
-  if (entryRole === 'MAINTAINER') return { name: 'maintainer-workbench' }
   return { name: 'hall' }
 }
 
@@ -123,36 +119,9 @@ function saveAuthSession(authData) {
   beginEntryAnimation(routeAfterEntry(user.role))
 }
 
-// Pre-flight checks so we can surface friendly errors via the existing
-// guild-auth-notice strip instead of the browser's native validation bubble
-// (the form uses `novalidate` to suppress that bubble).
-function validateInputs() {
-  const account = form.account.trim()
-  if (!account) return '请填写账号 / 邮箱。'
-  // Lightweight email shape check — mirrors the input type=email semantics
-  // we lost when disabling native validation.
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account)) return '账号 / 邮箱格式不正确。'
-  if (!form.password) return '请填写密码。'
-  if (isRegisterMode.value) {
-    const username = form.username.trim()
-    if (!username) return '请填写用户名。'
-    if (username.length < 3 || username.length > 32) return '用户名长度需为 3-32 位。'
-    if (form.password.length < 8 || form.password.length > 64) return '密码长度需为 8-64 位。'
-    if (!/(?=.*[A-Za-z])(?=.*\d)/.test(form.password)) return '密码需同时包含字母和数字。'
-  }
-  return ''
-}
-
 async function submitAuth() {
   formError.value = ''
   formMessage.value = ''
-
-  const validationError = validateInputs()
-  if (validationError) {
-    formError.value = validationError
-    return
-  }
-
   isSubmitting.value = true
 
   try {
@@ -189,14 +158,6 @@ function enterAsVisitor() {
   })
   beginEntryAnimation({ name: 'quest-board' })
 }
-
-onMounted(() => {
-  // Match openGate()'s focus handoff so an auto-opened modal lands focus on
-  // the email field instead of the page body.
-  if (isGateOpen.value) {
-    nextTick(() => accountInput.value?.focus())
-  }
-})
 
 onBeforeUnmount(() => {
   window.clearTimeout(entryTimer)
@@ -239,7 +200,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
-            <form class="guild-auth-form" novalidate @submit.prevent="submitAuth">
+            <form class="guild-auth-form" @submit.prevent="submitAuth">
               <label v-if="isRegisterMode" class="guild-field">
                 <span>用户名</span>
                 <input
@@ -271,18 +232,13 @@ onBeforeUnmount(() => {
                   type="password"
                   :autocomplete="isRegisterMode ? 'new-password' : 'current-password'"
                   :minlength="isRegisterMode ? 8 : undefined"
-                  :maxlength="isRegisterMode ? 64 : undefined"
-                  :pattern="isRegisterMode ? '(?=.*[A-Za-z])(?=.*\\d).{8,64}' : undefined"
                   required
-                  :placeholder="isRegisterMode ? '8-64 位，含字母和数字' : '输入你的公会密钥'"
+                  placeholder="输入你的公会密钥"
                 />
-                <small v-if="isRegisterMode" class="guild-field-hint">
-                  长度 8-64 位，需同时包含字母和数字
-                </small>
               </label>
 
-              <div class="guild-role-block">
-                <span>选择入口身份</span>
+              <div v-if="isRegisterMode" class="guild-role-block">
+                <span>选择注册身份</span>
                 <div class="guild-role-pills" aria-label="选择角色">
                   <button
                     v-for="role in roles"

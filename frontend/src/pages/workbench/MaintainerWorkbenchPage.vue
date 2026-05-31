@@ -20,12 +20,16 @@ function openSubmission(questId) {
 function openProfile() {
   router.push({ name: 'profile' })
 }
+
+function openReviewDesk() {
+  router.push({ name: 'maintainer-review' })
+}
 </script>
 
 <template>
   <main class="app-shell">
     <section
-      class="scene work-scene workbench-mode"
+      class="scene work-scene workbench-mode maintainer-workbench-mode"
       :style="{ backgroundImage: `url(${workbenchImg})` }"
     >
       <button class="back-orb" type="button" aria-label="返回公会大厅" @click="backToHall">
@@ -35,7 +39,12 @@ function openProfile() {
         <span>返回公会大厅</span>
       </button>
 
-      <Workbench initial-view="guild-master" @open-submission="openSubmission" @open-id-card="openProfile" />
+      <Workbench
+        show-review-desk-entry
+        @open-submission="openSubmission"
+        @open-id-card="openProfile"
+        @open-review-desk="openReviewDesk"
+      />
     </section>
   </main>
 </template>

@@ -35,7 +35,7 @@ function openProfile() {
         <span>返回公会大厅</span>
       </button>
 
-      <Workbench initial-view="adventurer" @open-submission="openSubmission" @open-id-card="openProfile" />
+      <Workbench @open-submission="openSubmission" @open-id-card="openProfile" />
     </section>
   </main>
 </template>

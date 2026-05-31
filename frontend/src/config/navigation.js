@@ -12,7 +12,7 @@ export const roleNavigation = {
   MAINTAINER: [
     { label: '仓库接入', routeName: 'repository-sync' },
     { label: '委托人工作台', routeName: 'maintainer-workbench' },
-    { label: '提交审核', routeName: 'maintainer-workbench' },
+    { label: '提交审核', routeName: 'maintainer-review' },
   ],
   ADMIN: [
     { label: '任务审核', routeName: 'admin-review' },

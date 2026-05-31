@@ -1,7 +1,7 @@
-import { requestMock } from './httpClient'
+import { request } from './httpClient'
 
 export const reviewApi = {
   reviewSubmission(submissionId, payload) {
-    return requestMock(`/submissions/${submissionId}/reviews`, { method: 'POST', body: payload })
+    return request(`/submissions/${submissionId}/reviews`, { method: 'POST', body: payload })
   },
 }

@@ -1,44 +1,32 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 
 import WorkbenchGitOperationPanel from './WorkbenchGitOperationPanel.vue'
 import WorkbenchPrLinkPanel from './WorkbenchPrLinkPanel.vue'
 import WorkbenchRepositoryPanel from './WorkbenchRepositoryPanel.vue'
 import QuestStatusFlow from './QuestStatusFlow.vue'
 import {
-  maintainerIssueBacklog,
-  maintainerNotifications,
-  maintainerPublishedQuests,
-  maintainerWorkbenchStats,
   notifications,
   pullRequests,
   recentContributions,
   repositories,
-  reviewQueue,
   reviewFeedbacks,
   taskGroups,
   workbenchEmails,
   workbenchStats,
   workbenchUser,
 } from '../data/workbench'
+import { sessionStore } from '../stores/sessionStore'
 
-const emit = defineEmits(['open-submission', 'open-id-card'])
+const emit = defineEmits(['open-submission', 'open-id-card', 'open-review-desk'])
 
-const props = defineProps({
-  initialView: {
-    type: String,
-    default: 'adventurer',
+defineProps({
+  showReviewDeskEntry: {
+    type: Boolean,
+    default: false,
   },
 })
 
-const workbenchModes = ['adventurer', 'guild-master']
-
-function normalizeWorkbenchView(view) {
-  return workbenchModes.includes(view) ? view : 'adventurer'
-}
-
-const workbenchView = ref(normalizeWorkbenchView(props.initialView))
-const maintainerReviews = ref(reviewQueue.map((review) => ({ ...review, checklist: [...review.checklist] })))
 const mailboxMessages = ref(workbenchEmails.map((email) => ({ ...email, body: [...email.body] })))
 const taskGroupList = ref(
   taskGroups.map((group) => ({
@@ -46,22 +34,15 @@ const taskGroupList = ref(
     tasks: group.tasks.map((task) => ({ ...task, actions: [...task.actions] })),
   })),
 )
+const defaultTaskId = taskGroupList.value[0]?.tasks[0]?.id ?? null
 const repositoryList = ref(repositories.map((repository) => ({ ...repository })))
 const pullRequestList = ref(pullRequests.map((pullRequest) => ({ ...pullRequest })))
 const isMailboxOpen = ref(false)
-const selectedTaskId = ref(null)
+const selectedTaskId = ref(defaultTaskId)
 const selectedEmailId = ref(null)
 const selectedRepositoryName = ref(null)
 const selectedNotificationText = ref(null)
 const selectedFeedbackId = ref(null)
-const selectedReviewId = ref(reviewQueue[0]?.id ?? null)
-const selectedPublishingIssueId = ref(maintainerIssueBacklog[0]?.id ?? null)
-const taskDraft = ref(createDraftFromIssue(maintainerIssueBacklog[0]))
-const publishingReviewStatus = ref({
-  label: '草稿待检查',
-  body: '选择左侧 Issue 后会自动生成悬赏任务草稿，补齐字段后可提交管理员审核。',
-  submittedAt: '',
-})
 const isGrowthDetailOpen = ref(false)
 const operationResult = ref({
   title: 'Git 操作',
@@ -91,9 +72,7 @@ const feedbackTaskFilter = ref('all')
 const feedbackStatusFilter = ref('all')
 const unreadMailCount = computed(() => mailboxMessages.value.filter((email) => email.unread).length)
 const displayStats = computed(() =>
-  workbenchView.value === 'guild-master'
-    ? maintainerWorkbenchStats
-    : workbenchStats.map((stat) => (stat.label === '未读邮件' ? { ...stat, value: unreadMailCount.value } : stat)),
+  workbenchStats.map((stat) => (stat.label === '未读邮件' ? { ...stat, value: unreadMailCount.value } : stat)),
 )
 const selectedTaskRepository = computed(() =>
   repositoryList.value.find((repository) => repository.name === selectedTask.value?.repository),
@@ -297,160 +276,7 @@ const selectedFeedbackFlowContext = computed(() => {
   }
 })
 const xpProgress = computed(() => `${Math.round((workbenchUser.xpCurrent / workbenchUser.xpTarget) * 100)}%`)
-const selectedReview = computed(() =>
-  maintainerReviews.value.find((review) => review.id === selectedReviewId.value) ?? maintainerReviews.value[0] ?? null,
-)
-const selectedPublishingIssue = computed(() =>
-  maintainerIssueBacklog.find((issue) => issue.id === selectedPublishingIssueId.value) ?? maintainerIssueBacklog[0] ?? null,
-)
-const draftCompletionItems = computed(() =>
-  taskDraft.value.completionStandards
-    .split('\n')
-    .map((item) => item.trim())
-    .filter(Boolean),
-)
-const clarityChecks = computed(() => [
-  {
-    label: 'Issue 来源明确',
-    passed: Boolean(taskDraft.value.issueId && taskDraft.value.repository),
-    detail: taskDraft.value.issueId
-      ? `${taskDraft.value.issueId} · ${taskDraft.value.repository}`
-      : '需要先从左侧选择一个 Issue。',
-  },
-  {
-    label: '任务标题和摘要可读',
-    passed: taskDraft.value.title.trim().length >= 8 && taskDraft.value.summary.trim().length >= 24,
-    detail: '标题至少 8 个字符，摘要需要说明背景、目标和用户价值。',
-  },
-  {
-    label: '难度、技术栈和奖励完整',
-    passed: Boolean(
-      taskDraft.value.difficulty.trim() && taskDraft.value.techStack.trim() && taskDraft.value.reward.trim(),
-    ),
-    detail: '三项会影响推荐、接取预期和课程激励。',
-  },
-  {
-    label: '完成标准可验收',
-    passed: draftCompletionItems.value.length >= 3,
-    detail: `当前 ${draftCompletionItems.value.length} 项，建议至少 3 项并且每项能被维护者检查。`,
-  },
-])
-const claritySummary = computed(() => {
-  const passed = clarityChecks.value.filter((item) => item.passed).length
-  return { passed, total: clarityChecks.value.length }
-})
-const isDraftReady = computed(() => claritySummary.value.passed === claritySummary.value.total)
-const activeRoleLabel = computed(() => (workbenchView.value === 'guild-master' ? '委托人' : workbenchUser.role))
-
-function createDraftFromIssue(issue) {
-  if (!issue) {
-    return {
-      issueId: '',
-      repository: '',
-      title: '',
-      summary: '',
-      difficulty: '',
-      techStack: '',
-      reward: '',
-      completionStandards: '',
-    }
-  }
-
-  return {
-    issueId: issue.id,
-    repository: issue.repository,
-    title: issue.title,
-    summary: issue.summary,
-    difficulty: issue.suggestedDifficulty,
-    techStack: issue.suggestedTechStack,
-    reward: issue.suggestedReward,
-    completionStandards: issue.suggestedStandards.join('\n'),
-  }
-}
-
-function switchWorkbenchView(view) {
-  workbenchView.value = view
-  isMailboxOpen.value = false
-  operationResult.value =
-    view === 'guild-master'
-      ? {
-          title: '维护者工作台已打开',
-          body: '审核队列、提交详情和反馈操作已准备好。点击队列中的提交可以查看逐项检查。',
-        }
-      : {
-          title: '冒险家工作台已打开',
-          body: '我的待办、仓库操作、邮件通知和成长记录已恢复。',
-        }
-}
-
-watch(
-  () => props.initialView,
-  (nextView) => {
-    workbenchView.value = normalizeWorkbenchView(nextView)
-  },
-)
-
-function selectReview(review) {
-  selectedReviewId.value = review.id
-  operationResult.value = {
-    title: `${review.id} 已选中`,
-    body: `正在查看 ${review.questId} 的提交详情、完成标准和审核建议。`,
-  }
-}
-
-function selectPublishingIssue(issue) {
-  selectedPublishingIssueId.value = issue.id
-  taskDraft.value = createDraftFromIssue(issue)
-  publishingReviewStatus.value = {
-    label: '草稿已生成',
-    body: `${issue.id} 的标题、摘要和关联仓库已带入草稿。请检查奖励、技术栈和完成标准。`,
-    submittedAt: '',
-  }
-  operationResult.value = {
-    title: `${issue.id} 已生成任务草稿`,
-    body: `维护者发布工坊已载入 ${issue.repository} 的 Issue 上下文，可继续做清晰度检查。`,
-  }
-}
-
-function submitTaskDraftForReview() {
-  if (!isDraftReady.value) {
-    publishingReviewStatus.value = {
-      label: '清晰度检查未通过',
-      body: '请先补齐待补项，再提交给管理员审核。',
-      submittedAt: '刚刚',
-    }
-    operationResult.value = {
-      title: '任务发布申请暂未提交',
-      body: '清晰度检查仍有待补项，课堂演示可继续编辑草稿字段并再次提交。',
-    }
-    return
-  }
-
-  publishingReviewStatus.value = {
-    label: '已提交管理员审核',
-    body: `${taskDraft.value.issueId} 已作为悬赏任务草稿提交，管理员审核通过后会出现在悬赏任务板。`,
-    submittedAt: '刚刚',
-  }
-  operationResult.value = {
-    title: '任务发布申请已提交',
-    body: `${taskDraft.value.title} 已进入管理员审核队列，当前为本地 mock 状态。`,
-  }
-}
-
-function runReviewAction(action, review = selectedReview.value) {
-  if (!review) return
-
-  const resultMap = {
-    approve: ['审核已通过', `${review.questId} 已通过审核，冒险家侧将收到成长记录和完成通知。`],
-    changes: ['修改请求已发送', `${review.questId} 的逐项反馈已发送，冒险家工作台将出现待修改事项。`],
-    reject: ['提交已驳回', `${review.questId} 已标记为驳回，任务仍需维护者后续处理。`],
-    draft: ['草稿已保存', `${review.questId} 的审核意见已保存为本地模拟草稿。`],
-    pr: ['PR 状态已打开', `${review.pullRequest} 的检查结果和审核状态已定位。`],
-  }
-
-  const [title, body] = resultMap[action] ?? ['审核操作已记录', `${review.questId} 的模拟操作已完成。`]
-  operationResult.value = { title, body }
-}
+const activeRoleLabel = computed(() => (sessionStore.role === 'MAINTAINER' ? '委托人' : workbenchUser.role))
 
 function selectTask(task) {
   selectedTaskId.value = task.id
@@ -923,22 +749,15 @@ function openFeedback(feedbackId, source = '审核反馈') {
             <span>{{ activeRoleLabel }}</span>
           </div>
         </div>
-        <div class="view-switch" aria-label="工作台视图切换">
-          <button
-            type="button"
-            :class="{ active: workbenchView === 'adventurer' }"
-            @click="switchWorkbenchView('adventurer')"
-          >
-            冒险家视图
-          </button>
-          <button
-            type="button"
-            :class="{ active: workbenchView === 'guild-master' }"
-            @click="switchWorkbenchView('guild-master')"
-          >
-            委托人视图
-          </button>
-        </div>
+        <button
+          v-if="showReviewDeskEntry"
+          class="review-desk-entry"
+          type="button"
+          @click="emit('open-review-desk')"
+        >
+          <span>委托人功能</span>
+          <strong>进入成果审核台</strong>
+        </button>
       </div>
 
       <div class="workbench-level">
@@ -1032,7 +851,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
       </div>
     </header>
 
-    <aside v-if="workbenchView === 'adventurer'" class="workbench-panel todo-panel">
+    <aside class="workbench-panel todo-panel">
       <div class="panel-head">
         <p class="kicker">My Todo</p>
         <h2>我的待办</h2>
@@ -1125,284 +944,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
       </section>
     </aside>
 
-    <aside v-else class="workbench-panel todo-panel review-queue-panel">
-      <div class="panel-head">
-        <p class="kicker">委托人工作区</p>
-        <h2>任务发布与审核</h2>
-      </div>
-
-      <div class="todo-group-list">
-        <section class="todo-group">
-          <header>
-            <h3>Issue 悬赏草稿</h3>
-            <span>{{ maintainerIssueBacklog.length }}</span>
-          </header>
-
-          <button
-            v-for="issue in maintainerIssueBacklog"
-            :key="issue.id"
-            class="todo-task issue-draft-item"
-            :class="{ active: selectedPublishingIssue?.id === issue.id }"
-            type="button"
-            @click="selectPublishingIssue(issue)"
-          >
-            <span class="status-pill">{{ issue.id }}</span>
-            <strong>{{ issue.title }}</strong>
-            <small>{{ issue.repository }}</small>
-            <small>{{ issue.labels.join(' · ') }}</small>
-          </button>
-        </section>
-
-        <section class="todo-group">
-          <header>
-            <h3>提交审核队列</h3>
-            <span>{{ maintainerReviews.length }}</span>
-          </header>
-
-        <button
-          v-for="review in maintainerReviews"
-          :key="review.id"
-          class="todo-task review-queue-item"
-          :class="{ active: selectedReview?.id === review.id }"
-          type="button"
-          @click="selectReview(review)"
-        >
-          <span class="status-pill" :class="{ warning: review.status !== '待审核' }">{{ review.status }}</span>
-          <strong>{{ review.id }} · {{ review.questId }}</strong>
-          <small>{{ review.questTitle }}</small>
-          <small>提交人：{{ review.submitter }} · {{ review.pullRequest }}</small>
-          <small>提交时间：{{ review.submittedAt }}</small>
-        </button>
-        </section>
-      </div>
-    </aside>
-
     <main class="workbench-main">
-      <section v-if="workbenchView === 'guild-master'" class="workbench-panel task-detail-panel maintainer-detail-panel">
-        <div class="panel-head inline">
-          <div>
-            <p class="kicker">委托人审核</p>
-            <h2>{{ selectedReview?.questId }} · {{ selectedReview?.questTitle }}</h2>
-          </div>
-          <span class="status-pill" :class="{ warning: selectedReview?.status !== '待审核' }">
-            {{ selectedReview?.status }}
-          </span>
-        </div>
-
-        <div v-if="selectedReview" class="maintainer-detail-grid">
-          <article class="detail-card maintainer-publisher-card">
-            <div class="publisher-hero">
-              <div>
-                <p class="kicker">Issue → 悬赏任务草稿 → 清晰度检查 → 管理员审核</p>
-                <h3>维护者任务发布工坊</h3>
-                <p>
-                  点击左侧 Issue 会自动带出标题、摘要和关联仓库；补齐字段后，清晰度检查会判断是否可以提交给管理员审核。
-                </p>
-              </div>
-              <div class="publisher-status-card">
-                <span>发布状态</span>
-                <strong>{{ publishingReviewStatus.label }}</strong>
-                <small v-if="publishingReviewStatus.submittedAt">{{ publishingReviewStatus.submittedAt }}</small>
-              </div>
-            </div>
-
-            <div class="publisher-grid">
-              <section class="issue-context-card">
-                <h4>Issue 上下文</h4>
-                <dl>
-                  <div>
-                    <dt>Issue</dt>
-                    <dd>{{ taskDraft.issueId }}</dd>
-                  </div>
-                  <div>
-                    <dt>关联仓库</dt>
-                    <dd>{{ taskDraft.repository }}</dd>
-                  </div>
-                </dl>
-                <p>{{ selectedPublishingIssue?.summary }}</p>
-              </section>
-
-              <form class="quest-draft-form" @submit.prevent="submitTaskDraftForReview">
-                <label>
-                  <span>任务标题</span>
-                  <input v-model="taskDraft.title" type="text" />
-                </label>
-                <label>
-                  <span>难度</span>
-                  <input v-model="taskDraft.difficulty" type="text" placeholder="初级 / 中级 / 高级" />
-                </label>
-                <label>
-                  <span>技术栈</span>
-                  <input v-model="taskDraft.techStack" type="text" placeholder="Vue, CSS, API..." />
-                </label>
-                <label>
-                  <span>奖励</span>
-                  <input v-model="taskDraft.reward" type="text" placeholder="XP / Gold / 徽章" />
-                </label>
-                <label class="wide-field">
-                  <span>任务摘要</span>
-                  <textarea v-model="taskDraft.summary" rows="3"></textarea>
-                </label>
-                <label class="wide-field">
-                  <span>完成标准（每行一项）</span>
-                  <textarea v-model="taskDraft.completionStandards" rows="5"></textarea>
-                </label>
-              </form>
-
-              <section class="clarity-check-card">
-                <div>
-                  <h4>清晰度检查</h4>
-                  <span class="status-pill" :class="{ warning: !isDraftReady }">
-                    {{ claritySummary.passed }} / {{ claritySummary.total }} 通过
-                  </span>
-                </div>
-                <div class="feedback-check-list">
-                  <section
-                    v-for="item in clarityChecks"
-                    :key="item.label"
-                    class="feedback-check-row"
-                    :class="{ passed: item.passed, failed: !item.passed }"
-                  >
-                    <div>
-                      <strong>{{ item.label }}</strong>
-                      <span>{{ item.passed ? '通过' : '待补' }}</span>
-                    </div>
-                    <p>{{ item.detail }}</p>
-                  </section>
-                </div>
-              </section>
-
-              <section class="admin-review-card">
-                <h4>提交审核</h4>
-                <p>{{ publishingReviewStatus.body }}</p>
-                <div class="card-actions">
-                  <button class="primary-action" type="button" @click="submitTaskDraftForReview">
-                    提交给管理员审核
-                  </button>
-                  <button class="quiet-action" type="button" @click="selectPublishingIssue(selectedPublishingIssue)">
-                    重新带入 Issue
-                  </button>
-                </div>
-              </section>
-            </div>
-          </article>
-
-          <article class="maintainer-brief-card">
-            <div>
-              <p class="kicker">Submission Detail</p>
-              <h3>{{ selectedReview.summary }}</h3>
-            </div>
-            <dl>
-              <div>
-                <dt>提交编号</dt>
-                <dd>{{ selectedReview.id }}</dd>
-              </div>
-              <div>
-                <dt>任务</dt>
-                <dd>{{ selectedReview.questId }} · {{ selectedReview.questTitle }}</dd>
-              </div>
-              <div>
-                <dt>提交人</dt>
-                <dd>{{ selectedReview.submitter }}</dd>
-              </div>
-              <div>
-                <dt>关联仓库</dt>
-                <dd>{{ selectedReview.repository }}</dd>
-              </div>
-              <div>
-                <dt>关联 PR</dt>
-                <dd>{{ selectedReview.pullRequest }}</dd>
-              </div>
-              <div>
-                <dt>提交时间</dt>
-                <dd>{{ selectedReview.submittedAt }}</dd>
-              </div>
-            </dl>
-          </article>
-
-          <article class="detail-card maintainer-check-card">
-            <h3>完成标准逐项检查</h3>
-            <div class="feedback-check-list">
-              <section
-                v-for="item in selectedReview.checklist"
-                :key="item.item"
-                class="feedback-check-row"
-                :class="{ passed: item.passed, failed: !item.passed }"
-              >
-                <div>
-                  <strong>{{ item.item }}</strong>
-                  <span>{{ item.passed ? '通过' : '需修改' }}</span>
-                </div>
-                <p>{{ item.comment }}</p>
-              </section>
-            </div>
-          </article>
-
-          <article class="detail-card maintainer-feedback-card">
-            <h3>审核总结</h3>
-            <p>{{ selectedReview.summary }}</p>
-            <h3>必须修改</h3>
-            <ul class="feedback-list urgent">
-              <li v-for="item in selectedReview.requiredChanges" :key="item">{{ item }}</li>
-            </ul>
-            <h3>学习建议</h3>
-            <ul class="feedback-list">
-              <li v-for="item in selectedReview.learningSuggestions" :key="item">{{ item }}</li>
-            </ul>
-          </article>
-
-          <article class="detail-card maintainer-action-card">
-            <h3>审核操作</h3>
-            <div class="card-actions detail-actions">
-              <button class="primary-action" type="button" @click="runReviewAction('approve')">通过</button>
-              <button class="quiet-action" type="button" @click="runReviewAction('changes')">请求修改</button>
-              <button class="quiet-action danger" type="button" @click="runReviewAction('reject')">驳回</button>
-              <button class="quiet-action" type="button" @click="runReviewAction('pr')">查看 PR</button>
-              <button class="quiet-action" type="button" @click="runReviewAction('draft')">保存草稿</button>
-            </div>
-            <p>这里仅做静态模拟，不保存真实审核结果；通过或请求修改后，冒险家侧会在工作台看到反馈或成长状态。</p>
-          </article>
-
-          <article class="detail-card maintainer-quest-card">
-            <h3>我发布的任务</h3>
-            <div class="maintainer-list">
-              <section v-for="quest in maintainerPublishedQuests" :key="quest.id">
-                <strong>{{ quest.id }} · {{ quest.title }}</strong>
-                <span>{{ quest.status }} · {{ quest.assignee }}</span>
-              </section>
-            </div>
-          </article>
-
-          <article class="detail-card maintainer-repository-card">
-            <h3>仓库状态</h3>
-            <div class="maintainer-list">
-              <section v-for="repository in repositoryList" :key="repository.name">
-                <strong>{{ repository.name }}</strong>
-                <span :class="{ warning: hasSyncWarning(repository) }">
-                  {{ repository.syncStatus }} · Issue {{ repository.issues }} · PR {{ repository.pullRequests }}
-                </span>
-              </section>
-            </div>
-          </article>
-
-          <article class="detail-card maintainer-notice-card">
-            <h3>维护者通知</h3>
-            <div class="maintainer-list">
-              <section v-for="notice in maintainerNotifications" :key="notice.text">
-                <strong>{{ notice.type }}</strong>
-                <span>{{ notice.text }}</span>
-              </section>
-            </div>
-          </article>
-
-          <article class="detail-card maintainer-operation-card">
-            <h3>{{ operationResult.title }}</h3>
-            <p>{{ operationResult.body }}</p>
-          </article>
-        </div>
-      </section>
-
-      <template v-else>
       <section v-if="selectedFeedback" class="workbench-panel task-detail-panel feedback-detail-panel">
         <div class="panel-head inline">
           <div>
@@ -1806,7 +1348,6 @@ function openFeedback(feedbackId, source = '审核反馈') {
       </section>
 
       <section v-else class="workbench-panel task-detail-panel blank-detail" aria-hidden="true"></section>
-      </template>
     </main>
   </div>
 </template>
@@ -1897,31 +1438,35 @@ function openFeedback(feedbackId, source = '审核反馈') {
   font-size: 0.84rem;
 }
 
-.view-switch {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+.review-desk-entry {
+  display: grid;
+  gap: 3px;
   margin-top: 12px;
-}
-
-.view-switch button {
-  min-height: 32px;
-  border: 1px solid rgba(240, 198, 118, 0.24);
+  border: 1px solid rgba(255, 226, 160, 0.54);
   border-radius: 999px;
-  padding: 0 11px;
-  color: rgba(255, 231, 183, 0.78);
-  font-size: 0.76rem;
-  background: rgba(11, 6, 3, 0.36);
-  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+  padding: 8px 13px;
+  color: #2d1607;
+  text-align: left;
+  background: linear-gradient(180deg, #ffe5aa, #d7983f);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24), 0 0 18px rgba(255, 198, 86, 0.2);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease;
 }
 
-.view-switch button:hover,
-.view-switch button:focus-visible,
-.view-switch button.active {
-  border-color: var(--gold-bright);
-  color: #ffe8b9;
-  background: rgba(82, 45, 16, 0.62);
+.review-desk-entry span {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.review-desk-entry strong {
+  font-size: 0.86rem;
+}
+
+.review-desk-entry:hover,
+.review-desk-entry:focus-visible {
   transform: translateY(-1px);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.32), 0 0 24px rgba(255, 198, 86, 0.32);
 }
 
 .workbench-level {

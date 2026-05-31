@@ -10,7 +10,7 @@ export const router = createRouter({
 
 function homeForRole(role) {
   if (role === 'ADMIN') return { name: 'admin-review' }
-  if (role === 'MAINTAINER') return { name: 'maintainer-workbench' }
+  if (role === 'MAINTAINER') return { name: 'hall' }
   if (role === 'ADVENTURER') return { name: 'hall' }
   return { name: 'quest-board' }
 }

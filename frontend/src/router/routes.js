@@ -13,6 +13,7 @@ import QuestDetailPage from '../pages/quests/QuestDetailPage.vue'
 import RepositorySyncPage from '../pages/repositories/RepositorySyncPage.vue'
 import SubmissionCounterPage from '../pages/submissions/SubmissionCounterPage.vue'
 import AdventurerWorkbenchPage from '../pages/workbench/AdventurerWorkbenchPage.vue'
+import MaintainerReviewPage from '../pages/workbench/MaintainerReviewPage.vue'
 import MaintainerWorkbenchPage from '../pages/workbench/MaintainerWorkbenchPage.vue'
 
 export const routes = [
@@ -59,10 +60,16 @@ export const routes = [
     meta: { requiresAuth: true, roles: ['MAINTAINER'] },
   },
   {
+    path: '/maintainer/reviews',
+    name: 'maintainer-review',
+    component: MaintainerReviewPage,
+    meta: { requiresAuth: true, roles: ['MAINTAINER'] },
+  },
+  {
     path: '/submissions',
     name: 'submission-counter',
     component: SubmissionCounterPage,
-    meta: { requiresAuth: true, roles: ['ADVENTURER'] },
+    meta: { requiresAuth: true, roles: ['ADVENTURER', 'MAINTAINER'] },
   },
   {
     // The admin console uses a nested layout: AdminConsoleLayout renders the

@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import questBoardImg from '../../assets/quest board.png'
 import QuestDetail from '../../components/QuestDetail.vue'
 import { questCommissions } from '../../data/questBoard'
+import { sessionStore } from '../../stores/sessionStore'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,7 +29,7 @@ function goBack() {
 }
 
 function openWorkbench() {
-  router.push({ name: 'adventurer-workbench' })
+  router.push({ name: sessionStore.role === 'MAINTAINER' ? 'maintainer-workbench' : 'adventurer-workbench' })
 }
 
 function openSubmission(questId = activeQuest.value.id) {

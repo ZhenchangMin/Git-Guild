@@ -4,12 +4,10 @@ import { useRouter } from 'vue-router'
 
 import hallImg from '../../assets/hall.png'
 import { questCommissions } from '../../data/questBoard'
-import { clearSession } from '../../stores/sessionStore'
+import { clearSession, sessionStore } from '../../stores/sessionStore'
 
 const router = useRouter()
 
-// Number of commissions an adventurer can pick up right now — stamped on the
-// quest board in the hall so the hero feature advertises live activity.
 const openQuestCount = computed(
   () => questCommissions.filter((quest) => quest.status === '可接取').length || questCommissions.length,
 )
@@ -20,7 +18,7 @@ const isDragging = ref(false)
 const dragStartX = ref(0)
 const dragStartOffset = ref(0)
 
-const rooms = [
+const baseRooms = [
   {
     id: 'submission',
     label: '提交柜台',
@@ -73,6 +71,21 @@ const rooms = [
   },
 ]
 
+const rooms = computed(() =>
+  baseRooms.map((room) =>
+    room.id === 'workbench'
+      ? {
+          ...room,
+          routeName: sessionStore.role === 'MAINTAINER' ? 'maintainer-workbench' : 'adventurer-workbench',
+          hint:
+            sessionStore.role === 'MAINTAINER'
+              ? '接取任务、提交成果，并进入成果审核台'
+              : room.hint,
+        }
+      : room,
+  ),
+)
+
 function clampHallOffset(offset) {
   const viewport = hallViewport.value
   const track = hallTrack.value
@@ -108,8 +121,12 @@ function endHallDrag(event) {
   hallViewport.value?.releasePointerCapture(event.pointerId)
 }
 
+function openRoute(routeName) {
+  router.push({ name: routeName })
+}
+
 function openRoom(room) {
-  router.push({ name: room.routeName })
+  openRoute(room.routeName)
 }
 
 function switchAccount() {
@@ -120,10 +137,6 @@ function switchAccount() {
 function logout() {
   clearSession()
   router.push({ name: 'login' })
-}
-
-function openHelp() {
-  router.push({ name: 'help' })
 }
 
 onMounted(() => {
@@ -138,15 +151,21 @@ onUnmounted(() => {
 
 <template>
   <main class="app-shell">
-    <button class="help-orb" type="button" aria-label="打开 Git Guild 使用教程" @click="openHelp">?</button>
+    <button class="help-orb" type="button" aria-label="打开 Git Guild 使用教程" @click="openRoute('help')">?</button>
 
     <section class="hall-scene">
-      <div class="session-action-stack" aria-label="账号操作">
+      <div class="session-action-stack" aria-label="账号与成长入口">
         <button class="back-orb" type="button" aria-label="切换账号" @click="switchAccount">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M15 6 9 12l6 6" />
           </svg>
           <span>切换账号</span>
+        </button>
+        <button class="back-orb growth-orb" type="button" aria-label="打开成长档案" @click="openRoute('growth-profile')">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3 15 9l6 .8-4.5 4.3 1.1 6.1L12 17.2 6.4 20.2l1.1-6.1L3 9.8 9 9z" />
+          </svg>
+          <span>成长档案</span>
         </button>
         <button class="back-orb logout-orb" type="button" aria-label="退出登录" @click="logout">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -168,7 +187,7 @@ onUnmounted(() => {
         @pointercancel="endHallDrag"
       >
         <div ref="hallTrack" class="hall-track" :style="{ transform: `translateX(${hallOffset}px)` }">
-          <img class="hall-image" :src="hallImg" alt="Git Guild Hall" draggable="false" @load="centerHall" />
+          <img class="hall-image" :src="hallImg" alt="Git Guild 公会大厅" draggable="false" @load="centerHall" />
           <button
             v-for="room in rooms"
             :key="room.id"
@@ -179,9 +198,6 @@ onUnmounted(() => {
             :style="{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }"
             @click="openRoom(room)"
           >
-            <!-- The quest board is not a plain rectangle, so trace its actual
-                 silhouette (wooden frame + arched "QUEST BOARD" header) on hover
-                 instead of the default rectangular highlight box. -->
             <svg
               v-if="room.id === 'quest'"
               class="hotspot-shape"
@@ -195,7 +211,7 @@ onUnmounted(() => {
             <span class="tooltip" :class="{ 'tooltip-quest': room.id === 'quest' }">
               <strong>{{ room.label }}</strong>
               <small>{{ room.hint }}</small>
-              <em v-if="room.id === 'quest'" class="tooltip-cta">{{ openQuestCount }} 份委托待接取 ›</em>
+              <em v-if="room.id === 'quest'" class="tooltip-cta">{{ openQuestCount }} 份委托待接取</em>
             </span>
           </button>
         </div>
@@ -205,8 +221,23 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Quest board hotspot: suppress the default rectangular highlight and use the
-   board-shaped outline instead. */
+.growth-orb {
+  border-color: rgba(255, 219, 145, 0.56);
+  background:
+    linear-gradient(135deg, rgba(88, 48, 18, 0.86), rgba(20, 10, 3, 0.78)),
+    radial-gradient(circle at 22% 20%, rgba(255, 219, 145, 0.22), transparent 0 42%);
+}
+
+.growth-orb span {
+  color: #ffe2a0;
+}
+
+.growth-orb:hover,
+.growth-orb:focus-visible {
+  border-color: rgba(255, 226, 160, 0.88);
+  box-shadow: 0 0 26px rgba(255, 197, 89, 0.34);
+}
+
 .hotspot.has-shape::after {
   content: none;
 }
@@ -221,8 +252,6 @@ onUnmounted(() => {
 }
 
 .hotspot-shape path {
-  /* Persistent faint outline so the quest board — the platform's hero feature —
-     is discoverable at rest, not invisible until hover like the other rooms. */
   fill: rgba(255, 220, 132, 0.04);
   stroke: rgba(255, 211, 116, 0.32);
   stroke-width: 2;
@@ -254,7 +283,6 @@ onUnmounted(() => {
   }
 }
 
-/* Quest tooltip gets a parchment call-to-action line. */
 .tooltip-quest {
   min-width: 218px;
 }
