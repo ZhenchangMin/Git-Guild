@@ -7,18 +7,29 @@ import MaintainerReviewActions from '../../components/MaintainerReviewActions.vu
 import MaintainerReviewDetail from '../../components/MaintainerReviewDetail.vue'
 import MaintainerReviewQueue from '../../components/MaintainerReviewQueue.vue'
 import { reviewApi } from '../../api'
-import { maintainerReviewQueue, maintainerReviewStats } from '../../data/maintainerReview'
+import { maintainerReviewQueue } from '../../data/maintainerReview'
 
 const router = useRouter()
 
 const reviews = ref(maintainerReviewQueue.map((review) => ({ ...review })))
-const selectedReviewId = ref(reviews.value[0]?.id ?? '')
+const selectedReviewId = ref('')
 const reviewResult = ref(null)
 const isSubmittingReview = ref(false)
+const isActionPanelCollapsed = ref(false)
 
 const selectedReview = computed(
-  () => reviews.value.find((review) => review.id === selectedReviewId.value) ?? reviews.value[0],
+  () => reviews.value.find((review) => review.id === selectedReviewId.value) ?? null,
 )
+const canReviewSelectedSubmission = computed(() => selectedReview.value?.status === '待审核')
+const pendingReviewCount = computed(() => reviews.value.filter((review) => review.status === '待审核').length)
+const reviewedCount = computed(() => reviews.value.length - pendingReviewCount.value)
+const returnedCount = computed(() => reviews.value.filter((review) => review.status.includes('修改')).length)
+const reviewStats = computed(() => [
+  { label: '待审核提交', value: pendingReviewCount.value, hint: '需要委托人给出结论' },
+  { label: '已审核提交', value: reviewedCount.value, hint: '已给出通过、退回或驳回' },
+  { label: '需退回修改', value: returnedCount.value, hint: '存在未通过检查项' },
+  { label: '队列总数', value: reviews.value.length, hint: '当前演示提交记录' },
+])
 
 function backToWorkbench() {
   router.push({ name: 'maintainer-workbench' })
@@ -27,6 +38,7 @@ function backToWorkbench() {
 function selectReview(reviewId) {
   selectedReviewId.value = reviewId
   reviewResult.value = null
+  isActionPanelCollapsed.value = false
 }
 
 function updateReviewStatus(decision) {
@@ -108,7 +120,7 @@ function openPullRequest(review) {
             <p>查看待审核成果、确认 PR 状态和完成标准，并录入维护者审核意见。</p>
           </div>
           <div class="maintainer-review-stats" aria-label="维护者审核统计">
-            <article v-for="stat in maintainerReviewStats" :key="stat.label">
+            <article v-for="stat in reviewStats" :key="stat.label">
               <span>{{ stat.label }}</span>
               <strong>{{ stat.value }}</strong>
               <small>{{ stat.hint }}</small>
@@ -119,19 +131,48 @@ function openPullRequest(review) {
         <div class="maintainer-review-workspace">
           <MaintainerReviewQueue
             :reviews="reviews"
-            :selected-review-id="selectedReview?.id"
+            :selected-review-id="selectedReviewId"
             @select="selectReview"
           />
-          <MaintainerReviewDetail v-if="selectedReview" :review="selectedReview" />
-          <MaintainerReviewActions
-            v-if="selectedReview"
-            :review="selectedReview"
-            :result="reviewResult"
-            :busy="isSubmittingReview"
-            @submit-review="submitReview"
-            @save-draft="saveDraft"
-            @open-pr="openPullRequest"
-          />
+
+          <section v-if="!selectedReview" class="review-empty-state" aria-label="待选择提交">
+            <div>
+              <p class="kicker">Waiting For Selection</p>
+              <h2>{{ pendingReviewCount }} 份待审核委托</h2>
+              <p>请点击左侧委托提交审核。</p>
+            </div>
+          </section>
+
+          <section
+            v-else
+            class="review-focus"
+            :class="{
+              'readonly-review': !canReviewSelectedSubmission,
+              'actions-collapsed': canReviewSelectedSubmission && isActionPanelCollapsed,
+            }"
+          >
+            <MaintainerReviewDetail :review="selectedReview" />
+            <button
+              v-if="canReviewSelectedSubmission"
+              class="action-panel-toggle"
+              type="button"
+              :aria-expanded="!isActionPanelCollapsed"
+              @click="isActionPanelCollapsed = !isActionPanelCollapsed"
+            >
+              {{ isActionPanelCollapsed ? '展开审核操作' : '收起审核操作' }}
+            </button>
+            <div v-if="canReviewSelectedSubmission" class="review-action-slot">
+              <MaintainerReviewActions
+                v-if="!isActionPanelCollapsed"
+                :review="selectedReview"
+                :result="reviewResult"
+                :busy="isSubmittingReview"
+                @submit-review="submitReview"
+                @save-draft="saveDraft"
+                @open-pr="openPullRequest"
+              />
+            </div>
+          </section>
         </div>
       </div>
     </section>
@@ -214,9 +255,90 @@ function openPullRequest(review) {
 
 .maintainer-review-workspace {
   display: grid;
-  grid-template-columns: minmax(270px, 0.82fr) minmax(420px, 1.48fr) minmax(310px, 0.95fr);
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 16px;
   min-height: 0;
+}
+
+.review-empty-state,
+.review-focus {
+  min-width: 0;
+  min-height: 0;
+}
+
+.review-empty-state {
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(238, 184, 91, 0.34);
+  border-radius: 14px;
+  padding: 28px;
+  background:
+    linear-gradient(135deg, rgba(34, 18, 8, 0.72), rgba(7, 4, 2, 0.56)),
+    radial-gradient(circle at 50% 34%, rgba(255, 219, 145, 0.14), transparent 0 34%);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 235, 180, 0.12);
+  text-align: center;
+}
+
+.review-empty-state h2 {
+  margin: 0;
+  color: #ffe8b9;
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 5vw, 4.8rem);
+  line-height: 0.96;
+}
+
+.review-empty-state p:last-child {
+  margin: 14px 0 0;
+  color: rgba(255, 231, 183, 0.72);
+  font-size: 1.06rem;
+}
+
+.review-focus {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) 48px minmax(300px, 0.85fr);
+  gap: 12px;
+}
+
+.review-focus.readonly-review {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.review-focus.actions-collapsed {
+  grid-template-columns: minmax(0, 1fr) 48px;
+}
+
+.review-focus.actions-collapsed .review-action-slot {
+  display: none;
+}
+
+.review-action-slot {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.action-panel-toggle {
+  align-self: stretch;
+  border: 1px solid rgba(238, 184, 91, 0.38);
+  border-radius: 12px;
+  padding: 12px 9px;
+  color: #ffe2a0;
+  background:
+    linear-gradient(135deg, rgba(83, 45, 16, 0.76), rgba(14, 7, 3, 0.66)),
+    radial-gradient(circle at 22% 20%, rgba(255, 218, 142, 0.16), transparent 0 42%);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 235, 180, 0.1);
+  cursor: pointer;
+  writing-mode: vertical-rl;
+  letter-spacing: 0.08em;
+  font-weight: 900;
+  transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+.action-panel-toggle:hover,
+.action-panel-toggle:focus-visible {
+  border-color: rgba(255, 224, 157, 0.76);
+  transform: translateY(-1px);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 235, 180, 0.14);
 }
 
 @media (max-width: 1180px) {
@@ -230,7 +352,8 @@ function openPullRequest(review) {
   }
 
   .maintainer-review-header,
-  .maintainer-review-workspace {
+  .maintainer-review-workspace,
+  .review-focus {
     grid-template-columns: 1fr;
   }
 

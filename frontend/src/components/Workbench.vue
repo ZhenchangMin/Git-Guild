@@ -755,7 +755,6 @@ function openFeedback(feedbackId, source = '审核反馈') {
           type="button"
           @click="emit('open-review-desk')"
         >
-          <span>委托人功能</span>
           <strong>进入成果审核台</strong>
         </button>
       </div>
@@ -1439,34 +1438,36 @@ function openFeedback(feedbackId, source = '审核反馈') {
 }
 
 .review-desk-entry {
-  display: grid;
-  gap: 3px;
+  display: inline-grid;
+  place-items: center;
   margin-top: 12px;
-  border: 1px solid rgba(255, 226, 160, 0.54);
-  border-radius: 999px;
-  padding: 8px 13px;
-  color: #2d1607;
+  border: 1px solid rgba(238, 184, 91, 0.46);
+  border-radius: 12px;
+  padding: 10px 14px;
+  color: #ffe8b9;
   text-align: left;
-  background: linear-gradient(180deg, #ffe5aa, #d7983f);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24), 0 0 18px rgba(255, 198, 86, 0.2);
+  background:
+    linear-gradient(135deg, rgba(86, 47, 17, 0.76), rgba(18, 9, 4, 0.66)),
+    radial-gradient(circle at 18% 20%, rgba(255, 218, 142, 0.18), transparent 0 44%);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 235, 180, 0.1);
   cursor: pointer;
-  transition: transform 150ms ease, box-shadow 150ms ease;
-}
-
-.review-desk-entry span {
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
 }
 
 .review-desk-entry strong {
-  font-size: 0.86rem;
+  color: #ffe2a0;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
 }
 
 .review-desk-entry:hover,
 .review-desk-entry:focus-visible {
+  border-color: rgba(255, 224, 157, 0.78);
+  background:
+    linear-gradient(135deg, rgba(105, 59, 22, 0.82), rgba(28, 14, 6, 0.72)),
+    radial-gradient(circle at 18% 20%, rgba(255, 218, 142, 0.24), transparent 0 46%);
   transform: translateY(-1px);
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.32), 0 0 24px rgba(255, 198, 86, 0.32);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 235, 180, 0.14);
 }
 
 .workbench-level {

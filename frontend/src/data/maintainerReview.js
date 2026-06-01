@@ -21,6 +21,7 @@ export const maintainerReviewQueue = [
     status: '待审核',
     statusTone: 'review',
     submittedAt: '今天 10:30',
+    submittedAtOrder: 202606011030,
     rewardXp: 240,
     summary: '已重整任务成果提交路径，补充 PR 链接校验、退回修改入口和提交说明结构。',
     completionCriteria: [
@@ -58,6 +59,7 @@ export const maintainerReviewQueue = [
     status: '待审核',
     statusTone: 'review',
     submittedAt: '今天 09:48',
+    submittedAtOrder: 202606010948,
     rewardXp: 180,
     summary: '新增导入失败状态、重试入口和同步日志摘要，便于课堂演示常见异常处理。',
     completionCriteria: [
@@ -95,6 +97,7 @@ export const maintainerReviewQueue = [
     status: '已请求修改',
     statusTone: 'warning',
     submittedAt: '昨天 18:16',
+    submittedAtOrder: 202605311816,
     rewardXp: 220,
     summary: '反馈归档区域已能显示历史意见，但筛选和学习建议分区仍需完善。',
     completionCriteria: [
