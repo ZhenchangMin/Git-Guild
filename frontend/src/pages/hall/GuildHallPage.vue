@@ -3,10 +3,14 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import hallImg from '../../assets/hall.png'
+import NotificationBell from '../../components/NotificationBell.vue'
 import { questCommissions } from '../../data/questBoard'
-import { clearSession, sessionStore } from '../../stores/sessionStore'
+import { clearSession, hasLoginSession, sessionStore } from '../../stores/sessionStore'
 
 const router = useRouter()
+
+// 仅登录且非访客时展示通知中心——访客没有可投递的关键状态变化。
+const showNotificationBell = computed(() => hasLoginSession() && sessionStore.role !== 'VISITOR')
 
 const openQuestCount = computed(
   () => questCommissions.filter((quest) => quest.status === '可接取').length || questCommissions.length,
@@ -155,6 +159,7 @@ onUnmounted(() => {
 
     <section class="hall-scene">
       <div class="session-action-stack" aria-label="账号与成长入口">
+        <NotificationBell v-if="showNotificationBell" />
         <button class="back-orb" type="button" aria-label="切换账号" @click="switchAccount">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M15 6 9 12l6 6" />
