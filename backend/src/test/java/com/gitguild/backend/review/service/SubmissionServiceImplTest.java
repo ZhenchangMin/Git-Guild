@@ -11,6 +11,7 @@ import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.common.BusinessException;
+import com.gitguild.backend.notification.service.NotificationService;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Difficulty;
 import com.gitguild.backend.quest.domain.Quest;
@@ -51,6 +52,8 @@ class SubmissionServiceImplTest {
     private CodePullRequestRepository pullRequestRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private NotificationService notificationService;
 
     private SubmissionServiceImpl submissionService;
 
@@ -62,7 +65,8 @@ class SubmissionServiceImplTest {
                 questRepository,
                 assignmentRepository,
                 pullRequestRepository,
-                userRepository);
+                userRepository,
+                notificationService);
     }
 
     @Test

@@ -2,6 +2,8 @@ package com.gitguild.backend.review.service;
 
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.growth.service.GrowthService;
+import com.gitguild.backend.notification.domain.NotificationType;
+import com.gitguild.backend.notification.service.NotificationService;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
@@ -18,6 +20,8 @@ import com.gitguild.backend.review.repository.SubmissionRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,12 +29,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ReviewServiceImpl implements ReviewService {
 
+    private static final Logger log = LoggerFactory.getLogger(ReviewServiceImpl.class);
+
     private final SubmissionRepository submissionRepository;
     private final ReviewRecordRepository reviewRecordRepository;
     private final QuestRepository questRepository;
     private final QuestAssignmentRepository assignmentRepository;
     private final UserRepository userRepository;
     private final GrowthService growthService;
+    private final NotificationService notificationService;
 
     public ReviewServiceImpl(
             SubmissionRepository submissionRepository,
@@ -38,13 +45,15 @@ public class ReviewServiceImpl implements ReviewService {
             QuestRepository questRepository,
             QuestAssignmentRepository assignmentRepository,
             UserRepository userRepository,
-            GrowthService growthService) {
+            GrowthService growthService,
+            NotificationService notificationService) {
         this.submissionRepository = submissionRepository;
         this.reviewRecordRepository = reviewRecordRepository;
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.userRepository = userRepository;
         this.growthService = growthService;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -73,6 +82,7 @@ public class ReviewServiceImpl implements ReviewService {
         ReviewRecord saved = reviewRecordRepository.save(record);
         submissionRepository.save(submission);
         questRepository.save(submission.getQuest());
+        notifyReviewOutcome(submission, request.getDecision(), request.getSummary());
         return toResponse(saved);
     }
 
@@ -114,6 +124,49 @@ public class ReviewServiceImpl implements ReviewService {
             return;
         }
         submission.reject();
+    }
+
+    /**
+     * 把审核结果以站内通知推送给提交者（P4-024）。
+     *
+     * <p>best-effort：通知失败仅记日志，绝不回滚审核结果（审核结论与成长发放才是核心，
+     * 由外层事务保证；通知走 {@code REQUIRES_NEW} 独立事务，见 {@code NotificationServiceImpl}）。
+     */
+    private void notifyReviewOutcome(Submission submission, ReviewDecision decision, String summary) {
+        Quest quest = submission.getQuest();
+        User submitter = submission.getSubmitter();
+        NotificationType type;
+        String content;
+        switch (decision) {
+            case APPROVED -> {
+                type = NotificationType.REVIEW_APPROVED;
+                content = String.format(
+                        "你的任务《%s》已通过审核，获得 %d XP，等级与贡献记录已更新。",
+                        quest.getTitle(), quest.getRewardXp());
+            }
+            case CHANGES_REQUESTED -> {
+                type = NotificationType.REVIEW_CHANGES_REQUESTED;
+                content = String.format(
+                        "任务《%s》的成果需要修改：%s。请修订后重新提交。",
+                        quest.getTitle(), summaryOrDefault(summary));
+            }
+            default -> {
+                type = NotificationType.REVIEW_REJECTED;
+                content = String.format(
+                        "任务《%s》的成果未通过审核：%s。",
+                        quest.getTitle(), summaryOrDefault(summary));
+            }
+        }
+        try {
+            notificationService.notify(submitter, type, content, "SUBMISSION", submission.getSubmissionId());
+        } catch (RuntimeException ex) {
+            log.warn("发送审核结果通知失败 submissionId={}, receiverId={}",
+                    submission.getSubmissionId(), submitter.getUserId(), ex);
+        }
+    }
+
+    private String summaryOrDefault(String summary) {
+        return (summary == null || summary.isBlank()) ? "请查看审核意见" : summary;
     }
 
     private ReviewRecordResponse toResponse(ReviewRecord record) {

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import WorkbenchGitOperationPanel from './WorkbenchGitOperationPanel.vue'
 import WorkbenchPrLinkPanel from './WorkbenchPrLinkPanel.vue'
@@ -17,6 +17,13 @@ import {
   workbenchUser,
 } from '../data/workbench'
 import { sessionStore } from '../stores/sessionStore'
+import {
+  loadNotifications,
+  markNotificationRead,
+  notificationStore,
+  startNotificationPolling,
+  stopNotificationPolling,
+} from '../stores/notificationStore'
 
 const emit = defineEmits(['open-submission', 'open-id-card', 'open-review-desk'])
 
@@ -71,6 +78,28 @@ const selectedFeedback = computed(() =>
 const feedbackTaskFilter = ref('all')
 const feedbackStatusFilter = ref('all')
 const unreadMailCount = computed(() => mailboxMessages.value.filter((email) => email.unread).length)
+
+// P4-024：工作台信箱与站内通知合并为同一数据源。
+// "系统通知"区域优先展示后端真实通知（与公会大厅通知铃共享 notificationStore）；
+// 后端无数据时回退到 mock 通知做演示（hybrid + fallback，详见合并决策）。
+const NOTIFICATION_TYPE_LABEL = {
+  SUBMISSION_RECEIVED: '新成果待审核',
+  REVIEW_APPROVED: '审核通过',
+  REVIEW_CHANGES_REQUESTED: '审核反馈',
+  REVIEW_REJECTED: '审核驳回',
+}
+const liveNotifications = computed(() =>
+  notificationStore.items.map((item) => ({
+    id: item.notificationId,
+    type: NOTIFICATION_TYPE_LABEL[item.type] ?? '站内通知',
+    text: item.content,
+    unread: item.status === 'UNREAD',
+    live: true,
+  })),
+)
+const noticeList = computed(() => (liveNotifications.value.length > 0 ? liveNotifications.value : notifications))
+// 信箱整体未读 = 未读邮件（mock 演示）+ 真实未读通知。
+const totalUnreadCount = computed(() => unreadMailCount.value + notificationStore.unreadCount)
 const displayStats = computed(() =>
   workbenchStats.map((stat) => (stat.label === '未读邮件' ? { ...stat, value: unreadMailCount.value } : stat)),
 )
@@ -332,6 +361,40 @@ function selectNotification(notification) {
     body: `${notification.type}：${notification.text}`,
   }
 }
+
+// 真实站内通知：点击即通过共享 store 标记已读（与公会大厅通知铃同步），并在中间区展示内容。
+function selectLiveNotification(notice) {
+  if (notice.unread) {
+    markNotificationRead(notice.id)
+  }
+  selectedNotificationText.value = null
+  selectedTaskId.value = null
+  selectedEmailId.value = null
+  selectedRepositoryName.value = null
+  selectedFeedbackId.value = null
+  isGrowthDetailOpen.value = false
+  isMailboxOpen.value = false
+  operationResult.value = {
+    title: notice.type,
+    body: notice.text,
+  }
+}
+
+function toggleMailbox() {
+  isMailboxOpen.value = !isMailboxOpen.value
+  if (isMailboxOpen.value) {
+    loadNotifications()
+  }
+}
+
+onMounted(() => {
+  // 进入工作台即拉取并轮询真实通知，使信箱未读数与公会大厅通知铃保持一致。
+  startNotificationPolling()
+})
+
+onUnmounted(() => {
+  stopNotificationPolling()
+})
 
 function showGrowthDetails(source = '个人成长档案') {
   isGrowthDetailOpen.value = true
@@ -800,24 +863,24 @@ function openFeedback(feedbackId, source = '审核反馈') {
         <button
           class="mail-button"
           type="button"
-          aria-label="打开邮箱"
+          aria-label="打开信箱"
           :aria-expanded="isMailboxOpen"
-          @click="isMailboxOpen = !isMailboxOpen"
+          @click="toggleMailbox"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 7h16v11H4z" />
             <path d="m4 7 8 6 8-6" />
           </svg>
-          <span v-if="unreadMailCount > 0" class="mail-alert" aria-label="有未读邮件">!</span>
+          <span v-if="totalUnreadCount > 0" class="mail-alert" aria-label="有未读消息">!</span>
         </button>
 
-        <section v-if="isMailboxOpen" class="mailbox-popover" aria-label="收到的邮件">
+        <section v-if="isMailboxOpen" class="mailbox-popover" aria-label="信箱与站内通知">
           <div class="mailbox-head">
             <div>
               <p class="kicker">Mailbox</p>
-              <h2>收到的邮件</h2>
+              <h2>信箱与通知</h2>
             </div>
-            <span>{{ unreadMailCount }} 未读</span>
+            <span>{{ totalUnreadCount }} 未读</span>
           </div>
 
           <button
@@ -835,16 +898,17 @@ function openFeedback(feedbackId, source = '审核反馈') {
 
           <div class="mailbox-section-title">系统通知</div>
           <button
-            v-for="notice in notifications"
-            :key="notice.text"
+            v-for="notice in noticeList"
+            :key="notice.id ?? notice.text"
             class="mail-preview notice-preview"
-            :class="{ active: selectedNotificationText === notice.text }"
+            :class="{ unread: notice.unread, active: !notice.live && selectedNotificationText === notice.text }"
             type="button"
-            @click="selectNotification(notice)"
+            @click="notice.live ? selectLiveNotification(notice) : selectNotification(notice)"
           >
             <span>{{ notice.type }}</span>
             <strong>{{ notice.text }}</strong>
-            <small>操作：{{ notice.action }}</small>
+            <small v-if="notice.live">{{ notice.unread ? '未读' : '已读' }}</small>
+            <small v-else>操作：{{ notice.action }}</small>
           </button>
         </section>
       </div>

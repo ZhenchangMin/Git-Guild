@@ -92,6 +92,21 @@ function closeGate() {
   isGateOpen.value = false
 }
 
+// 仅当"按下"和"松开"都发生在遮罩层本身时才关闭登录框。
+// 这样从输入框内按下、拖拽到框外松开（click 会冒泡到遮罩层）不会误触关闭。
+const backdropPressed = ref(false)
+
+function onLayerPointerDown(event) {
+  backdropPressed.value = event.target === event.currentTarget
+}
+
+function onLayerPointerUp(event) {
+  if (backdropPressed.value && event.target === event.currentTarget) {
+    closeGate()
+  }
+  backdropPressed.value = false
+}
+
 function switchMode(nextMode) {
   mode.value = nextMode
   formError.value = ''
@@ -119,7 +134,14 @@ function saveAuthSession(authData) {
   beginEntryAnimation(routeAfterEntry(user.role))
 }
 
-async function submitAuth() {
+async function submitAuth(event) {
+  // 关闭浏览器在输入时自动弹出的原生校验气泡（表单已加 novalidate），
+  // 改为仅在用户点击提交时主动触发——此时"邮箱需包含 @"等提示才会出现。
+  const formEl = event?.target
+  if (formEl instanceof HTMLFormElement && !formEl.reportValidity()) {
+    return
+  }
+
   formError.value = ''
   formMessage.value = ''
   isSubmitting.value = true
@@ -184,7 +206,12 @@ onBeforeUnmount(() => {
       </button>
 
       <Transition name="guild-login-modal">
-        <div v-if="isGateOpen && !isEntering" class="guild-login-layer" @click.self="closeGate">
+        <div
+          v-if="isGateOpen && !isEntering"
+          class="guild-login-layer"
+          @pointerdown="onLayerPointerDown"
+          @pointerup="onLayerPointerUp"
+        >
           <aside class="guild-login-card" aria-label="登录或注册 Git Guild">
             <header class="guild-login-head">
               <p class="kicker">Git Guild Gate</p>
@@ -200,7 +227,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
-            <form class="guild-auth-form" @submit.prevent="submitAuth">
+            <form class="guild-auth-form" novalidate @submit.prevent="submitAuth">
               <label v-if="isRegisterMode" class="guild-field">
                 <span>用户名</span>
                 <input

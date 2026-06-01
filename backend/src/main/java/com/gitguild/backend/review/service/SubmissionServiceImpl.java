@@ -3,6 +3,8 @@ package com.gitguild.backend.review.service;
 import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.common.BusinessException;
+import com.gitguild.backend.notification.domain.NotificationType;
+import com.gitguild.backend.notification.service.NotificationService;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.quest.domain.QuestAssignment;
@@ -23,12 +25,16 @@ import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class SubmissionServiceImpl implements SubmissionService {
+
+    private static final Logger log = LoggerFactory.getLogger(SubmissionServiceImpl.class);
 
     private static final List<SubmissionStatus> OPEN_SUBMISSION_STATUSES = List.of(SubmissionStatus.PENDING_REVIEW);
 
@@ -38,6 +44,7 @@ public class SubmissionServiceImpl implements SubmissionService {
     private final QuestAssignmentRepository assignmentRepository;
     private final CodePullRequestRepository pullRequestRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public SubmissionServiceImpl(
             SubmissionRepository submissionRepository,
@@ -45,13 +52,15 @@ public class SubmissionServiceImpl implements SubmissionService {
             QuestRepository questRepository,
             QuestAssignmentRepository assignmentRepository,
             CodePullRequestRepository pullRequestRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            NotificationService notificationService) {
         this.submissionRepository = submissionRepository;
         this.reviewRecordRepository = reviewRecordRepository;
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.pullRequestRepository = pullRequestRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -85,6 +94,8 @@ public class SubmissionServiceImpl implements SubmissionService {
         quest.markInReview();
         questRepository.save(quest);
 
+        notifySubmissionReceived(quest, submitter, saved.getSubmissionId());
+
         return new CreateSubmissionResponse(
                 saved.getSubmissionId(),
                 quest.getQuestId(),
@@ -110,6 +121,28 @@ public class SubmissionServiceImpl implements SubmissionService {
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", HttpStatus.NOT_FOUND, "User not found", "userId=" + userId));
+    }
+
+    /**
+     * 提醒任务发布者有新成果待审核（P4-024）。
+     *
+     * <p>best-effort：通知失败仅记日志，绝不回滚成果提交——投递通知不应成为提交成功的前置条件。
+     * 发布者与提交者为同一人时跳过，避免自我提醒。
+     */
+    private void notifySubmissionReceived(Quest quest, User submitter, Long submissionId) {
+        User publisher = quest.getPublisher();
+        if (publisher == null || publisher.getUserId().equals(submitter.getUserId())) {
+            return;
+        }
+        try {
+            String content = String.format(
+                    "冒险家 %s 提交了任务《%s》的成果，等待你的审核。",
+                    submitter.getUsername(), quest.getTitle());
+            notificationService.notify(
+                    publisher, NotificationType.SUBMISSION_RECEIVED, content, "SUBMISSION", submissionId);
+        } catch (RuntimeException ex) {
+            log.warn("发送成果待审核通知失败 submissionId={}, receiverId={}", submissionId, publisher.getUserId(), ex);
+        }
     }
 
     private boolean canView(Submission submission, User currentUser) {
