@@ -10,6 +10,7 @@ import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.common.BusinessException;
+import com.gitguild.backend.growth.service.GrowthService;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Difficulty;
 import com.gitguild.backend.quest.domain.Quest;
@@ -50,6 +51,8 @@ class ReviewServiceImplTest {
     private QuestAssignmentRepository assignmentRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private GrowthService growthService;
 
     private ReviewServiceImpl reviewService;
 
@@ -60,7 +63,8 @@ class ReviewServiceImplTest {
                 reviewRecordRepository,
                 questRepository,
                 assignmentRepository,
-                userRepository);
+                userRepository,
+                growthService);
     }
 
     @Test

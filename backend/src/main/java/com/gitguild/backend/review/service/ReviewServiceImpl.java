@@ -1,6 +1,7 @@
 package com.gitguild.backend.review.service;
 
 import com.gitguild.backend.common.BusinessException;
+import com.gitguild.backend.growth.service.GrowthService;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
@@ -29,18 +30,21 @@ public class ReviewServiceImpl implements ReviewService {
     private final QuestRepository questRepository;
     private final QuestAssignmentRepository assignmentRepository;
     private final UserRepository userRepository;
+    private final GrowthService growthService;
 
     public ReviewServiceImpl(
             SubmissionRepository submissionRepository,
             ReviewRecordRepository reviewRecordRepository,
             QuestRepository questRepository,
             QuestAssignmentRepository assignmentRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            GrowthService growthService) {
         this.submissionRepository = submissionRepository;
         this.reviewRecordRepository = reviewRecordRepository;
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.userRepository = userRepository;
+        this.growthService = growthService;
     }
 
     @Override
@@ -101,6 +105,8 @@ public class ReviewServiceImpl implements ReviewService {
                         assignment.complete();
                         assignmentRepository.save(assignment);
                     });
+            // P4-022 成长激励：审核通过同事务内发放 XP/等级/贡献记录（幂等，详见 GrowthService）
+            growthService.grantQuestCompletion(submission.getSubmitter(), submission.getQuest());
             return;
         }
         if (decision == ReviewDecision.CHANGES_REQUESTED) {
