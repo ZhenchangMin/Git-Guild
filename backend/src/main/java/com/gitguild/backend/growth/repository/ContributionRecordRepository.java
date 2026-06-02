@@ -2,6 +2,7 @@ package com.gitguild.backend.growth.repository;
 
 import com.gitguild.backend.growth.domain.ContributionRecord;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ContributionRecordRepository extends JpaRepository<ContributionRecord, Long> {
@@ -16,4 +17,6 @@ public interface ContributionRecordRepository extends JpaRepository<Contribution
      * 查 Adventurer 的所有贡献记录，用于推荐算法画像构建（反推技术栈偏好和难度舒适区）。
      */
     List<ContributionRecord> findByUserUserId(Long userId);
+
+    Optional<ContributionRecord> findFirstByUserUserIdOrderByCompletedAtAsc(Long userId);
 }

@@ -17,4 +17,6 @@ public interface CodePullRequestRepository extends JpaRepository<CodePullRequest
      * @return 已同步的 PR 记录，若从未同步则为 {@code empty}
      */
     Optional<CodePullRequest> findByRepositoryRepositoryIdAndExternalPrId(Long repositoryId, String externalPrId);
+
+    Optional<CodePullRequest> findByPullRequestIdAndRepositoryRepositoryId(Long pullRequestId, Long repositoryId);
 }

@@ -118,4 +118,10 @@ public class CodeRepository {
     public void setSyncStatus(String syncStatus) {
         this.syncStatus = syncStatus;
     }
+
+    public void markSynced() {
+        this.syncStatus = "SYNCED";
+        this.syncErrorMessage = null;
+        this.lastSyncedAt = OffsetDateTime.now();
+    }
 }

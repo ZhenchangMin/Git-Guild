@@ -73,4 +73,16 @@ public class QuestTag {
     public void setTagId(Long tagId) {
         this.tagId = tagId;
     }
+
+    public void update(String name, String color, Boolean enabled) {
+        if (name != null && !name.isBlank()) {
+            this.name = name.trim();
+        }
+        if (color != null) {
+            this.color = color;
+        }
+        if (enabled != null) {
+            this.enabled = enabled;
+        }
+    }
 }
