@@ -161,6 +161,19 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     // ── 画像构建 ──────────────────────────────────────────────────────────
 
+    /**
+     * 从 Adventurer 的贡献记录反推其行为画像。
+     *
+     * <p><b>画像两维：</b>技术栈频率（{@code techFreq}）用于计算候选 Quest 的技术匹配度；
+     * 难度均值（{@code avgDifficulty}）用于计算候选 Quest 的难度偏离度。
+     * {@code completedQuestCount = 0} 即冷启动——后续打分函数以此为信号退化为中性排序。
+     *
+     * <p><b>边界：</b>{@code records} 为空时返回 avgDifficulty=0 的空画像，
+     * 调用方以 completedQuestCount 判别冷启动，而非 avgDifficulty 是否为 0。
+     *
+     * <p><b>实现注：</b>每条 {@code r.getQuest()} 触发一次 LAZY 加载，
+     * 当前在 {@code @Transactional(readOnly=true)} 内安全；生产量级可加 {@code @EntityGraph}。
+     */
     private AdventurerProfile buildAdventurerProfile(List<ContributionRecord> records) {
         Map<String, Integer> techFreq = new HashMap<>();
         double totalDiff = 0;
@@ -179,6 +192,16 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     // ── 打分函数 ──────────────────────────────────────────────────────────
 
+    /**
+     * 技术栈匹配度（Jaccard 风格交集比）。
+     *
+     * <p>公式：{@code |画像技术 ∩ Quest 技术| / |Quest 技术|}。
+     * 权重 0.6（{@link #TECH_WEIGHT}），是综合分中占比最高的维度，
+     * 体现 CONTEXT.md "推荐应体现 Adventurer 已掌握技术栈" 的业务取向。
+     *
+     * <p><b>不变量：</b>返回值 ∈ [0, 1]。Quest 无技术栈或 Adventurer 冷启动时退化为 0——
+     * 即冷启动下推荐排序由 difficultyMatch 主导，这符合"新手先按难度渐进"的产品逻辑。
+     */
     private double computeTechMatch(AdventurerProfile profile, List<String> questTechs) {
         if (questTechs.isEmpty() || profile.completedQuestCount == 0) {
             return 0.0;
@@ -187,9 +210,18 @@ public class RecommendationServiceImpl implements RecommendationService {
         return (double) matched / questTechs.size();
     }
 
+    /**
+     * 难度匹配度（距离衰减）。
+     *
+     * <p>公式：{@code 1 − |questDiff − adventurerAvgDiff| / 3}。
+     * 权重 0.4（{@link #DIFFICULTY_WEIGHT}）。A=4, B=3, C=2, D=1。
+     *
+     * <p><b>冷启动特殊值：</b>无历史画像时返回固定 0.5，使所有候选难度维度中性——
+     * 既不偏向也不排斥任何难度，排序退化为 techMatch + beginnerBoost 主导。
+     */
     private double computeDifficultyMatch(AdventurerProfile profile, int questDiff) {
         if (profile.completedQuestCount == 0) {
-            return 0.5; // 无历史 → 中等匹配（不偏向也不排斥）
+            return 0.5;
         }
         return 1.0 - (double) Math.abs(questDiff - profile.avgDifficulty) / MAX_DIFFICULTY_DELTA;
     }
