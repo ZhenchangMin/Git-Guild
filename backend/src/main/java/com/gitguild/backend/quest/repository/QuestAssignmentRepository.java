@@ -19,4 +19,9 @@ public interface QuestAssignmentRepository extends JpaRepository<QuestAssignment
     Optional<QuestAssignment> findFirstByQuestQuestIdAndStatus(Long questId, AssignmentStatus status);
 
     List<QuestAssignment> findByQuestAndStatus(Quest quest, AssignmentStatus status);
+
+    /**
+     * 查 Adventurer 的所有 ACTIVE 接取，用于推荐算法候选集过滤——排除已接取的 Quest。
+     */
+    List<QuestAssignment> findByAssigneeUserIdAndStatus(Long assigneeId, AssignmentStatus status);
 }
