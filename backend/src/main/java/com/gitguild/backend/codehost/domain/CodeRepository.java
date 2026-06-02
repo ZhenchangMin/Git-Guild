@@ -42,6 +42,9 @@ public class CodeRepository {
     @Column(name = "default_branch", nullable = false, length = 128)
     private String defaultBranch = "main";
 
+    @Column(length = 512)
+    private String description;
+
     @Column(name = "sync_status", nullable = false, length = 32)
     private String syncStatus = "PENDING";
 
@@ -111,8 +114,40 @@ public class CodeRepository {
         return defaultBranch;
     }
 
+    public String getDescription() {
+        return description;
+    }
+
+    public String getExternalRepositoryId() {
+        return externalRepositoryId;
+    }
+
     public void setRepositoryId(Long repositoryId) {
         this.repositoryId = repositoryId;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public void setHostType(String hostType) {
+        this.hostType = hostType;
+    }
+
+    public void setSourceUrl(String sourceUrl) {
+        this.sourceUrl = sourceUrl;
+    }
+
+    public void setDefaultBranch(String defaultBranch) {
+        this.defaultBranch = defaultBranch;
+    }
+
+    public void setExternalRepositoryId(String externalRepositoryId) {
+        this.externalRepositoryId = externalRepositoryId;
     }
 
     public void setSyncStatus(String syncStatus) {

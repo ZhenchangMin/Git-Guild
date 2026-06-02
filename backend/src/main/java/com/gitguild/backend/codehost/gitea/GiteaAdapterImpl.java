@@ -24,14 +24,12 @@ import org.springframework.web.client.RestClient;
  *   <li>{@code merged} 字段为 boolean 而非可空时间戳的 Gitea 特有行为</li>
  * </ul>
  *
- * <p>使用系统级 admin token 认证，与具体 Adventurer 身份无关。
- * token 通过 {@link GiteaProperties} 从环境变量注入；token 为空时应用可启动，
- * 但所有调用将收到 401（见已知问题清单 P4-016 问题2）。
+ * <p>使用系统级 admin token 认证，读写统一。token 通过 {@link GiteaProperties}
+ * 从环境变量注入；token 为空时应用可启动，但所有调用将收到 401。
  *
- * <p><b>边界错误模式：</b>Gitea 返回 4xx 或网络不可达时，不再透传为 HTTP 500，
- * 而是经 {@link #execute} 统一转换为带业务码的 {@link BusinessException}
- * （{@code CODE_HOST_RESOURCE_NOT_FOUND} / {@code CODE_HOST_UNAVAILABLE}），
- * 兑现已知问题清单 P4-016 问题1 的修复承诺。
+ * <p><b>边界错误模式：</b>Gitea 返回 4xx 或网络不可达时，经 {@link #execute} 统一转换为
+ * 带业务码的 {@link BusinessException}（{@code CODE_HOST_RESOURCE_NOT_FOUND} /
+ * {@code CODE_HOST_UNAVAILABLE}），兑现已知问题清单 P4-016 问题1 的修复承诺。
  */
 @Component
 public class GiteaAdapterImpl implements GiteaAdapter {
@@ -92,6 +90,23 @@ public class GiteaAdapterImpl implements GiteaAdapter {
                 .body(Map[].class), "repo=" + owner + "/" + repo + " pulls");
         if (body == null) return List.of();
         return Arrays.stream(body).map(this::toPrInfo).toList();
+    }
+
+    @Override
+    public RepositoryInfo createRepository(String name, String description) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("name", name);
+        reqBody.put("private", false);
+        reqBody.put("default_branch", "main");
+        if (description != null && !description.isBlank()) {
+            reqBody.put("description", description);
+        }
+        Map body = execute(() -> client.post()
+                .uri("/user/repos")
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "create repo name=" + name);
+        return toRepositoryInfo(body);
     }
 
     /**

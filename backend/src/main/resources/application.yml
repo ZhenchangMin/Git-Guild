@@ -43,6 +43,7 @@ server:
 gitea:
   base-url: ${GITEA_BASE_URL:http://localhost:3000}
   token: ${GITEA_TOKEN:}
+  admin-username: ${GITEA_ADMIN_USERNAME:spike-admin}
 
 jwt:
   # 开发环境默认值仅用于本地启动；生产环境必须通过 JWT_SECRET 提供至少 32 字节的随机密钥。

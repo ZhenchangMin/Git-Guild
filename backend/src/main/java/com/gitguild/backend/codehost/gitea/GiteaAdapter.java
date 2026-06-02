@@ -7,75 +7,61 @@ import com.gitguild.backend.codehost.gitea.dto.RepositoryInfo;
 import java.util.List;
 
 /**
- * Git-Guild 与 Gitea 的只读集成层。
+ * Git-Guild 与 Gitea 的集成层（读写）。
  *
- * <p>Git-Guild 采用"用户自操作"模式：Adventurer 用自己的 Gitea 账号直接完成 commit 和
- * PR 操作，Git-Guild 不代理执行 Git 操作。本接口仅封装读取操作，任何写操作（上传文件、
- * 创建/合并 PR）均不属于此适配层的职责范围。
+ * <p>Git-Guild 采用"平台代理受限写操作"模式（CONTEXT.md § Gitea 集成模型）：底层仓库仍由
+ * 本地 Gitea 托管，Git-Guild 工作台在业务流程内代理创建仓库、创建分支、上传文件、创建 PR
+ * 和同步 PR 状态。MVP 写操作范围限制为 Quest 工作流所需的调用。
  *
  * <p><b>调用方须知：</b>底层使用系统级 admin token（非 Adventurer 个人 token），
- * 所有方法在 Gitea 返回 4xx 时抛出 {@code HttpClientErrorException}，调用方需自行
- * 转换为业务异常（见已知问题清单 P4-016 问题1）。
+ * 所有方法在 Gitea 返回 4xx 时抛出（经 {@link GiteaAdapterImpl#execute} 统一转）
+ * {@code BusinessException}（{@code CODE_HOST_RESOURCE_NOT_FOUND} /
+ * {@code CODE_HOST_UNAVAILABLE}）。
  */
 public interface GiteaAdapter {
 
+    // ── 读操作 ──────────────────────────────────────────────────────────
+
     /**
      * 获取 Gitea 仓库元数据。
-     *
-     * @param owner Gitea 仓库所有者用户名
-     * @param repo  仓库名称
-     * @return 仓库信息，含默认分支、是否为空仓库等
      */
     RepositoryInfo getRepository(String owner, String repo);
 
     /**
      * 列出仓库的开放 Issue，供 Guild Master 在发布 Quest 时关联使用。
      *
-     * <p><b>已知限制：</b>当前仅返回前 50 条，不分页。Issue 超过 50 条的仓库结果不完整。
-     *
-     * @param owner Gitea 仓库所有者用户名
-     * @param repo  仓库名称
-     * @return 开放状态的 Issue 列表，Gitea 无数据时返回空列表
+     * <p><b>已知限制：</b>当前仅返回前 50 条，不分页。
      */
     List<IssueInfo> listIssues(String owner, String repo);
 
     /**
-     * 获取单个 PR 的状态快照，用于校验 Adventurer 提交的 Submission 是否关联了真实 PR。
-     *
-     * <p>核心用途：通过 {@code PrInfo.authorLogin()} 与
-     * {@code CodeHostAccountBinding.externalUsername} 比对，
-     * 验证"提交的 PR 确实属于该 Adventurer"。
-     *
-     * @param owner    Gitea 仓库所有者用户名
-     * @param repo     仓库名称
-     * @param prNumber Gitea PR 编号（即 {@code CodePullRequest.externalPrId} 的整数形式）
-     * @return PR 状态快照，含合并状态和作者登录名
+     * 获取单个 PR 的状态快照。
      */
     PrInfo getPullRequest(String owner, String repo, int prNumber);
 
     /**
      * 列出仓库的所有分支。
      *
-     * <p><b>已知限制：</b>当前依赖 Gitea 默认分页（20 条），分支超过 20 条的仓库结果不完整。
-     *
-     * @param owner Gitea 仓库所有者用户名
-     * @param repo  仓库名称
-     * @return 分支列表，含分支名和最新 commit SHA，Gitea 无数据时返回空列表
+     * <p><b>已知限制：</b>当前依赖 Gitea 默认分页（20 条）。
      */
     List<BranchInfo> listBranches(String owner, String repo);
 
     /**
-     * 列出仓库的所有 PR（含 open / closed / merged），供 PR 同步服务落库使用。
-     *
-     * <p>核心用途：Adventurer 打开提交柜台（{@code submission-draft}）时，将该仓库的 PR
-     * upsert 进本地 {@code pull_requests} 表，使 Submission 能引用本地 {@code pullRequestId}。
-     *
-     * <p><b>已知限制：</b>依赖 Gitea 默认分页，PR 数量超过单页时结果不完整（见已知问题清单
-     * P4-016 问题3，Demo 仓库不触发）。
-     *
-     * @param owner Gitea 仓库所有者用户名
-     * @param repo  仓库名称
-     * @return PR 快照列表（{@code state=all}），Gitea 无数据时返回空列表
+     * 列出仓库的所有 PR（含 open / closed / merged）。
      */
     List<PrInfo> listPulls(String owner, String repo);
+
+    // ── 平台代理写操作 ──────────────────────────────────────────────────
+
+    /**
+     * 在 Gitea admin 用户下创建新仓库（Issue #9）。
+     *
+     * <p>使用 admin token，仓库 Gitea 侧 owner 为 admin 用户，
+     * 业务所有权由 {@code CodeRepository.owner} 记录（Guild Master）。
+     *
+     * @param name        仓库名（必填）
+     * @param description 仓库描述（可选）
+     * @return 创建后的仓库元数据，含 id、full_name、html_url、default_branch
+     */
+    RepositoryInfo createRepository(String name, String description);
 }

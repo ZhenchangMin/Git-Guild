@@ -1,0 +1,150 @@
+# P4-Adapter Gitea 接入优化设计
+
+> 覆盖 GitHub Issues #9–#17，在 `feature/P4-Adapter` 分支上按依赖链顺序实现。
+> 每阶段实现后回填对应的"实现状态"小节。
+
+---
+
+## 1. 背景：模型变更
+
+### 1.1 CONTEXT.md 变更
+
+| 维度 | 旧模型（P4-016） | 新模型（2026-06-02） |
+| --- | --- | --- |
+| 操作模式 | 用户自操作：Adventurer 用自己的 Gitea 账号做 commit/PR | 平台代理受限写操作：Git-Guild 工作台代理创建分支、上传文件、创建 PR |
+| PR 归属 | `code_host_account_bindings` 校验"PR 属于该 Adventurer" | PR 主链路不再要求 Adventurer 跳出 Git-Guild 手动创建 PR |
+| GiteaAdapter 范围 | 只读 | 读 + 平台写操作（创建仓库、创建分支、上传文件、创建 PR） |
+
+### 1.2 对已交付代码的影响
+
+| 已写模块 | 在新模型下 |
+| --- | --- |
+| `GiteaAdapter`（只读） | 加写操作：`createRepository`、`createBranch`、`uploadFile`、`createPullRequest` |
+| `CodePullRequestSyncService`（从 Gitea 拉 PR upsert） | #14 创建 PR 时直接写本地表，不再需要"同步"语义 |
+| `submission-draft`（懒同步返回候选 PR） | 变为返回系统代理创建的 PR，不再列 Gitea 全量 |
+| `CodeHostAccountBinding`（校验 PR 归属） | 降级：PR 是系统代理创建的，不需校验"这个 PR 是不是你的" |
+| P4-022 成长 / P4-025 推荐 | **不受影响**——下游消费，上游 PR 来源变化不关它们的事 |
+
+---
+
+## 2. 架构决策（ADRs）
+
+### 决策 1 — 仓库 Gitea 侧 owner = admin 用户（MVP）
+
+Gitea 侧仓库建在 admin 用户下（`POST /api/v1/user/repos`），`CodeRepository.owner` 指向
+Git-Guild 的 Guild Master。区分"代码托管所有权"和"业务所有权"。
+
+- **选定（甲）**：admin 用户下建仓库。零额外依赖，Guild Master 不需 Gitea 账号。
+- **后续升级（乙）**：仓库建到 Guild Master 的 Gitea 账号下，需 binding 前置。仅需改
+  `GiteaAdapter.createRepo` 的目标用户参数，其余不变。
+
+### 决策 2 — 平台凭据 = 系统 admin token（不变）
+
+沿用现有 `GiteaProperties`（`base-url` + `token`），不把 access token 存入业务库（P2 ADR-002）。
+写操作使用同一套 token。
+
+### 决策 3 — CodeRepository 补 description 列
+
+对齐 Gitea API 的 `POST /api/v1/user/repos` 入参。`@Column(length=512)` 可空。
+
+---
+
+## 3. 任务依赖链与完成状态
+
+```
+#9 仓库接入 ─► #11 绑定仓库+Issue ─► #12 创建 task branch ─► #13 提交文件 commit
+    ─► #14 创建 PR + 回填 ◄─────────────────────────────────────┘
+    ─► #15 Submission Draft + API 接入 ─► #16 Maintainer 审核闭环 ─► #17 E2E 演示
+#10 Quest 状态修正 ──────────────────────► feeds into #16
+```
+
+| Issue | 标题 | 状态 | 实现状态 |
+| --- | --- | --- | --- |
+| #9 | 本地 Gitea 仓库接入 MVP | `ready-for-agent` | 🔨 实现中 |
+| #10 | 修正 Submission Quest 状态流转 | `ready-for-agent` | ⏳ |
+| #11 | Quest 绑定本地仓库与 Issue | `ready-for-agent` | ⏳ |
+| #12 | 接取 Quest 后创建 task branch | `ready-for-agent` | ⏳ |
+| #13 | 工作台提交文件并生成 commit | `ready-for-human` | ⏳ |
+| #14 | 工作台创建 PR 并回填 | `ready-for-agent` | ⏳ |
+| #15 | Submission Draft + API 接入 | `ready-for-agent` | ⏳ |
+| #16 | Maintainer 审核闭环 | `ready-for-agent` | ⏳ |
+| #17 | E2E 演示与回归 | `ready-for-agent` | ⏳ |
+
+---
+
+## 4. 各 Issue 设计详情
+
+---
+
+### #9 — 本地 Gitea 仓库接入 MVP
+
+**端点：**
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `POST` | `/api/v1/repositories` | Guild Master 创建新仓库（Gitea 侧建 + 本地存） |
+| `GET` | `/api/v1/repositories` | 列出当前用户有权限的仓库（owner 或 Collaborator） |
+
+**POST 流程：**
+1. 校验调用者角色为 `MAINTAINER` 或 `ADMIN`
+2. `POST /api/v1/user/repos` 在 admin 用户下创建仓库
+3. 解析 Gitea 响应得到 id、full_name、html_url、default_branch
+4. 存 `CodeRepository`（owner=Git-Guild Guild Master, hostType=GITEA, 拼接 sourceUrl）
+5. 返回 `repositoryId`
+
+**改动：**
+- `GiteaProperties`：补 `adminUsername`（拼接 sourceUrl 用）
+- `GiteaAdapter(+Impl)`：新增 `RepositoryInfo createRepository(name, description)`
+- `CodeRepository`：补 `description` 列（`@Column(length=512)` 可空）+ setter
+- `RepositoryController`（新）：`POST /repositories` + `GET /repositories`
+- `RepositoryService(+Impl)`（新）：协调 Gitea API + 本地持久化
+
+**实现状态：** 🔨 实现中
+
+---
+
+### #10 — Quest 状态流转修正
+
+*(待设计)*
+
+---
+
+### #11 — Quest 绑定仓库与 Issue
+
+*(待设计)*
+
+---
+
+### #12 — 接取后创建 task branch
+
+*(待设计)*
+
+---
+
+### #13 — 工作台提交文件 commit
+
+*(待设计)*
+
+---
+
+### #14 — 工作台创建 PR
+
+*(待设计)*
+
+---
+
+### #15 — Submission Draft API 接入
+
+*(待设计)*
+
+---
+
+### #16 — Maintainer 审核闭环
+
+*(待设计)*
+
+---
+
+### #17 — E2E 演示
+
+*(待设计)*

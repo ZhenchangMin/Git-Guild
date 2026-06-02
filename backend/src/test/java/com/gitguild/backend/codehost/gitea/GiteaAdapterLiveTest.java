@@ -37,7 +37,7 @@ class GiteaAdapterLiveTest {
 
     @Test
     void listPulls_readsRealPrFieldsFromLiveGitea() {
-        GiteaAdapter adapter = new GiteaAdapterImpl(new GiteaProperties(BASE, TOKEN));
+        GiteaAdapter adapter = new GiteaAdapterImpl(new GiteaProperties(BASE, TOKEN, OWNER));
 
         List<PrInfo> pulls = adapter.listPulls(OWNER, REPO);
         System.out.printf("%n=== listPulls(%s/%s) → %d PR ===%n", OWNER, REPO, pulls.size());
