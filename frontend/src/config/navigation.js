@@ -7,7 +7,7 @@ export const roleNavigation = {
     { label: '悬赏任务板', routeName: 'quest-board' },
     { label: '工作台', routeName: 'adventurer-workbench' },
     { label: '提交柜台', routeName: 'submission-counter' },
-    { label: '成长档案', routeName: 'growth-profile' },
+    { label: '成长档案', routeName: 'profile' },
   ],
   MAINTAINER: [
     { label: '仓库接入', routeName: 'repository-sync' },

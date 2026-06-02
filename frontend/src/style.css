@@ -4735,7 +4735,6 @@ h2 {
   color: #ffe8b9;
 }
 
-.profile-route-mode::before,
 .leaderboard-route-mode::before,
 .help-route-mode::before {
   background:

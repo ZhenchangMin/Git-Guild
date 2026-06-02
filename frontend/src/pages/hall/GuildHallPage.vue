@@ -166,7 +166,7 @@ onUnmounted(() => {
           </svg>
           <span>切换账号</span>
         </button>
-        <button class="back-orb growth-orb" type="button" aria-label="打开成长档案" @click="openRoute('growth-profile')">
+        <button class="back-orb growth-orb" type="button" aria-label="打开成长档案" @click="openRoute('profile')">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3 15 9l6 .8-4.5 4.3 1.1 6.1L12 17.2 6.4 20.2l1.1-6.1L3 9.8 9 9z" />
           </svg>
