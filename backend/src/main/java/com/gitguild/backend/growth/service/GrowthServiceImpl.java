@@ -1,15 +1,23 @@
 package com.gitguild.backend.growth.service;
 
+import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.growth.domain.ContributionRecord;
 import com.gitguild.backend.growth.domain.GrowthProfile;
 import com.gitguild.backend.growth.domain.XpTransaction;
+import com.gitguild.backend.growth.dto.BadgeResponse;
 import com.gitguild.backend.growth.dto.GrowthSummaryResponse;
+import com.gitguild.backend.growth.dto.LeaderboardResponse;
 import com.gitguild.backend.growth.repository.ContributionRecordRepository;
 import com.gitguild.backend.growth.repository.GrowthProfileRepository;
 import com.gitguild.backend.growth.repository.XpTransactionRepository;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.user.domain.User;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class GrowthServiceImpl implements GrowthService {
 
     private static final String REASON_QUEST_COMPLETED = "QUEST_COMPLETED";
+    private static final String PERIOD_ALL_TIME = "ALL_TIME";
+    private static final int DEFAULT_LEVEL = 1;
 
     private final GrowthProfileRepository growthProfileRepository;
     private final XpTransactionRepository xpTransactionRepository;
@@ -75,5 +85,99 @@ public class GrowthServiceImpl implements GrowthService {
                 .map(p -> new GrowthSummaryResponse(
                         p.getLevel(), p.getTotalXp(), p.nextLevelXp(), p.getCompletedQuestCount()))
                 .orElseGet(() -> new GrowthSummaryResponse(1, 0, GrowthProfile.XP_PER_LEVEL, 0));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public LeaderboardResponse getXpLeaderboard(String period, int limit) {
+        String normalizedPeriod = normalizePeriod(period);
+        validateLimit(limit);
+
+        List<GrowthProfile> profiles = growthProfileRepository
+                .findByOrderByTotalXpDescCompletedQuestCountDescUserUserIdAsc(PageRequest.of(0, limit));
+
+        List<LeaderboardResponse.LeaderboardItem> items = new ArrayList<>(profiles.size());
+        for (int i = 0; i < profiles.size(); i++) {
+            GrowthProfile profile = profiles.get(i);
+            User user = profile.getUser();
+            items.add(new LeaderboardResponse.LeaderboardItem(
+                    i + 1,
+                    user.getUserId(),
+                    user.getUsername(),
+                    profile.getLevel(),
+                    profile.getTotalXp(),
+                    profile.getCompletedQuestCount()));
+        }
+
+        return new LeaderboardResponse(normalizedPeriod, OffsetDateTime.now(), items);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BadgeResponse getBadges(Long userId) {
+        GrowthSnapshot snapshot = growthProfileRepository.findByUserUserId(userId)
+                .map(p -> new GrowthSnapshot(p.getLevel(), p.getTotalXp(), p.getCompletedQuestCount()))
+                .orElseGet(() -> new GrowthSnapshot(DEFAULT_LEVEL, 0, 0));
+        OffsetDateTime firstContributionAt = contributionRecordRepository
+                .findFirstByUserUserIdOrderByCompletedAtAsc(userId)
+                .map(ContributionRecord::getCompletedAt)
+                .orElse(null);
+
+        return new BadgeResponse(List.of(
+                badge("FIRST_COMPLETION", "首次贡献", "完成第一个任务后获得",
+                        "完成任务数量 >= 1", snapshot.completedQuestCount(), 1, firstContributionAt),
+                badge("XP_APPRENTICE", "XP 学徒", "累计 XP 达到 100 后获得",
+                        "累计 XP >= 100", snapshot.totalXp(), 100, firstContributionAt),
+                badge("QUEST_EXPLORER", "任务探索者", "完成 3 个任务后获得",
+                        "完成任务数量 >= 3", snapshot.completedQuestCount(), 3, firstContributionAt),
+                badge("LEVEL_RISER", "等级新星", "用户等级达到 3 后获得",
+                        "用户等级 >= 3", snapshot.level(), 3, firstContributionAt)));
+    }
+
+    private String normalizePeriod(String period) {
+        String normalized = period == null || period.isBlank()
+                ? PERIOD_ALL_TIME
+                : period.trim().toUpperCase(Locale.ROOT);
+        if (!PERIOD_ALL_TIME.equals(normalized)) {
+            throw new BusinessException(
+                    "VALIDATION_FAILED",
+                    HttpStatus.BAD_REQUEST,
+                    "请求参数不合法",
+                    "period only supports ALL_TIME");
+        }
+        return normalized;
+    }
+
+    private void validateLimit(int limit) {
+        if (limit < 1 || limit > 100) {
+            throw new BusinessException(
+                    "VALIDATION_FAILED",
+                    HttpStatus.BAD_REQUEST,
+                    "请求参数不合法",
+                    "limit must be between 1 and 100");
+        }
+    }
+
+    private BadgeResponse.BadgeItem badge(
+            String badgeId,
+            String name,
+            String description,
+            String condition,
+            int progress,
+            int target,
+            OffsetDateTime firstContributionAt) {
+        boolean earned = progress >= target;
+        return new BadgeResponse.BadgeItem(
+                badgeId,
+                name,
+                description,
+                condition,
+                earned,
+                earned ? firstContributionAt : null,
+                progress,
+                target);
+    }
+
+    private record GrowthSnapshot(int level, int totalXp, int completedQuestCount) {
     }
 }

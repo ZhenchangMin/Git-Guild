@@ -69,4 +69,16 @@ public class QuestCategory {
     public void setCategoryId(Long categoryId) {
         this.categoryId = categoryId;
     }
+
+    public void update(String name, String description, Boolean enabled) {
+        if (name != null && !name.isBlank()) {
+            this.name = name.trim();
+        }
+        if (description != null) {
+            this.description = description;
+        }
+        if (enabled != null) {
+            this.enabled = enabled;
+        }
+    }
 }

@@ -70,6 +70,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         // P3 任务大厅要求任务列表和已发布任务详情可公开浏览。
                         .requestMatchers(HttpMethod.GET, "/api/v1/quests", "/api/v1/quests/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/leaderboards/xp").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/quest-categories", "/api/v1/quest-tags").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/repositories/*/guide").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/code-host/webhooks/*").permitAll()
                         // Swagger / OpenAPI 文档允许匿名访问，方便开发阶段调试接口。
                         .requestMatchers("/api-docs/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // Spring Boot 默认错误路径放行，避免异常处理再次被安全链拦截。
