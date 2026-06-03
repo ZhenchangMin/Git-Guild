@@ -15,8 +15,9 @@ export class ApiError extends Error {
 export async function request(endpoint, options = {}) {
   const headers = new Headers(options.headers ?? {})
   const hasBody = options.body !== undefined && options.body !== null
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
 
-  if (hasBody && !headers.has('Content-Type')) {
+  if (hasBody && !isFormData && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
   if (sessionStore.token && !headers.has('Authorization')) {
@@ -26,7 +27,7 @@ export async function request(endpoint, options = {}) {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers,
-    body: hasBody && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
+    body: hasBody && !isFormData && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
   })
 
   const contentType = response.headers.get('content-type') ?? ''

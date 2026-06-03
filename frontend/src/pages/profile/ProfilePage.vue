@@ -1,12 +1,13 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { growthApi } from '../../api/growthApi'
+import { userApi } from '../../api/userApi'
 import profileArchiveBg from '../../assets/profile-archive-bg.png'
 import DifficultyTrendChart from '../../components/DifficultyTrendChart.vue'
 import SkillRadarChart from '../../components/SkillRadarChart.vue'
 import {
-  profileIdentity,
+  profileIdentity as profileIdentityFallback,
   growthFallback,
   titleThresholds,
   profileStats,
@@ -21,12 +22,38 @@ import {
 const router = useRouter()
 
 // ─── growth data ────────────────────────────────────
+const profileIdentity = reactive({ ...profileIdentityFallback })
 const growth = ref({ ...growthFallback })
+const badgeCards = ref([...badgeShowcase])
 const isLoading = ref(true)
+const isSavingProfile = ref(false)
 const loadError = ref('')
+const avatarInput = ref(null)
+const mottoTextarea = ref(null)
+const isEditingMotto = ref(false)
+const mottoDraft = ref(profileIdentity.motto)
+const mottoError = ref('')
+const MAX_MOTTO_LENGTH = 200
+
+function unwrapApiData(payload) {
+  return payload?.data ?? payload ?? {}
+}
+
+function normalizeUser(payload) {
+  const d = unwrapApiData(payload)
+  const hasDisplayBadgeId = Object.prototype.hasOwnProperty.call(d, 'displayBadgeId')
+  return {
+    userId: d.userId ?? d.id ?? profileIdentityFallback.userId,
+    name: d.username ?? d.displayName ?? d.email ?? profileIdentityFallback.name,
+    avatarUrl: d.avatarUrl ?? '',
+    motto: d.motto ?? profileIdentityFallback.motto,
+    createdAt: d.createdAt ?? profileIdentityFallback.createdAt,
+    displayBadgeId: hasDisplayBadgeId ? d.displayBadgeId : undefined,
+  }
+}
 
 function normalizeGrowth(payload) {
-  const d = payload?.data ?? payload ?? {}
+  const d = unwrapApiData(payload)
   return {
     level: d.level ?? growthFallback.level,
     totalXp: d.totalXp ?? d.xp ?? growthFallback.totalXp,
@@ -35,20 +62,137 @@ function normalizeGrowth(payload) {
   }
 }
 
-async function loadGrowth() {
+function normalizeBadges(payload) {
+  const d = unwrapApiData(payload)
+  const items = Array.isArray(d.items) ? d.items : Array.isArray(d) ? d : []
+  if (items.length === 0) return [...badgeShowcase]
+
+  return items.map(item => ({
+    id: item.badgeId ?? item.id,
+    name: item.name ?? '未命名徽章',
+    earned: Boolean(item.earned),
+    hint: item.description ?? item.condition ?? '',
+    earnedAt: item.earnedAt ? String(item.earnedAt).slice(0, 10) : '',
+    progress: item.progress,
+    target: item.target,
+  }))
+}
+
+function applyUser(payload) {
+  const user = normalizeUser(payload)
+  Object.assign(profileIdentity, {
+    userId: user.userId,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
+    motto: user.motto,
+    createdAt: user.createdAt,
+  })
+  mottoDraft.value = user.motto
+  if (user.displayBadgeId !== undefined) {
+    displayBadgeId.value = user.displayBadgeId
+  }
+}
+
+async function loadProfilePage() {
   isLoading.value = true
   loadError.value = ''
+  const failures = []
+
+  try {
+    applyUser(await userApi.me())
+  } catch {
+    failures.push('用户资料')
+    Object.assign(profileIdentity, { ...profileIdentityFallback })
+  }
+
   try {
     growth.value = normalizeGrowth(await growthApi.summary())
   } catch {
-    loadError.value = '成长摘要暂时无法读取，当前显示演示数据。'
+    failures.push('成长摘要')
     growth.value = { ...growthFallback }
+  }
+
+  try {
+    badgeCards.value = normalizeBadges(await growthApi.badges())
+  } catch {
+    failures.push('徽章')
+    badgeCards.value = [...badgeShowcase]
   } finally {
+    if (failures.length > 0) {
+      loadError.value = `${failures.join('、')}暂时无法读取，当前显示可用的演示兜底数据。`
+    }
     isLoading.value = false
   }
 }
 
-onMounted(loadGrowth)
+onMounted(loadProfilePage)
+
+async function editProfileMotto() {
+  mottoDraft.value = profileIdentity.motto ?? ''
+  mottoError.value = ''
+  isEditingMotto.value = true
+  await nextTick()
+  mottoTextarea.value?.focus()
+}
+
+function cancelProfileMottoEdit() {
+  mottoDraft.value = profileIdentity.motto ?? ''
+  mottoError.value = ''
+  isEditingMotto.value = false
+}
+
+async function saveProfileMotto() {
+  const nextMotto = mottoDraft.value.trim()
+  if (nextMotto.length > MAX_MOTTO_LENGTH) {
+    mottoError.value = `座右铭最多 ${MAX_MOTTO_LENGTH} 个字。`
+    return
+  }
+
+  if (nextMotto === (profileIdentity.motto ?? '')) {
+    cancelProfileMottoEdit()
+    return
+  }
+
+  isSavingProfile.value = true
+  try {
+    applyUser(await userApi.updateProfile({ motto: nextMotto }))
+    isEditingMotto.value = false
+  } catch {
+    profileIdentity.motto = nextMotto
+    mottoDraft.value = nextMotto
+    isEditingMotto.value = false
+    loadError.value = '资料接口暂未就绪，座右铭已在当前页面保留为演示状态。'
+  } finally {
+    isSavingProfile.value = false
+  }
+}
+
+function openAvatarPicker() {
+  avatarInput.value?.click()
+}
+
+async function uploadAvatar(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    loadError.value = '头像文件必须是图片格式。'
+    return
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    loadError.value = '头像文件不能超过 2MB。'
+    return
+  }
+
+  isSavingProfile.value = true
+  try {
+    applyUser(await userApi.uploadAvatar(file))
+  } catch (error) {
+    loadError.value = error.message || '头像上传失败，请确认后端服务已启动并稍后重试。'
+  } finally {
+    isSavingProfile.value = false
+  }
+}
 
 // ─── license helpers ────────────────────────────────
 const licenseNo = computed(() => 'No. ' + String(profileIdentity.userId).padStart(5, '0'))
@@ -75,6 +219,7 @@ const codeAge = computed(() => {
 })
 
 const avatarInitial = computed(() => profileIdentity.name.charAt(0).toUpperCase())
+const mottoChars = computed(() => mottoDraft.value.trim().length)
 
 const growthPathPoints = [
   { step: '1', label: '启程', x: '70.1%', y: '72.0%', state: 'done', side: 'bottomRight' },
@@ -113,11 +258,20 @@ const displayBadgeId = ref(
 )
 
 const displayBadge = computed(() =>
-  badgeShowcase.find(b => b.id === displayBadgeId.value) ?? null,
+  badgeCards.value.find(b => b.id === displayBadgeId.value) ?? null,
 )
 
-function wearBadge(id) {
-  displayBadgeId.value = displayBadgeId.value === id ? null : id
+async function wearBadge(id) {
+  const nextBadgeId = displayBadgeId.value === id ? null : id
+  const previousBadgeId = displayBadgeId.value
+  displayBadgeId.value = nextBadgeId
+  try {
+    applyUser(await userApi.setDisplayBadge(nextBadgeId))
+  } catch {
+    loadError.value = previousBadgeId === nextBadgeId
+      ? ''
+      : '徽章佩戴接口暂未就绪，当前选择已作为页面演示状态保留。'
+  }
 }
 
 // ─── tabs ──────────────────────────────────────────
@@ -194,10 +348,28 @@ const icons = {
           <div class="license-body">
             <!-- left: avatar -->
             <div class="license-left">
-              <div class="license-avatar" :class="{ 'has-img': profileIdentity.avatarUrl }">
+              <div
+                class="license-avatar"
+                :class="{ 'has-img': profileIdentity.avatarUrl }"
+              >
                 <img v-if="profileIdentity.avatarUrl" :src="profileIdentity.avatarUrl" alt="头像" />
                 <span v-else class="avatar-initial">{{ avatarInitial }}</span>
               </div>
+              <input
+                ref="avatarInput"
+                class="avatar-input"
+                type="file"
+                accept="image/*"
+                @change="uploadAvatar"
+              />
+              <button
+                class="avatar-upload-btn"
+                type="button"
+                :disabled="isSavingProfile"
+                @click="openAvatarPicker"
+              >
+                {{ profileIdentity.avatarUrl ? '更换头像' : '上传头像' }}
+              </button>
               <span class="license-name-left">{{ profileIdentity.name }}</span>
             </div>
 
@@ -205,7 +377,13 @@ const icons = {
             <div class="license-right">
               <div class="license-top-row">
                 <h1>{{ profileIdentity.name }}</h1>
-                <button class="edit-btn" type="button" aria-label="编辑资料">
+                <button
+                  class="edit-btn"
+                  type="button"
+                  aria-label="编辑资料"
+                  :disabled="isSavingProfile"
+                  @click="editProfileMotto"
+                >
                   <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path :d="icons.edit" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   <span>编辑</span>
                 </button>
@@ -216,7 +394,33 @@ const icons = {
                 {{ guildTitle }}
               </p>
 
-              <blockquote class="license-motto">
+              <div v-if="isEditingMotto" class="motto-editor">
+                <label class="sr-only" for="profile-motto">座右铭</label>
+                <textarea
+                  id="profile-motto"
+                  ref="mottoTextarea"
+                  v-model="mottoDraft"
+                  :maxlength="MAX_MOTTO_LENGTH"
+                  :disabled="isSavingProfile"
+                  rows="3"
+                  placeholder="写一句能代表你当前冒险状态的话"
+                />
+                <div class="motto-editor-foot">
+                  <span :class="{ warn: mottoChars > MAX_MOTTO_LENGTH * 0.9 }">
+                    {{ mottoChars }} / {{ MAX_MOTTO_LENGTH }}
+                  </span>
+                  <div class="motto-actions">
+                    <button type="button" class="ghost-btn" :disabled="isSavingProfile" @click="cancelProfileMottoEdit">
+                      取消
+                    </button>
+                    <button type="button" class="save-btn" :disabled="isSavingProfile" @click="saveProfileMotto">
+                      {{ isSavingProfile ? '保存中' : '保存' }}
+                    </button>
+                  </div>
+                </div>
+                <p v-if="mottoError" class="motto-error">{{ mottoError }}</p>
+              </div>
+              <blockquote v-else class="license-motto">
                 "{{ profileIdentity.motto || 'Every expert was once a beginner.' }}"
               </blockquote>
 
@@ -356,7 +560,7 @@ const icons = {
           <!-- Tab 2: 成就徽章 -->
           <div v-else-if="activeTab === 'badges'" class="badge-grid">
             <article
-              v-for="badge in badgeShowcase"
+              v-for="badge in badgeCards"
               :key="badge.id"
               class="badge-card"
               :class="{ locked: !badge.earned }"
@@ -654,12 +858,39 @@ const icons = {
 .license-avatar {
   width: 72px;
   height: 72px;
+  padding: 0;
   border-radius: 50%;
   border: 2px solid rgba(241,183,86,0.7);
   overflow: hidden;
   display: grid;
   place-items: center;
   background: rgba(12,7,4,0.6);
+}
+
+.avatar-input {
+  display: none;
+}
+
+.avatar-upload-btn {
+  min-height: 30px;
+  border: 1px solid rgba(238,184,91,0.28);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: rgba(255,232,190,0.66);
+  background: rgba(7,4,2,0.3);
+  font-size: 0.74rem;
+  transition: border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.avatar-upload-btn:hover:not(:disabled) {
+  border-color: rgba(255,226,160,0.68);
+  color: #ffe2a0;
+  box-shadow: 0 0 18px rgba(242,192,111,0.12);
+}
+
+.avatar-upload-btn:disabled {
+  cursor: wait;
+  opacity: 0.58;
 }
 
 .license-avatar.has-img img {
@@ -719,6 +950,22 @@ const icons = {
   color: #f2c06f;
 }
 
+.edit-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.edit-btn:focus-visible,
+.tab-bar button:focus-visible,
+.wear-btn:focus-visible,
+.action-btn:focus-visible,
+.avatar-upload-btn:focus-visible,
+.ghost-btn:focus-visible,
+.save-btn:focus-visible {
+  outline: 2px solid rgba(255,226,160,0.84);
+  outline-offset: 3px;
+}
+
 .license-title-line {
   display: flex;
   align-items: center;
@@ -736,6 +983,101 @@ const icons = {
   font-style: italic;
   font-size: 0.88rem;
   line-height: 1.5;
+}
+
+.motto-editor {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(242,192,111,0.35);
+}
+
+.motto-editor textarea {
+  width: 100%;
+  min-height: 78px;
+  resize: vertical;
+  border: 1px solid rgba(238,184,91,0.28);
+  border-radius: var(--radius);
+  color: rgba(255,232,190,0.82);
+  background: rgba(8,4,2,0.46);
+  box-shadow: inset 0 1px 0 rgba(255,235,180,0.08);
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  padding: 10px 12px;
+}
+
+.motto-editor textarea::placeholder {
+  color: rgba(255,232,190,0.34);
+}
+
+.motto-editor textarea:focus {
+  outline: none;
+  border-color: rgba(255,226,160,0.62);
+  box-shadow: 0 0 0 3px rgba(242,192,111,0.12), inset 0 1px 0 rgba(255,235,180,0.1);
+}
+
+.motto-editor textarea:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.motto-editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(255,232,190,0.42);
+  font-size: 0.74rem;
+}
+
+.motto-editor-foot .warn {
+  color: #f2c06f;
+}
+
+.motto-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.ghost-btn,
+.save-btn {
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 0.76rem;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.ghost-btn {
+  border: 1px solid rgba(238,184,91,0.2);
+  color: rgba(255,232,190,0.58);
+  background: transparent;
+}
+
+.save-btn {
+  border: 1px solid rgba(241,183,86,0.56);
+  color: #ffe2a0;
+  background: rgba(241,183,86,0.11);
+}
+
+.ghost-btn:hover:not(:disabled),
+.save-btn:hover:not(:disabled) {
+  border-color: rgba(255,226,160,0.68);
+  color: #ffe2a0;
+}
+
+.ghost-btn:disabled,
+.save-btn:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.motto-error {
+  margin: 0;
+  color: #f2c06f;
+  font-size: 0.75rem;
 }
 
 .license-badge {
