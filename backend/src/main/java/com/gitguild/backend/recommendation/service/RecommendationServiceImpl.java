@@ -7,12 +7,9 @@ import com.gitguild.backend.growth.domain.ContributionRecord;
 import com.gitguild.backend.growth.domain.GrowthProfile;
 import com.gitguild.backend.growth.repository.ContributionRecordRepository;
 import com.gitguild.backend.growth.repository.GrowthProfileRepository;
-import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Difficulty;
 import com.gitguild.backend.quest.domain.Quest;
-import com.gitguild.backend.quest.domain.QuestAssignment;
 import com.gitguild.backend.quest.domain.QuestStatus;
-import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.recommendation.dto.RecommendationResponse;
 import com.gitguild.backend.recommendation.dto.RecommendationResponse.RecommendationItem;
@@ -24,11 +21,8 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -42,14 +36,14 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>Adventurer（{@code BEGINNER} 角色）没有自定义技术栈字段，画像从其已完成 Quest 的
  *       {@code techStackJson}（JSON 数组）反推技术栈频率和难度舒适区；</li>
- *   <li>候选集遵守 CONTEXT.md 多人接取模型：只排除该 Adventurer 自己已接取（{@code ACTIVE}
- *       Assignment）或已完成（{@code ContributionRecord}）的 Quest，不排除被他人接取的 Quest；</li>
+ *   <li>推荐只影响 Quest Board 的排序和理由展示，不减少列表数量；用户已接取或已完成的 Quest
+ *       仍参与打分，是否可再次接取由接取接口负责校验；</li>
  *   <li>{@code Difficulty} 枚举序数与打分映射相反（A 难度最高但 ordinal=0），打分数值用显式 switch 映射
  *       （A=4, B=3, C=2, D=1）。</li>
  * </ul>
  *
- * <p><b>业务不变量：</b>推荐仅覆盖 {@code PUBLISHED} ∪ {@code IN_PROGRESS} 的 Quest
- * （Quest Board 定义，CONTEXT.md §115）；{@code COMPLETED} / {@code CLOSED} 不进入推荐。
+ * <p><b>业务不变量：</b>推荐覆盖 Quest Board 默认候选集 {@code PUBLISHED} ∪ {@code IN_PROGRESS}
+ * （CONTEXT.md §115）。推荐算法只排序该候选集，不过滤候选项，不截断返回数量。
  *
  * <p><b>边界错误模式：</b>未知 strategy 抛 {@code STRATEGY_NOT_AVAILABLE}；
  * 用户不存在抛 {@code USER_NOT_FOUND}；techStackJson 解析失败记 warn 日志后退化为空列表
@@ -67,7 +61,6 @@ public class RecommendationServiceImpl implements RecommendationService {
     private static final int MAX_DIFFICULTY_DELTA = 3;
 
     private final QuestRepository questRepository;
-    private final QuestAssignmentRepository assignmentRepository;
     private final ContributionRecordRepository contributionRecordRepository;
     private final GrowthProfileRepository growthProfileRepository;
     private final UserRepository userRepository;
@@ -75,13 +68,11 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     public RecommendationServiceImpl(
             QuestRepository questRepository,
-            QuestAssignmentRepository assignmentRepository,
             ContributionRecordRepository contributionRecordRepository,
             GrowthProfileRepository growthProfileRepository,
             UserRepository userRepository,
             ObjectMapper objectMapper) {
         this.questRepository = questRepository;
-        this.assignmentRepository = assignmentRepository;
         this.contributionRecordRepository = contributionRecordRepository;
         this.growthProfileRepository = growthProfileRepository;
         this.userRepository = userRepository;
@@ -100,8 +91,6 @@ public class RecommendationServiceImpl implements RecommendationService {
             throw new BusinessException("STRATEGY_NOT_AVAILABLE", HttpStatus.BAD_REQUEST,
                     "指定的推荐策略不存在或未启用", "strategy=" + effectiveStrategy);
         }
-        int effectiveLimit = limit > 0 ? Math.min(Math.max(limit, 1), 20) : 5;
-
         GrowthProfile profile = growthProfileRepository.findByUserUserId(userId).orElse(null);
         int level = profile != null ? profile.getLevel() : 1;
 
@@ -109,22 +98,13 @@ public class RecommendationServiceImpl implements RecommendationService {
         List<ContributionRecord> records = contributionRecordRepository.findByUserUserId(userId);
         AdventurerProfile adventurerProfile = buildAdventurerProfile(records);
 
-        // 候选集：PUBLISHED + IN_PROGRESS，排除已接取和已完成
+        // 候选集与 Quest Board 默认列表一致；推荐算法只负责打分排序，不减少展示数量。
         List<Quest> candidates = questRepository.findByStatusIn(
                 List.of(QuestStatus.PUBLISHED, QuestStatus.IN_PROGRESS));
-        Set<Long> excludedQuestIds = new HashSet<>();
-        if (excludeAccepted) {
-            assignmentRepository.findByAssigneeUserIdAndStatus(userId, AssignmentStatus.ACTIVE)
-                    .forEach(a -> excludedQuestIds.add(a.getQuest().getQuestId()));
-        }
-        records.forEach(r -> excludedQuestIds.add(r.getQuest().getQuestId()));
 
         // 打分 + 排序
         List<RecommendationItem> items = new ArrayList<>();
         for (Quest quest : candidates) {
-            if (excludedQuestIds.contains(quest.getQuestId())) {
-                continue;
-            }
             List<String> questTechs = parseTechStack(quest.getTechStackJson());
             int questDiff = difficultyValue(quest.getDifficulty());
 
@@ -148,9 +128,6 @@ public class RecommendationServiceImpl implements RecommendationService {
                     reasons));
         }
         items.sort(Comparator.comparingDouble(RecommendationItem::score).reversed());
-        if (items.size() > effectiveLimit) {
-            items = items.subList(0, effectiveLimit);
-        }
 
         return new RecommendationResponse(
                 new UserBrief(user.getUserId(), level, profile != null ? profile.getTotalXp() : 0),

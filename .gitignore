@@ -21,6 +21,7 @@ Thumbs.db
 
 # --------------- Backend (Maven / Spring Boot) ---------------
 backend/target/
+backend/uploads/
 backend/!.mvn/wrapper/maven-wrapper.jar
 backend/!**/src/main/**/target/
 backend/!**/src/test/**/target/

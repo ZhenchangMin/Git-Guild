@@ -1,7 +1,8 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { questApi } from '../../api/questApi'
 import questBoardImg from '../../assets/quest board.png'
 import { questCommissions, questFilterGroups } from '../../data/questBoard'
 import { sessionStore } from '../../stores/sessionStore'
@@ -10,6 +11,12 @@ const router = useRouter()
 const questSearch = ref('')
 const questPage = ref(1)
 const questPageSize = 18
+const recommendationLimit = 20
+const questSource = ref([])
+const recommendationMeta = ref(null)
+const recommendationError = ref('')
+const isRecommendationLoading = ref(true)
+const usingRecommendedSource = ref(false)
 const selectedQuestFilters = ref({
   category: [],
   tag: [],
@@ -27,25 +34,169 @@ const STATUS_TONE = {
   退回修改: 'returned',
 }
 
+const STATUS_LABELS = {
+  PUBLISHED: '可接取',
+  IN_PROGRESS: '进行中',
+  PENDING_ADMIN_REVIEW: '待审核',
+  COMPLETED: '已完成',
+  CLOSED: '已关闭',
+  DRAFT: '草稿',
+}
+
 function statusTone(status) {
   return STATUS_TONE[status] || 'open'
+}
+
+function unwrapApiData(payload) {
+  return payload?.data ?? payload ?? {}
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))]
+}
+
+function questLookupKeys(quest) {
+  const keys = [quest.id, quest.routeId].filter(Boolean).map(String)
+  const qstMatch = String(quest.id ?? '').match(/^QST-0*(\d+)$/i)
+  if (qstMatch) keys.push(qstMatch[1])
+  return unique(keys)
+}
+
+function buildQuestMap(quests) {
+  const map = new Map()
+  quests.forEach((quest) => {
+    questLookupKeys(quest).forEach((key) => map.set(key, quest))
+  })
+  return map
+}
+
+function normalizeReward(rewardXp, fallback = '') {
+  if (rewardXp === undefined || rewardXp === null || rewardXp === '') return fallback || '待定 XP'
+  return String(rewardXp).includes('XP') ? String(rewardXp) : `${rewardXp} XP`
+}
+
+function normalizeStatus(status, fallback = '可接取') {
+  return STATUS_LABELS[status] ?? status ?? fallback
+}
+
+function normalizeCriteria(value) {
+  if (!value) return ['查看任务详情', '提交关联 PR', '等待委托人审核']
+  if (Array.isArray(value)) return value
+  return String(value)
+    .split(/\r?\n|；|;/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
+function normalizeQuestSummary(quest) {
+  const techStack = Array.isArray(quest.techStack) ? quest.techStack : []
+  const tagNames = Array.isArray(quest.tags)
+    ? quest.tags.map((tag) => tag.name ?? tag).filter(Boolean)
+    : []
+  const routeId = String(quest.questId ?? quest.id ?? '')
+
+  return {
+    id: routeId,
+    routeId,
+    title: quest.title ?? '未命名委托',
+    issuer: quest.publisher?.username
+      ? `委托人 · ${quest.publisher.username}`
+      : quest.repository?.name
+        ? `委托人 · ${quest.repository.name}`
+        : '委托人 · 推荐系统',
+    category: quest.category?.name ?? '推荐',
+    difficulty: quest.difficulty ?? 'C',
+    stack: techStack.length > 0 ? techStack.join(' / ') : '待补充',
+    techStack,
+    status: normalizeStatus(quest.status),
+    tags: tagNames,
+    reward: normalizeReward(quest.rewardXp),
+    summary: quest.descriptionPreview ?? quest.description ?? '查看详情了解这份委托的背景和完成要求。',
+    criteria: normalizeCriteria(quest.completionCriteria),
+  }
+}
+
+function normalizeRecommendationItem(item, questMap, index) {
+  const brief = item.quest ?? {}
+  const routeId = String(brief.questId ?? '')
+  const fallback = questMap.get(routeId) ?? questMap.get(`QST-${routeId.padStart(4, '0')}`) ?? {}
+  const techStack = Array.isArray(brief.techStack) && brief.techStack.length > 0
+    ? brief.techStack
+    : fallback.techStack ?? []
+  const reasons = Array.isArray(item.reasons) ? item.reasons : []
+
+  return {
+    ...fallback,
+    id: fallback.id ?? routeId,
+    routeId,
+    title: brief.title ?? fallback.title ?? '未命名委托',
+    issuer: brief.repositoryName ? `委托人 · ${brief.repositoryName}` : fallback.issuer ?? '委托人 · 推荐系统',
+    category: fallback.category ?? '推荐',
+    difficulty: brief.difficulty ?? fallback.difficulty ?? 'C',
+    stack: techStack.length > 0 ? techStack.join(' / ') : fallback.stack ?? '待补充',
+    techStack,
+    status: fallback.status ?? '可接取',
+    tags: unique([...(fallback.tags ?? []), ...reasons]),
+    reward: normalizeReward(brief.rewardXp, fallback.reward),
+    summary: fallback.summary ?? '推荐算法根据你的技术栈、难度偏好和成长阶段计算出的委托。',
+    criteria: fallback.criteria ?? ['查看任务详情', '确认实现范围', '提交关联 PR'],
+    recommendationRank: index,
+    recommendationScore: Number(item.score ?? 0),
+    strongMatch: Boolean(item.strongMatch),
+    recommendationReasons: reasons,
+  }
 }
 
 const activeFilterCount = computed(() =>
   Object.values(selectedQuestFilters.value).reduce((total, list) => total + list.length, 0),
 )
 
+const visibleQuestFilterGroups = computed(() => {
+  const dynamicValues = {
+    category: questSource.value.map((quest) => quest.category),
+    tag: questSource.value.flatMap((quest) => quest.tags ?? []),
+    difficulty: questSource.value.map((quest) => quest.difficulty),
+    stack: questSource.value.flatMap((quest) => quest.techStack ?? []),
+    status: questSource.value.map((quest) => quest.status),
+  }
+
+  return questFilterGroups.map((group) => ({
+    ...group,
+    options: unique([...(group.options ?? []), ...(dynamicValues[group.id] ?? [])]),
+  }))
+})
+
+const recommendationStatusText = computed(() => {
+  if (isRecommendationLoading.value) return '正在根据你的成长画像计算推荐'
+  if (recommendationError.value) return recommendationError.value
+  if (recommendationMeta.value?.user) {
+    const { level, totalXp } = recommendationMeta.value.user
+    return `Lv ${level} · ${totalXp} XP`
+  }
+  return usingRecommendedSource.value ? '由推荐算法实时计算' : '当前显示默认委托清单'
+})
+
+const emptyTitle = computed(() => {
+  if (isRecommendationLoading.value) return '正在计算推荐委托'
+  return '没有符合条件的委托'
+})
+
+const emptyDescription = computed(() => {
+  if (isRecommendationLoading.value) return '推荐算法会根据技术栈、难度和成长阶段生成默认列表。'
+  return '调整搜索词或清空部分筛选条件，悬赏板会立即刷新。'
+})
+
 const rankedQuestCommissions = computed(() => {
   const selected = selectedQuestFilters.value
   const query = questSearch.value.trim().toLowerCase()
 
-  return questCommissions
+  return questSource.value
     .map((quest) => {
       const groupMatches = {
         category: selected.category.length === 0 || selected.category.includes(quest.category),
-        tag: selected.tag.length === 0 || selected.tag.some((tag) => quest.tags.includes(tag)),
+        tag: selected.tag.length === 0 || selected.tag.some((tag) => quest.tags?.includes(tag)),
         difficulty: selected.difficulty.length === 0 || selected.difficulty.includes(quest.difficulty),
-        stack: selected.stack.length === 0 || selected.stack.some((stack) => quest.techStack.includes(stack)),
+        stack: selected.stack.length === 0 || selected.stack.some((stack) => quest.techStack?.includes(stack)),
         status: selected.status.length === 0 || selected.status.includes(quest.status),
       }
       const filterMatched = Object.values(groupMatches).every(Boolean)
@@ -59,9 +210,10 @@ const rankedQuestCommissions = computed(() => {
         quest.status,
         quest.reward,
         quest.summary,
-        ...quest.tags,
-        ...quest.techStack,
-        ...quest.criteria,
+        ...(quest.tags ?? []),
+        ...(quest.techStack ?? []),
+        ...(quest.criteria ?? []),
+        ...(quest.recommendationReasons ?? []),
       ]
         .join(' ')
         .toLowerCase()
@@ -77,8 +229,9 @@ const rankedQuestCommissions = computed(() => {
           if (quest.summary.toLowerCase().includes(token)) score += 5
           if (quest.stack.toLowerCase().includes(token)) score += 4
           if (quest.category.toLowerCase().includes(token)) score += 4
-          if (quest.tags.some((tag) => tag.toLowerCase().includes(token))) score += 3
-          if (quest.criteria.some((line) => line.toLowerCase().includes(token))) score += 3
+          if (quest.tags?.some((tag) => tag.toLowerCase().includes(token))) score += 3
+          if (quest.criteria?.some((line) => line.toLowerCase().includes(token))) score += 3
+          if (quest.recommendationReasons?.some((reason) => reason.toLowerCase().includes(token))) score += 3
           if (searchableText.includes(token)) score += 1
           return score
         }, 0)
@@ -87,7 +240,16 @@ const rankedQuestCommissions = computed(() => {
       return { ...quest, relevance, filterMatched }
     })
     .filter((quest) => quest.filterMatched && (!query || quest.relevance > 0))
-    .sort((a, b) => b.relevance - a.relevance || a.id.localeCompare(b.id))
+    .sort((a, b) => {
+      if (query) return b.relevance - a.relevance || a.id.localeCompare(b.id)
+      if (usingRecommendedSource.value) {
+        return (
+          (a.recommendationRank ?? Number.MAX_SAFE_INTEGER) -
+          (b.recommendationRank ?? Number.MAX_SAFE_INTEGER)
+        )
+      }
+      return b.relevance - a.relevance || a.id.localeCompare(b.id)
+    })
 })
 
 const questPageCount = computed(() => Math.max(1, Math.ceil(rankedQuestCommissions.value.length / questPageSize)))
@@ -128,6 +290,81 @@ function nextQuestPage() {
   questPage.value = Math.min(questPageCount.value, questPage.value + 1)
 }
 
+function applyRecommendationOrder(baseQuests, recommendedItems) {
+  const questMap = buildQuestMap(baseQuests)
+  const recommendationByQuestId = new Map()
+
+  recommendedItems.forEach((item, index) => {
+    const routeId = String(item.quest?.questId ?? '')
+    if (!routeId) return
+    recommendationByQuestId.set(routeId, normalizeRecommendationItem(item, questMap, index))
+  })
+
+  return baseQuests.map((quest) => {
+    const recommendation = questLookupKeys(quest)
+      .map((key) => recommendationByQuestId.get(key))
+      .find(Boolean)
+
+    if (!recommendation) {
+      return {
+        ...quest,
+        recommendationRank: Number.MAX_SAFE_INTEGER,
+        recommendationScore: 0,
+        strongMatch: false,
+        recommendationReasons: [],
+      }
+    }
+
+    return {
+      ...quest,
+      recommendationRank: recommendation.recommendationRank,
+      recommendationScore: recommendation.recommendationScore,
+      strongMatch: recommendation.strongMatch,
+      recommendationReasons: recommendation.recommendationReasons,
+      tags: unique([...(quest.tags ?? []), ...(recommendation.recommendationReasons ?? [])]),
+    }
+  })
+}
+
+async function loadRecommendedQuests() {
+  isRecommendationLoading.value = true
+  recommendationError.value = ''
+
+  try {
+    const questListData = unwrapApiData(
+      await questApi.list({ page: 1, size: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
+    )
+    const questListItems = Array.isArray(questListData.items) ? questListData.items : []
+    const baseQuests = questListItems.length > 0
+      ? questListItems.map(normalizeQuestSummary)
+      : [...questCommissions]
+    const recommendationPayload = await questApi
+      .recommendations({
+        strategy: 'tech-difficulty',
+        beginnerFriendly: true,
+        excludeAccepted: false,
+        limit: recommendationLimit,
+      })
+      .catch(() => null)
+    const recommendationData = unwrapApiData(recommendationPayload)
+    const recommendedItems = Array.isArray(recommendationData.items) ? recommendationData.items : []
+
+    questSource.value = applyRecommendationOrder(baseQuests, recommendedItems)
+    recommendationMeta.value = recommendationData
+    usingRecommendedSource.value = true
+    if (!recommendationPayload) {
+      recommendationError.value = '推荐接口暂时不可用，当前按默认排序显示'
+    }
+  } catch {
+    questSource.value = [...questCommissions]
+    recommendationMeta.value = null
+    usingRecommendedSource.value = false
+    recommendationError.value = '推荐接口暂时不可用，当前显示默认委托清单'
+  } finally {
+    isRecommendationLoading.value = false
+  }
+}
+
 function openQuestDetail(questId, intent = 'view') {
   // Guests can browse but must sign in before accepting a commission — send
   // them to the gate, preserving the accept intent so the detail page picks
@@ -159,6 +396,8 @@ watch(questPageCount, (pageCount) => {
     questPage.value = pageCount
   }
 })
+
+onMounted(loadRecommendedQuests)
 </script>
 
 <template>
@@ -207,7 +446,7 @@ watch(questPageCount, (pageCount) => {
             </div>
 
             <div class="quest-filter-list">
-              <section v-for="group in questFilterGroups" :key="group.id" class="quest-filter-group">
+              <section v-for="group in visibleQuestFilterGroups" :key="group.id" class="quest-filter-group">
                 <h3>{{ group.title }}</h3>
                 <div class="quest-filter-options">
                   <button
@@ -227,8 +466,21 @@ watch(questPageCount, (pageCount) => {
           </aside>
 
           <section class="commission-panel" aria-live="polite">
+            <div class="commission-panel-head recommendation-head">
+              <div>
+                <p class="kicker">为您推荐</p>
+                <h2>推荐委托</h2>
+              </div>
+              <span>{{ recommendationStatusText }}</span>
+            </div>
+
             <div v-if="pagedQuestCommissions.length > 0" class="commission-grid">
-              <article v-for="quest in pagedQuestCommissions" :key="quest.id" class="commission-card">
+              <article
+                v-for="quest in pagedQuestCommissions"
+                :key="quest.routeId ?? quest.id"
+                class="commission-card"
+                :class="{ 'is-strong-match': quest.strongMatch }"
+              >
                 <span class="commission-seal" :class="`tone-${statusTone(quest.status)}`">{{ quest.status }}</span>
 
                 <div class="commission-card-top">
@@ -239,6 +491,13 @@ watch(questPageCount, (pageCount) => {
                 <h3 class="commission-title">{{ quest.title }}</h3>
                 <p class="commission-issuer">{{ quest.issuer }}</p>
                 <p class="commission-summary">{{ quest.summary }}</p>
+
+                <div v-if="quest.recommendationReasons?.length" class="commission-reasons">
+                  <p class="commission-label">推荐理由</p>
+                  <div>
+                    <span v-for="reason in quest.recommendationReasons" :key="reason">{{ reason }}</span>
+                  </div>
+                </div>
 
                 <div class="commission-criteria">
                   <p class="commission-label">验收标准</p>
@@ -254,8 +513,8 @@ watch(questPageCount, (pageCount) => {
                 <footer class="commission-foot">
                   <span class="commission-reward">{{ quest.reward }}</span>
                   <div class="commission-actions">
-                    <button class="quiet-action" type="button" @click="openQuestDetail(quest.id, 'view')">详情</button>
-                    <button class="primary-action" type="button" @click="openQuestDetail(quest.id, 'accept')">接取委托</button>
+                    <button class="quiet-action" type="button" @click="openQuestDetail(quest.routeId ?? quest.id, 'view')">详情</button>
+                    <button class="primary-action" type="button" @click="openQuestDetail(quest.routeId ?? quest.id, 'accept')">接取委托</button>
                   </div>
                 </footer>
               </article>
@@ -263,8 +522,8 @@ watch(questPageCount, (pageCount) => {
 
             <div v-else class="commission-empty">
               <p class="kicker">空空如也</p>
-              <h2>没有符合条件的委托</h2>
-              <p>调整搜索词或清空部分筛选条件，悬赏板会立即刷新。</p>
+              <h2>{{ emptyTitle }}</h2>
+              <p>{{ emptyDescription }}</p>
               <button class="quiet-action" type="button" @click="clearQuestFilters">清空筛选</button>
             </div>
 

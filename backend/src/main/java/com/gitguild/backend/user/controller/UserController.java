@@ -12,6 +12,12 @@ import com.gitguild.backend.user.dto.UserResponse;
 import com.gitguild.backend.user.repository.UserRepository;
 import com.gitguild.backend.user.service.AuthService;
 import jakarta.validation.Valid;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Locale;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,7 +77,7 @@ public class UserController {
 
     /**
      * 上传头像（multipart/form-data，字段名 file）。
-     * MVP：将文件 Base64 编码后截断存 avatar_url；生产环境应存对象存储并存 URL。
+     * MVP：写入本地 uploads/avatars 目录，数据库仅保存可访问的短 URL。
      */
     @PostMapping(value = "/me/avatar", consumes = "multipart/form-data")
     @Transactional
@@ -95,12 +101,16 @@ public class UserController {
         Long userId = SecurityPrincipalUtils.currentUserId(authentication);
         User user = findUser(userId);
 
-        // MVP：转 Base64 Data URL 存储；后续替换为对象存储 URL
+        String extension = extensionFor(contentType);
+        Path avatarDir = Path.of("uploads", "avatars").toAbsolutePath().normalize();
+        String filename = "user-" + userId + "-" + UUID.randomUUID() + extension;
+        Path target = avatarDir.resolve(filename).normalize();
+
         try {
-            String base64 = java.util.Base64.getEncoder().encodeToString(file.getBytes());
-            String dataUrl = "data:" + contentType + ";base64," + base64;
-            user.setAvatarUrl(dataUrl);
-        } catch (java.io.IOException e) {
+            Files.createDirectories(avatarDir);
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            user.setAvatarUrl("/uploads/avatars/" + filename);
+        } catch (IOException e) {
             throw new BusinessException("INTERNAL_ERROR", HttpStatus.INTERNAL_SERVER_ERROR,
                     "头像上传失败", e.getMessage());
         }
@@ -127,6 +137,16 @@ public class UserController {
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", HttpStatus.NOT_FOUND,
-                        "用户不存在", "userId=" + userId));
+                "用户不存在", "userId=" + userId));
+    }
+
+    private String extensionFor(String contentType) {
+        return switch (contentType.toLowerCase(Locale.ROOT)) {
+            case "image/jpeg", "image/jpg" -> ".jpg";
+            case "image/png" -> ".png";
+            case "image/gif" -> ".gif";
+            case "image/webp" -> ".webp";
+            default -> ".img";
+        };
     }
 }

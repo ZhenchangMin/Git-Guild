@@ -73,6 +73,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/leaderboards/xp").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/quest-categories", "/api/v1/quest-tags").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/repositories/*/guide").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/code-host/webhooks/*").permitAll()
                         // Swagger / OpenAPI 文档允许匿名访问，方便开发阶段调试接口。
                         .requestMatchers("/api-docs/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
@@ -89,8 +90,8 @@ public class SecurityConfig {
     @Bean
     public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
         org.springframework.web.cors.CorsConfiguration config = new org.springframework.web.cors.CorsConfiguration();
-        // 允许前端 Vue 的默认本地开发地址访问
-        config.setAllowedOrigins(java.util.List.of("http://localhost:5173"));
+        // 允许 Vite 开发端口访问；5173 被占用时会自动切到后续端口。
+        config.setAllowedOriginPatterns(java.util.List.of("http://localhost:*", "http://127.0.0.1:*"));
         config.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(java.util.List.of("Authorization", "Content-Type"));
         config.setAllowCredentials(true);
