@@ -13,8 +13,23 @@ public class CreateQuestRequest {
     @NotNull(message = "repositoryId 不能为空")
     private Long repositoryId;
 
-    @NotNull(message = "issueId 不能为空")
+    /**
+     * 关联已有本地 Issue（与 {@code giteaIssueTitle} 二选一）。
+     * 如果同时提供 {@code giteaIssueTitle}，则忽略此字段，走 Gitea 创建路径。
+     */
     private Long issueId;
+
+    /**
+     * 在 Gitea 上创建新 Issue 的标题（与 {@code issueId} 二选一）。
+     * 提供此字段时，后端会在 Gitea 仓库中创建 Issue 并同步到本地绑定。
+     */
+    @Size(max = 200, message = "giteaIssueTitle 长度不能超过 200")
+    private String giteaIssueTitle;
+
+    /**
+     * 在 Gitea 上创建新 Issue 的正文（可选）。
+     */
+    private String giteaIssueBody;
 
     @NotBlank(message = "title 不能为空")
     @Size(max = 200, message = "title 长度不能超过 200")
@@ -59,6 +74,22 @@ public class CreateQuestRequest {
 
     public void setIssueId(Long issueId) {
         this.issueId = issueId;
+    }
+
+    public String getGiteaIssueTitle() {
+        return giteaIssueTitle;
+    }
+
+    public void setGiteaIssueTitle(String giteaIssueTitle) {
+        this.giteaIssueTitle = giteaIssueTitle;
+    }
+
+    public String getGiteaIssueBody() {
+        return giteaIssueBody;
+    }
+
+    public void setGiteaIssueBody(String giteaIssueBody) {
+        this.giteaIssueBody = giteaIssueBody;
     }
 
     public String getTitle() {

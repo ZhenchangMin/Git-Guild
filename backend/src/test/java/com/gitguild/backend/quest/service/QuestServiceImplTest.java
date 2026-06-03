@@ -13,6 +13,7 @@ import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
+import com.gitguild.backend.codehost.service.CodeIssueService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Difficulty;
@@ -65,6 +66,8 @@ class QuestServiceImplTest {
     @Mock
     private CodeIssueRepository issueRepository;
     @Mock
+    private CodeIssueService codeIssueService;
+    @Mock
     private UserRepository userRepository;
 
     private QuestServiceImpl questService;
@@ -78,6 +81,7 @@ class QuestServiceImplTest {
                 tagRepository,
                 codeRepositoryRepository,
                 issueRepository,
+                codeIssueService,
                 userRepository,
                 new ObjectMapper());
     }

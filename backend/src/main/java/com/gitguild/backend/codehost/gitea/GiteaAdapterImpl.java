@@ -93,6 +93,21 @@ public class GiteaAdapterImpl implements GiteaAdapter {
     }
 
     @Override
+    public IssueInfo createIssue(String owner, String repo, String title, String body) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("title", title);
+        if (body != null && !body.isBlank()) {
+            reqBody.put("body", body);
+        }
+        Map result = execute(() -> client.post()
+                .uri("/repos/{owner}/{repo}/issues", owner, repo)
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "repo=" + owner + "/" + repo + " create issue");
+        return toIssueInfo(result);
+    }
+
+    @Override
     public RepositoryInfo createRepository(String name, String description) {
         Map<String, Object> reqBody = new java.util.HashMap<>();
         reqBody.put("name", name);
@@ -150,6 +165,7 @@ public class GiteaAdapterImpl implements GiteaAdapter {
         return new IssueInfo(
                 toLong(m.get("number")),
                 (String) m.get("title"),
+                (String) m.get("body"),
                 (String) m.get("state"),
                 (String) m.get("html_url"));
     }

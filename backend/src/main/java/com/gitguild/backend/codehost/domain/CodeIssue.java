@@ -96,7 +96,39 @@ public class CodeIssue {
         return status;
     }
 
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
     public void setIssueId(Long issueId) {
         this.issueId = issueId;
+    }
+
+    public void setExternalUrl(String externalUrl) {
+        this.externalUrl = externalUrl;
+    }
+
+    public void setBody(String body) {
+        this.body = body;
+    }
+
+    public void setSyncedAt(OffsetDateTime syncedAt) {
+        this.syncedAt = syncedAt;
+    }
+
+    public String getExternalUrl() {
+        return externalUrl;
+    }
+
+    public String getBody() {
+        return body;
+    }
+
+    public OffsetDateTime getSyncedAt() {
+        return syncedAt;
     }
 }

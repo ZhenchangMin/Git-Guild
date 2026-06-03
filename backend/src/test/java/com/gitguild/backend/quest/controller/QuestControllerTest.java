@@ -55,6 +55,9 @@ class QuestControllerTest {
                         QuestStatus.DRAFT,
                         1001L,
                         3001L,
+                        "#42",
+                        "http://localhost:3000/git-guild/issues/42",
+                        "main",
                         Difficulty.C,
                         180,
                         OffsetDateTime.parse("2026-06-02T10:00:00+08:00")));
@@ -94,7 +97,7 @@ class QuestControllerTest {
                                 QuestStatus.PUBLISHED,
                                 new CategoryBrief(2L, "Backend"),
                                 List.of(),
-                                new RepositoryBrief(1001L, "git-guild", "SYNCED"),
+                                new RepositoryBrief(1001L, "git-guild", "main", "SYNCED"),
                                 OffsetDateTime.parse("2026-06-02T10:00:00+08:00"))),
                         2,
                         8,

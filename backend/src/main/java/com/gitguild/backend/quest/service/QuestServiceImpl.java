@@ -7,6 +7,7 @@ import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
+import com.gitguild.backend.codehost.service.CodeIssueService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Quest;
@@ -74,6 +75,7 @@ public class QuestServiceImpl implements QuestService {
     private final QuestTagRepository tagRepository;
     private final CodeRepositoryRepository codeRepositoryRepository;
     private final CodeIssueRepository issueRepository;
+    private final CodeIssueService codeIssueService;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
@@ -84,6 +86,7 @@ public class QuestServiceImpl implements QuestService {
             QuestTagRepository tagRepository,
             CodeRepositoryRepository codeRepositoryRepository,
             CodeIssueRepository issueRepository,
+            CodeIssueService codeIssueService,
             UserRepository userRepository,
             ObjectMapper objectMapper) {
         this.questRepository = questRepository;
@@ -92,6 +95,7 @@ public class QuestServiceImpl implements QuestService {
         this.tagRepository = tagRepository;
         this.codeRepositoryRepository = codeRepositoryRepository;
         this.issueRepository = issueRepository;
+        this.codeIssueService = codeIssueService;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
     }
@@ -106,8 +110,20 @@ public class QuestServiceImpl implements QuestService {
 
         CodeRepository repository = codeRepositoryRepository.findById(request.getRepositoryId())
                 .orElseThrow(() -> new BusinessException("REPOSITORY_NOT_FOUND", HttpStatus.NOT_FOUND, "仓库不存在", "repositoryId=" + request.getRepositoryId()));
-        CodeIssue issue = issueRepository.findByIssueIdAndRepositoryRepositoryId(request.getIssueId(), request.getRepositoryId())
-                .orElseThrow(() -> new BusinessException("ISSUE_NOT_FOUND", HttpStatus.NOT_FOUND, "Issue 不存在", "issueId=" + request.getIssueId()));
+
+        // Issue #11：支持两种方式绑定 Issue
+        //   (a) 提供 giteaIssueTitle → 在 Gitea 上创建新 Issue 并同步到本地
+        //   (b) 提供 issueId → 关联已有本地 Issue
+        CodeIssue issue;
+        if (request.getGiteaIssueTitle() != null && !request.getGiteaIssueTitle().isBlank()) {
+            issue = codeIssueService.createFromGitea(repository, request.getGiteaIssueTitle(), request.getGiteaIssueBody());
+        } else if (request.getIssueId() != null) {
+            issue = issueRepository.findByIssueIdAndRepositoryRepositoryId(request.getIssueId(), request.getRepositoryId())
+                    .orElseThrow(() -> new BusinessException("ISSUE_NOT_FOUND", HttpStatus.NOT_FOUND, "Issue 不存在", "issueId=" + request.getIssueId()));
+        } else {
+            throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST,
+                    "请求参数不合法", "必须提供 issueId 或 giteaIssueTitle");
+        }
         if (!issue.canCreateQuest() || questRepository.existsByIssueAndStatusIn(issue, ACTIVE_ISSUE_QUEST_STATUSES)) {
             throw new BusinessException("ISSUE_NOT_AVAILABLE", HttpStatus.CONFLICT, "该 Issue 当前不可发布为任务", "Issue 已关闭或已关联未完成任务");
         }
@@ -134,12 +150,17 @@ public class QuestServiceImpl implements QuestService {
         quest.addTags(tags);
         Quest saved = questRepository.save(quest);
 
+        CodeIssue savedIssue = saved.getIssue();
+        CodeRepository savedRepo = saved.getRepository();
         return new CreateQuestResponse(
                 saved.getQuestId(),
                 saved.getTitle(),
                 saved.getStatus(),
-                saved.getRepository().getRepositoryId(),
-                saved.getIssue().getIssueId(),
+                savedRepo.getRepositoryId(),
+                savedIssue.getIssueId(),
+                savedIssue.getExternalIssueId(),
+                savedIssue.getExternalUrl(),
+                savedRepo.getDefaultBranch(),
                 saved.getDifficulty(),
                 saved.getRewardXp(),
                 saved.getCreatedAt());
@@ -305,6 +326,7 @@ public class QuestServiceImpl implements QuestService {
                 new QuestResponses.RepositoryBrief(
                         quest.getRepository().getRepositoryId(),
                         quest.getRepository().getName(),
+                        quest.getRepository().getDefaultBranch(),
                         quest.getRepository().getSyncStatus()),
                 quest.getCreatedAt());
     }
@@ -328,8 +350,8 @@ public class QuestServiceImpl implements QuestService {
                 quest.getRewardXp(),
                 quest.getStatus(),
                 new QuestResponses.UserBrief(quest.getPublisher().getUserId(), quest.getPublisher().getUsername()),
-                new QuestResponses.RepositoryBrief(quest.getRepository().getRepositoryId(), quest.getRepository().getName(), quest.getRepository().getSyncStatus()),
-                new QuestResponses.IssueBrief(quest.getIssue().getIssueId(), quest.getIssue().getExternalIssueId(), quest.getIssue().getTitle(), quest.getIssue().getStatus()),
+                new QuestResponses.RepositoryBrief(quest.getRepository().getRepositoryId(), quest.getRepository().getName(), quest.getRepository().getDefaultBranch(), quest.getRepository().getSyncStatus()),
+                new QuestResponses.IssueBrief(quest.getIssue().getIssueId(), quest.getIssue().getExternalIssueId(), quest.getIssue().getTitle(), quest.getIssue().getStatus(), quest.getIssue().getExternalUrl()),
                 new QuestResponses.CategoryBrief(quest.getCategory().getCategoryId(), quest.getCategory().getName()),
                 tagResponses(quest),
                 assignment,

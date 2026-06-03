@@ -51,6 +51,17 @@ public interface GiteaAdapter {
      */
     List<PrInfo> listPulls(String owner, String repo);
 
+    /**
+     * 在指定仓库创建一个新的 Gitea Issue（Issue #11）。
+     *
+     * @param owner Gitea 仓库 owner
+     * @param repo  Gitea 仓库名
+     * @param title Issue 标题
+     * @param body  Issue 正文（可选）
+     * @return 创建后的 Issue 元数据
+     */
+    IssueInfo createIssue(String owner, String repo, String title, String body);
+
     // ── 平台代理写操作 ──────────────────────────────────────────────────
 
     /**
