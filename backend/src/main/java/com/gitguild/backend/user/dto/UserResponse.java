@@ -11,6 +11,9 @@ public record UserResponse(
         String email,
         UserRole role,
         UserStatus status,
+        String avatarUrl,
+        String motto,
+        String displayBadgeId,
         OffsetDateTime createdAt) {
 
     public static UserResponse from(User user) {
@@ -20,6 +23,9 @@ public record UserResponse(
                 user.getEmail(),
                 user.getRole(),
                 user.getStatus(),
+                user.getAvatarUrl(),
+                user.getMotto(),
+                user.getDisplayBadgeId(),
                 user.getCreatedAt());
     }
 }

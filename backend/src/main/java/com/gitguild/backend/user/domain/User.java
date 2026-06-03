@@ -41,6 +41,15 @@ public class User {
     @Column(name = "token_version", nullable = false)
     private int tokenVersion;
 
+    @Column(name = "avatar_url", length = 512)
+    private String avatarUrl;
+
+    @Column(length = 200)
+    private String motto;
+
+    @Column(name = "display_badge_id", length = 64)
+    private String displayBadgeId;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -127,11 +136,35 @@ public class User {
         return updatedAt;
     }
 
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public String getMotto() {
+        return motto;
+    }
+
+    public String getDisplayBadgeId() {
+        return displayBadgeId;
+    }
+
     public void setUserId(Long userId) {
         this.userId = userId;
     }
 
     public void setStatus(UserStatus status) {
         this.status = status;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
+
+    public void setMotto(String motto) {
+        this.motto = motto;
+    }
+
+    public void setDisplayBadgeId(String displayBadgeId) {
+        this.displayBadgeId = displayBadgeId;
     }
 }
