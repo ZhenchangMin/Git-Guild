@@ -7,6 +7,7 @@
 当前文件说明：
 
 - `init.sql`：MySQL 数据库建表脚本，用于创建 GitGuild 项目所需的核心业务表。
+- `seed-local-admin.sql`：本地开发演示用 ADMIN 账号种子数据。
 
 ## 2. 环境要求
 
@@ -20,3 +21,18 @@
 
 ```bash
 mysql -u root -p < docs/P4/database/init.sql
+```
+
+如需创建本地演示 ADMIN 账号，在完成建表后执行：
+
+```bash
+mysql -u root -p < docs/P4/database/seed-local-admin.sql
+```
+
+本地演示账号：
+
+```text
+邮箱：admin@gitguild.local
+密码：admin123
+角色：ADMIN
+```
