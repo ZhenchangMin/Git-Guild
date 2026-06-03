@@ -1,6 +1,8 @@
 package com.gitguild.backend.growth.service;
 
+import com.gitguild.backend.growth.dto.BadgeResponse;
 import com.gitguild.backend.growth.dto.GrowthSummaryResponse;
+import com.gitguild.backend.growth.dto.LeaderboardResponse;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.user.domain.User;
 
@@ -29,4 +31,8 @@ public interface GrowthService {
      * @param userId Git-Guild 用户 ID
      */
     GrowthSummaryResponse getSummary(Long userId);
+
+    LeaderboardResponse getXpLeaderboard(String period, int limit);
+
+    BadgeResponse getBadges(Long userId);
 }

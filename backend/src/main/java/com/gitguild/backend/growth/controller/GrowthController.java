@@ -1,6 +1,7 @@
 package com.gitguild.backend.growth.controller;
 
 import com.gitguild.backend.common.ApiResponse;
+import com.gitguild.backend.growth.dto.BadgeResponse;
 import com.gitguild.backend.growth.dto.GrowthSummaryResponse;
 import com.gitguild.backend.growth.service.GrowthService;
 import com.gitguild.backend.security.SecurityPrincipalUtils;
@@ -25,6 +26,12 @@ public class GrowthController {
     @GetMapping("/growth")
     public ApiResponse<GrowthSummaryResponse> getGrowthSummary(Authentication authentication) {
         return ApiResponse.success(growthService.getSummary(
+                SecurityPrincipalUtils.currentUserId(authentication)));
+    }
+
+    @GetMapping("/badges")
+    public ApiResponse<BadgeResponse> getBadges(Authentication authentication) {
+        return ApiResponse.success(growthService.getBadges(
                 SecurityPrincipalUtils.currentUserId(authentication)));
     }
 }

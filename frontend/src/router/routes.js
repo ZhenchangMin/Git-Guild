@@ -3,7 +3,6 @@ import AdminExceptionsPage from '../pages/admin/AdminExceptionsPage.vue'
 import AdminReviewPage from '../pages/admin/AdminReviewPage.vue'
 import AdminTaxonomyPage from '../pages/admin/AdminTaxonomyPage.vue'
 import LoginPage from '../pages/auth/LoginPage.vue'
-import GrowthProfilePage from '../pages/growth/GrowthProfilePage.vue'
 import GuildHallPage from '../pages/hall/GuildHallPage.vue'
 import HelpPage from '../pages/help/HelpPage.vue'
 import LeaderboardPage from '../pages/leaderboard/LeaderboardPage.vue'
@@ -90,7 +89,7 @@ export const routes = [
   {
     path: '/growth',
     name: 'growth-profile',
-    component: GrowthProfilePage,
+    redirect: { name: 'profile' },
     meta: { requiresAuth: true, roles: ['ADVENTURER', 'MAINTAINER', 'ADMIN'] },
   },
   {
