@@ -73,7 +73,7 @@ public class SubmissionServiceImpl implements SubmissionService {
 
         Quest quest = questRepository.findById(request.getQuestId())
                 .orElseThrow(() -> new BusinessException("QUEST_NOT_FOUND", HttpStatus.NOT_FOUND, "Quest not found", "questId=" + request.getQuestId()));
-        if (quest.getStatus() != QuestStatus.IN_PROGRESS && quest.getStatus() != QuestStatus.IN_REVIEW) {
+        if (quest.getStatus() != QuestStatus.IN_PROGRESS) {
             throw new BusinessException("QUEST_NOT_ACCEPTABLE", HttpStatus.CONFLICT, "Quest is not acceptable for submission", "currentStatus=" + quest.getStatus());
         }
 
@@ -91,9 +91,9 @@ public class SubmissionServiceImpl implements SubmissionService {
         }
 
         Submission saved = submissionRepository.save(new Submission(quest, submitter, pullRequest, request.getDescription()));
-        quest.markInReview();
-        questRepository.save(quest);
 
+        // Quest 保持 IN_PROGRESS：IN_REVIEW 为保留状态，不作为默认主流程节点。
+        // 只有 Guild Master APPROVED 后 Quest 才进入 COMPLETED。
         notifySubmissionReceived(quest, submitter, saved.getSubmissionId());
 
         return new CreateSubmissionResponse(

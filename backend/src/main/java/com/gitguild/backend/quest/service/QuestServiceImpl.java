@@ -53,8 +53,7 @@ public class QuestServiceImpl implements QuestService {
             QuestStatus.DRAFT,
             QuestStatus.PENDING_ADMIN_REVIEW,
             QuestStatus.PUBLISHED,
-            QuestStatus.IN_PROGRESS,
-            QuestStatus.IN_REVIEW);
+            QuestStatus.IN_PROGRESS);
     private static final List<AssignmentStatus> ACTIVE_ASSIGNMENT_STATUSES = List.of(AssignmentStatus.ACTIVE);
     private static final List<AssignmentStatus> ANY_ASSIGNMENT_STATUSES = List.of(
             AssignmentStatus.ACTIVE,

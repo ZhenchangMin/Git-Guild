@@ -94,7 +94,7 @@ class SubmissionControllerTest {
                         true,
                         List.of(),
                         SubmissionStatus.CHANGES_REQUESTED,
-                        QuestStatus.IN_REVIEW,
+                        QuestStatus.IN_PROGRESS,
                         null,
                         OffsetDateTime.parse("2026-05-29T11:30:00+08:00")));
 

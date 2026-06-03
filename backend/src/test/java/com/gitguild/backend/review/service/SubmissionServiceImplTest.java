@@ -71,7 +71,7 @@ class SubmissionServiceImplTest {
     }
 
     @Test
-    void createSubmissionShouldCreatePendingSubmissionAndMarkQuestInReview() {
+    void createSubmissionShouldCreatePendingSubmissionAndKeepQuestInProgress() {
         User maintainer = user(2001L, UserRole.MAINTAINER);
         User submitter = user(3001L, UserRole.BEGINNER);
         CodeRepository repository = repository(maintainer);
@@ -96,8 +96,7 @@ class SubmissionServiceImplTest {
 
         assertThat(response.submissionId()).isEqualTo(9001L);
         assertThat(response.status()).isEqualTo(SubmissionStatus.PENDING_REVIEW);
-        assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_REVIEW);
-        verify(questRepository).save(quest);
+        assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
     }
 
     @Test

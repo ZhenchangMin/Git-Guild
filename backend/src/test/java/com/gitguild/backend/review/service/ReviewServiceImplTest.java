@@ -134,9 +134,9 @@ class ReviewServiceImplTest {
 
         assertThat(response.requiresChanges()).isTrue();
         assertThat(response.submissionStatus()).isEqualTo(SubmissionStatus.CHANGES_REQUESTED);
-        assertThat(response.questStatus()).isEqualTo(QuestStatus.IN_REVIEW);
+        assertThat(response.questStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
         assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.CHANGES_REQUESTED);
-        assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_REVIEW);
+        assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
         verify(growthService, never()).grantQuestCompletion(any(), any());
     }
 
@@ -174,6 +174,41 @@ class ReviewServiceImplTest {
                 .isEqualTo("SUBMISSION_ALREADY_REVIEWED");
     }
 
+    /**
+     * Issue #10 回归测试：完整流程 — 接取 Quest → 创建 Submission（Quest 保持 IN_PROGRESS）
+     * → 审核通过 → Quest 进入 COMPLETED。
+     */
+    @Test
+    void fullFlowSubmissionShouldKeepQuestInProgressUntilApproved() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User submitter = user(3001L, UserRole.BEGINNER);
+        CodeRepository repository = repository(maintainer);
+        // 模拟：Quest 已被接取、Submission 已创建，Quest 仍为 IN_PROGRESS
+        Quest quest = quest(maintainer, repository);
+        Submission submission = submission(quest, submitter, pullRequest(repository, "MERGED"));
+        QuestAssignment assignment = new QuestAssignment(quest, submitter);
+
+        // 此时 Quest 应为 IN_PROGRESS（Submission 创建不改变 Quest 状态）
+        assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
+
+        when(submissionRepository.findById(9001L)).thenReturn(Optional.of(submission));
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
+        when(assignmentRepository.findByQuestAndAssigneeUserIdAndStatus(quest, 3001L, AssignmentStatus.ACTIVE))
+                .thenReturn(Optional.of(assignment));
+        when(reviewRecordRepository.save(any(ReviewRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // 审核通过
+        ReviewRecordResponse response = reviewService.reviewSubmission(9001L, 2001L, request(ReviewDecision.APPROVED));
+
+        // 验证：Submission → APPROVED, Quest → COMPLETED, Assignment → COMPLETED
+        assertThat(response.submissionStatus()).isEqualTo(SubmissionStatus.APPROVED);
+        assertThat(response.questStatus()).isEqualTo(QuestStatus.COMPLETED);
+        assertThat(quest.getStatus()).isEqualTo(QuestStatus.COMPLETED);
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.APPROVED);
+        assertThat(assignment.getStatus()).isEqualTo(AssignmentStatus.COMPLETED);
+        verify(growthService).grantQuestCompletion(submitter, quest);
+    }
+
     private ReviewSubmissionRequest request(ReviewDecision decision) {
         ReviewSubmissionRequest request = new ReviewSubmissionRequest();
         request.setDecision(decision);
@@ -206,7 +241,7 @@ class ReviewServiceImplTest {
                 180,
                 6);
         quest.setQuestId(5001L);
-        quest.setStatus(QuestStatus.IN_REVIEW);
+        quest.setStatus(QuestStatus.IN_PROGRESS);
         return quest;
     }
 
