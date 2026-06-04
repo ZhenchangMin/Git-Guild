@@ -6,7 +6,9 @@ import { authApi } from '../../api'
 import doorImg from '../../assets/door.png'
 import { setSession } from '../../stores/sessionStore'
 
-const ENTRY_ANIMATION_MS = 760
+const ENTRY_ANIMATION_MS = 980
+// 注册成功后，先让"账号已创建"的提示停留一会，用户看清后再进入开门动画。
+const REGISTER_SUCCESS_HOLD_MS = 1600
 
 const router = useRouter()
 const route = useRoute()
@@ -18,7 +20,9 @@ const isEntering = ref(false)
 const formMessage = ref('')
 const formError = ref('')
 const accountInput = ref(null)
+const showPassword = ref(false)
 let entryTimer = 0
+let holdTimer = 0
 
 const form = reactive({
   username: '',
@@ -123,6 +127,14 @@ function beginEntryAnimation(targetRoute) {
   }, ENTRY_ANIMATION_MS)
 }
 
+// 注册成功后短暂停留，让用户看清"账号已创建"提示，再继续登录与开门动画。
+function holdForRegisterSuccess() {
+  return new Promise((resolve) => {
+    window.clearTimeout(holdTimer)
+    holdTimer = window.setTimeout(resolve, REGISTER_SUCCESS_HOLD_MS)
+  })
+}
+
 function saveAuthSession(authData) {
   const user = normalizeUser(authData.user)
   setSession({
@@ -154,7 +166,8 @@ async function submitAuth(event) {
         password: form.password,
         role: selectedRole.value,
       })
-      formMessage.value = '账号已创建，正在开启公会大门。'
+      formMessage.value = '账号已创建成功！稍候将为你开启公会大门……'
+      await holdForRegisterSuccess()
     }
 
     const loginResponse = await authApi.login({
@@ -164,10 +177,20 @@ async function submitAuth(event) {
     })
     saveAuthSession(loginResponse.data)
   } catch (error) {
-    formError.value = error.message || '无法连接 Git Guild 后端，请确认服务已启动。'
+    formError.value = resolveAuthError(error)
   } finally {
     isSubmitting.value = false
   }
+}
+
+// 后端校验类错误（VALIDATION_FAILED）的 message 是笼统的"请求参数不合法"，
+// 真正可操作的原因（如"password 必须同时包含字母和数字"）放在 details 里，
+// 所以优先展示 details；业务类错误（邮箱已注册等）的 message 本身就具体。
+function resolveAuthError(error) {
+  if (error?.code === 'VALIDATION_FAILED' && error.details) {
+    return error.details
+  }
+  return error?.message || '无法连接 Git Guild 后端，请确认服务已启动。'
 }
 
 function enterAsVisitor() {
@@ -183,6 +206,7 @@ function enterAsVisitor() {
 
 onBeforeUnmount(() => {
   window.clearTimeout(entryTimer)
+  window.clearTimeout(holdTimer)
 })
 </script>
 
@@ -194,6 +218,7 @@ onBeforeUnmount(() => {
       aria-label="Git Guild 公会入口"
     >
       <div class="guild-gate-art" :style="{ backgroundImage: `url(${doorImg})` }" aria-hidden="true"></div>
+      <div class="guild-gate-flare" aria-hidden="true"></div>
 
       <button
         v-if="!isGateOpen && !isEntering"
@@ -254,14 +279,53 @@ onBeforeUnmount(() => {
 
               <label class="guild-field">
                 <span>密码</span>
-                <input
-                  v-model="form.password"
-                  type="password"
-                  :autocomplete="isRegisterMode ? 'new-password' : 'current-password'"
-                  :minlength="isRegisterMode ? 8 : undefined"
-                  required
-                  placeholder="输入你的公会密钥"
-                />
+                <div class="guild-field-control">
+                  <input
+                    v-model="form.password"
+                    :type="showPassword ? 'text' : 'password'"
+                    :autocomplete="isRegisterMode ? 'new-password' : 'current-password'"
+                    :minlength="isRegisterMode ? 8 : undefined"
+                    required
+                    placeholder="输入你的公会密钥"
+                  />
+                  <button
+                    class="guild-field-reveal"
+                    type="button"
+                    :aria-pressed="showPassword"
+                    :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+                    :title="showPassword ? '隐藏密码' : '显示密码'"
+                    @click="showPassword = !showPassword"
+                  >
+                    <svg
+                      v-if="!showPassword"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    <svg
+                      v-else
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 3l18 18" />
+                      <path d="M10.6 6.1A9.6 9.6 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-2.8 3.4" />
+                      <path d="M6.3 7.6A15.7 15.7 0 0 0 2.5 12S6 18 12 18a9.3 9.3 0 0 0 3.4-.65" />
+                      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+                    </svg>
+                  </button>
+                </div>
               </label>
 
               <div v-if="isRegisterMode" class="guild-role-block">
