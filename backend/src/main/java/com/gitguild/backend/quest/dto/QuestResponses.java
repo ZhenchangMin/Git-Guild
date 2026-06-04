@@ -95,6 +95,7 @@ public final class QuestResponses {
             UserBrief assignee,
             QuestStatus questStatus,
             String assignmentStatus,
+            String taskBranch,
             OffsetDateTime acceptedAt) {
     }
 

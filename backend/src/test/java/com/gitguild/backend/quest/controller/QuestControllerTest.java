@@ -145,6 +145,7 @@ class QuestControllerTest {
                         new UserBrief(3001L, "adventurer"),
                         QuestStatus.IN_PROGRESS,
                         "ACTIVE",
+                        "task/quest-5001-assignment-7001-adventurer",
                         OffsetDateTime.parse("2026-06-02T10:30:00+08:00")));
 
         mockMvc.perform(post("/api/v1/quests/5001/assignments")
@@ -155,7 +156,8 @@ class QuestControllerTest {
                 .andExpect(jsonPath("$.data.questId").value(5001))
                 .andExpect(jsonPath("$.data.assignee.userId").value(3001))
                 .andExpect(jsonPath("$.data.questStatus").value("IN_PROGRESS"))
-                .andExpect(jsonPath("$.data.assignmentStatus").value("ACTIVE"));
+                .andExpect(jsonPath("$.data.assignmentStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.taskBranch").value("task/quest-5001-assignment-7001-adventurer"));
 
         verify(questService).acceptQuest(5001L, 3001L);
     }

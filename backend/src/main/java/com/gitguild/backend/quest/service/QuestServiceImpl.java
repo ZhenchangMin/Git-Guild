@@ -39,6 +39,8 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -49,6 +51,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class QuestServiceImpl implements QuestService {
+
+    private static final Logger log = LoggerFactory.getLogger(QuestServiceImpl.class);
 
     private static final List<QuestStatus> ACTIVE_ISSUE_QUEST_STATUSES = List.of(
             QuestStatus.DRAFT,
@@ -76,6 +80,7 @@ public class QuestServiceImpl implements QuestService {
     private final CodeRepositoryRepository codeRepositoryRepository;
     private final CodeIssueRepository issueRepository;
     private final CodeIssueService codeIssueService;
+    private final QuestTaskBranchService taskBranchService;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
@@ -87,6 +92,7 @@ public class QuestServiceImpl implements QuestService {
             CodeRepositoryRepository codeRepositoryRepository,
             CodeIssueRepository issueRepository,
             CodeIssueService codeIssueService,
+            QuestTaskBranchService taskBranchService,
             UserRepository userRepository,
             ObjectMapper objectMapper) {
         this.questRepository = questRepository;
@@ -96,6 +102,7 @@ public class QuestServiceImpl implements QuestService {
         this.codeRepositoryRepository = codeRepositoryRepository;
         this.issueRepository = issueRepository;
         this.codeIssueService = codeIssueService;
+        this.taskBranchService = taskBranchService;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
     }
@@ -224,12 +231,47 @@ public class QuestServiceImpl implements QuestService {
         QuestAssignment assignment = assignmentRepository.save(new QuestAssignment(quest, assignee));
         quest.markInProgress();
         questRepository.save(quest);
+
+        // Issue #12：接取后尽力创建 task branch。Gitea 不可达不应阻塞接取——
+        // 分支为后续工作台 commit/PR 的基础，可由 ensureTaskBranch 端点重试。
+        String taskBranch = tryEnsureTaskBranch(assignment);
+
+        return toAssignmentResponse(assignment, quest, assignee, taskBranch);
+    }
+
+    @Override
+    @Transactional
+    public AssignmentResponse ensureTaskBranch(Long questId, Long assigneeId) {
+        User assignee = findUser(assigneeId);
+        Quest quest = findQuest(questId);
+        QuestAssignment assignment = assignmentRepository
+                .findByQuestAndAssigneeUserIdAndStatus(quest, assigneeId, AssignmentStatus.ACTIVE)
+                .orElseThrow(() -> new BusinessException("ASSIGNMENT_NOT_FOUND", HttpStatus.NOT_FOUND,
+                        "未找到进行中的接取记录", "questId=" + questId + ", assigneeId=" + assigneeId));
+        // 这里不吞异常：显式重试端点失败应反馈给调用方
+        String taskBranch = taskBranchService.ensureTaskBranch(assignment);
+        return toAssignmentResponse(assignment, quest, assignee, taskBranch);
+    }
+
+    private String tryEnsureTaskBranch(QuestAssignment assignment) {
+        try {
+            return taskBranchService.ensureTaskBranch(assignment);
+        } catch (BusinessException ex) {
+            log.warn("接取后创建 task branch 失败 assignmentId={}, code={}",
+                    assignment.getAssignmentId(), ex.getCode());
+            return null;
+        }
+    }
+
+    private AssignmentResponse toAssignmentResponse(
+            QuestAssignment assignment, Quest quest, User assignee, String taskBranch) {
         return new AssignmentResponse(
                 assignment.getAssignmentId(),
                 quest.getQuestId(),
                 new QuestResponses.UserBrief(assignee.getUserId(), assignee.getUsername()),
                 quest.getStatus(),
                 assignment.getStatus().name(),
+                taskBranch,
                 assignment.getAcceptedAt());
     }
 

@@ -19,4 +19,6 @@ public interface QuestService {
     QuestDetailResponse getQuestDetail(Long questId, Long currentUserId);
 
     AssignmentResponse acceptQuest(Long questId, Long assigneeId);
+
+    AssignmentResponse ensureTaskBranch(Long questId, Long assigneeId);
 }

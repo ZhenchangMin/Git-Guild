@@ -108,6 +108,21 @@ public class GiteaAdapterImpl implements GiteaAdapter {
     }
 
     @Override
+    public BranchInfo createBranch(String owner, String repo, String newBranchName, String oldBranchName) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("new_branch_name", newBranchName);
+        if (oldBranchName != null && !oldBranchName.isBlank()) {
+            reqBody.put("old_branch_name", oldBranchName);
+        }
+        Map body = execute(() -> client.post()
+                .uri("/repos/{owner}/{repo}/branches", owner, repo)
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "repo=" + owner + "/" + repo + " create branch " + newBranchName);
+        return toBranchInfo(body);
+    }
+
+    @Override
     public RepositoryInfo createRepository(String name, String description) {
         Map<String, Object> reqBody = new java.util.HashMap<>();
         reqBody.put("name", name);
@@ -143,11 +158,19 @@ public class GiteaAdapterImpl implements GiteaAdapter {
                 throw new BusinessException("CODE_HOST_RESOURCE_NOT_FOUND", HttpStatus.NOT_FOUND,
                         "代码托管资源不存在", resource);
             }
+            if (status == 409) {
+                throw new BusinessException("CODE_HOST_RESOURCE_CONFLICT", HttpStatus.CONFLICT,
+                        "代码托管资源已存在", resource);
+            }
             throw new BusinessException("CODE_HOST_UNAVAILABLE", HttpStatus.BAD_GATEWAY,
                     "代码托管平台请求失败", resource + " -> HTTP " + status);
         } catch (ResourceAccessException e) {
             throw new BusinessException("CODE_HOST_UNAVAILABLE", HttpStatus.BAD_GATEWAY,
                     "代码托管平台不可达", resource);
+        } catch (IllegalArgumentException e) {
+            // baseUrl 未配置时 RestClient 生成无 scheme 的 URI 抛此异常；视为平台不可用
+            throw new BusinessException("CODE_HOST_UNAVAILABLE", HttpStatus.BAD_GATEWAY,
+                    "代码托管平台未正确配置", resource + " -> " + e.getMessage());
         }
     }
 

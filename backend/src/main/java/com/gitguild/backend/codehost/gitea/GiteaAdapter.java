@@ -62,6 +62,20 @@ public interface GiteaAdapter {
      */
     IssueInfo createIssue(String owner, String repo, String title, String body);
 
+    /**
+     * 在指定仓库基于 {@code oldBranchName} 创建新分支 {@code newBranchName}（Issue #12）。
+     *
+     * <p>对应 Gitea API {@code POST /repos/{owner}/{repo}/branches}。
+     * 当目标分支已存在时 Gitea 返回 409，调用方（task branch 服务）据此实现幂等。
+     *
+     * @param owner         Gitea 仓库 owner
+     * @param repo          Gitea 仓库名
+     * @param newBranchName 新分支名
+     * @param oldBranchName 基础分支名（通常为仓库默认分支）
+     * @return 创建后的分支元数据
+     */
+    BranchInfo createBranch(String owner, String repo, String newBranchName, String oldBranchName);
+
     // ── 平台代理写操作 ──────────────────────────────────────────────────
 
     /**
