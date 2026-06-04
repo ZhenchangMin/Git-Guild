@@ -60,11 +60,16 @@ public class CodeHostController {
             throw validation("sourceUrl is required");
         }
         User owner = currentUser(authentication);
-        CodeRepository repository = repositoryRepository.save(new CodeRepository(
-                owner,
-                request.name() == null || request.name().isBlank() ? inferName(request.sourceUrl()) : request.name().trim(),
-                request.hostType() == null || request.hostType().isBlank() ? "GITEA" : request.hostType().trim(),
-                request.sourceUrl().trim()));
+        String sourceUrl = request.sourceUrl().trim();
+        String hostType = request.hostType() == null || request.hostType().isBlank() ? "GITEA" : request.hostType().trim();
+        // 幂等：同一 (hostType, sourceUrl) 已接入则复用，避免重复导入产生多条仓库记录。
+        CodeRepository repository = repositoryRepository
+                .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc(hostType, sourceUrl)
+                .orElseGet(() -> repositoryRepository.save(new CodeRepository(
+                        owner,
+                        request.name() == null || request.name().isBlank() ? inferName(sourceUrl) : request.name().trim(),
+                        hostType,
+                        sourceUrl)));
         return ApiResponse.success("CREATED", RepositoryResponse.from(repository));
     }
 
@@ -76,8 +81,25 @@ public class CodeHostController {
     @PostMapping("/repositories/{repositoryId}/sync")
     public ApiResponse<RepositoryResponse> syncRepository(@PathVariable Long repositoryId) {
         CodeRepository repository = findRepository(repositoryId);
+        syncIssues(repository);
         repository.markSynced();
         return ApiResponse.success(RepositoryResponse.from(repositoryRepository.save(repository)));
+    }
+
+    /**
+     * 从 Gitea 拉取仓库 Issue 并 upsert 到本地（按 external_issue_id 幂等）。
+     */
+    private void syncIssues(CodeRepository repository) {
+        GiteaRepoCoordinates coords = GiteaRepoCoordinates.parse(repository.getSourceUrl());
+        for (com.gitguild.backend.codehost.gitea.dto.IssueInfo remoteIssue : giteaAdapter.listIssues(coords.owner(), coords.repo())) {
+            String externalIssueId = String.valueOf(remoteIssue.number());
+            String status = remoteIssue.state() == null ? "OPEN" : remoteIssue.state().trim().toUpperCase();
+            CodeIssue issue = issueRepository
+                    .findByRepositoryRepositoryIdAndExternalIssueId(repository.getRepositoryId(), externalIssueId)
+                    .orElseGet(() -> new CodeIssue(repository, externalIssueId, remoteIssue.title(), status));
+            issue.updateFromSync(remoteIssue.title(), status, remoteIssue.htmlUrl());
+            issueRepository.save(issue);
+        }
     }
 
     @GetMapping("/repositories/{repositoryId}/issues")
