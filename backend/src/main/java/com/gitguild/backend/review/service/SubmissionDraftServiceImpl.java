@@ -66,7 +66,7 @@ public class SubmissionDraftServiceImpl implements SubmissionDraftService {
 
         return new SubmissionDraftResponse(
                 quest.getQuestId(),
-                new RepositoryBrief(repository.getRepositoryId(), repository.getName(), repository.getSourceUrl()),
+                new SubmissionDraftResponse.RepositoryBrief(repository.getRepositoryId(), repository.getName(), repository.getSourceUrl()),
                 repository.getDefaultBranch(),
                 pullRequests.stream().map(this::toOption).toList(),
                 quest.getCompletionCriteria());

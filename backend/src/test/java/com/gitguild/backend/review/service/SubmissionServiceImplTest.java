@@ -102,7 +102,8 @@ class SubmissionServiceImplTest {
 
         assertThat(response.submissionId()).isEqualTo(9001L);
         assertThat(response.status()).isEqualTo(SubmissionStatus.PENDING_REVIEW);
-        assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
+        assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_REVIEW);
+        verify(questRepository).save(quest);
     }
 
     @Test

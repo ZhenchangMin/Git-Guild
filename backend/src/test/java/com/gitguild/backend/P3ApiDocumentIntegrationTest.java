@@ -200,7 +200,7 @@ class P3ApiDocumentIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.repositoryId").value(repositoryId));
         when(giteaAdapter.listIssues("p3", "repo"))
-                .thenReturn(List.of(new IssueInfo(1, "P3 synced issue", "open", "http://localhost:3000/p3/repo/issues/1")));
+                .thenReturn(List.of(new IssueInfo(1, "P3 synced issue", null, "open", "http://localhost:3000/p3/repo/issues/1")));
 
         mockMvc.perform(get("/api/v1/repositories/" + repositoryId).header("Authorization", bearer(maintainerToken)))
                 .andExpect(status().isOk())
