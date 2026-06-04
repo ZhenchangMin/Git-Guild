@@ -15,7 +15,11 @@ import com.gitguild.backend.review.dto.CreateSubmissionRequest;
 import com.gitguild.backend.review.dto.ReviewSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.ReviewRecordResponse;
-import com.gitguild.backend.review.dto.SubmissionResponses.ReviewQueueItemResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.PullRequestBrief;
+import com.gitguild.backend.review.dto.SubmissionResponses.QuestBrief;
+import com.gitguild.backend.review.dto.SubmissionResponses.RepositoryBrief;
+import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.UserBrief;
 import com.gitguild.backend.review.domain.ReviewDecision;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.review.service.ReviewService;
@@ -96,7 +100,7 @@ class SubmissionControllerTest {
                         true,
                         List.of(),
                         SubmissionStatus.CHANGES_REQUESTED,
-                        QuestStatus.IN_PROGRESS,
+                        QuestStatus.IN_REVIEW,
                         null,
                         OffsetDateTime.parse("2026-05-29T11:30:00+08:00")));
 
@@ -128,39 +132,34 @@ class SubmissionControllerTest {
     }
 
     @Test
-    void listSubmissionsShouldReturnReviewQueueForCurrentUser() throws Exception {
-        when(submissionService.listReviewQueue(2001L, SubmissionStatus.PENDING_REVIEW))
-                .thenReturn(List.of(new ReviewQueueItemResponse(
+    void listReviewQueueShouldReturnCurrentReviewerQueue() throws Exception {
+        when(submissionService.listReviewQueue(2001L))
+                .thenReturn(List.of(new SubmissionReviewQueueItemResponse(
                         9001L,
-                        new com.gitguild.backend.review.dto.SubmissionResponses.QuestBrief(5001L, "Finish adapter", QuestStatus.IN_PROGRESS),
-                        new com.gitguild.backend.review.dto.SubmissionResponses.UserBrief(3001L, "adventurer"),
-                        new com.gitguild.backend.review.dto.SubmissionResponses.RepositoryBrief(1001L, "demo-repo", "main", "SYNCED"),
-                        new com.gitguild.backend.review.dto.SubmissionResponses.PullRequestBrief(
-                                8001L,
-                                "7",
-                                "QST-5001 finish adapter",
-                                "OPEN",
-                                "http://localhost:3000/spike-admin/demo-repo/pulls/7",
-                                "task/quest-5001",
-                                "main"),
-                        "Implemented the adapter MVP.",
-                        "PR connects to Gitea",
+                        new QuestBrief(5001L, "Implement submission API", QuestStatus.IN_REVIEW),
+                        new UserBrief(3001L, "beginner"),
+                        new RepositoryBrief(1001L, "git-guild", "http://localhost:3000/git-guild", "main", "SYNCED"),
+                        new PullRequestBrief(8001L, "7", "Implement submission API", "feature/submission", "main", "OPEN", "http://localhost:3000/pulls/7"),
+                        "Implemented the requested backend feature.",
                         SubmissionStatus.PENDING_REVIEW,
+                        180,
+                        "Completion criteria",
                         OffsetDateTime.parse("2026-05-29T11:00:00+08:00"))));
 
         TestingAuthenticationToken authentication = new TestingAuthenticationToken(
                 new CurrentUserPrincipal(2001L, List.of("ROLE_MAINTAINER"), 0),
                 null);
 
-        mockMvc.perform(get("/api/v1/submissions")
-                        .param("status", "PENDING_REVIEW")
+        mockMvc.perform(get("/api/v1/submissions/review-queue")
                         .principal(authentication))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data[0].submissionId").value(9001))
                 .andExpect(jsonPath("$.data[0].quest.questId").value(5001))
-                .andExpect(jsonPath("$.data[0].pullRequest.pullRequestId").value(8001));
+                .andExpect(jsonPath("$.data[0].submitter.username").value("beginner"))
+                .andExpect(jsonPath("$.data[0].pullRequest.externalPrId").value("7"))
+                .andExpect(jsonPath("$.data[0].status").value("PENDING_REVIEW"));
 
-        verify(submissionService).listReviewQueue(2001L, SubmissionStatus.PENDING_REVIEW);
+        verify(submissionService).listReviewQueue(2001L);
     }
 }

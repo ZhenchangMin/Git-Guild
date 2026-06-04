@@ -5,141 +5,161 @@ import { useRoute, useRouter } from 'vue-router'
 import { questApi } from '../../api/questApi'
 import questBoardImg from '../../assets/quest board.png'
 import QuestDetail from '../../components/QuestDetail.vue'
-import { questCommissions } from '../../data/questBoard'
 import { sessionStore } from '../../stores/sessionStore'
 
 const route = useRoute()
 const router = useRouter()
-const liveQuestDetail = ref(null)
-const isLoadingDetail = ref(false)
-const detailError = ref('')
-
-const routeQuestId = computed(() => {
-  const id = Number(route.params.questId)
-  return Number.isInteger(id) && id > 0 ? id : null
-})
+const activeQuest = ref(null)
+const isLoading = ref(false)
+const loadError = ref('')
 
 const STATUS_LABELS = {
+  DRAFT: '草稿',
+  PENDING_ADMIN_REVIEW: '待管理员审核',
   PUBLISHED: '可接取',
   IN_PROGRESS: '进行中',
-  PENDING_ADMIN_REVIEW: '待审核',
+  IN_REVIEW: '等待维护者审核',
   COMPLETED: '已完成',
+  REJECTED: '需要修改',
   CLOSED: '已关闭',
-  DRAFT: '草稿',
 }
 
 const WORKFLOW_STATES = {
+  DRAFT: 'available',
+  PENDING_ADMIN_REVIEW: 'in-review',
   PUBLISHED: 'available',
   IN_PROGRESS: 'in-progress',
-  PENDING_ADMIN_REVIEW: 'in-review',
+  IN_REVIEW: 'in-review',
   COMPLETED: 'completed',
+  REJECTED: 'changes-requested',
   CLOSED: 'completed',
-  DRAFT: 'available',
+}
+
+const activeQuestIntent = computed(() => (route.query.intent === 'accept' ? 'accept' : 'view'))
+const routeQuestId = computed(() => String(route.params.questId || '').trim())
+
+function unwrapApiData(payload) {
+  return payload?.data ?? payload ?? {}
+}
+
+function parseQuestApiId(value) {
+  const raw = String(value ?? '').trim()
+  if (/^\d+$/.test(raw)) return raw
+  const qstMatch = raw.match(/^QST-0*(\d+)$/i)
+  return qstMatch ? qstMatch[1] : ''
+}
+
+function formatQuestCode(questId) {
+  if (questId === undefined || questId === null || questId === '') return 'QST-????'
+  return `QST-${String(questId).padStart(4, '0')}`
+}
+
+function normalizeReward(rewardXp) {
+  if (rewardXp === undefined || rewardXp === null || rewardXp === '') return '待定 XP'
+  return `${rewardXp} XP`
 }
 
 function normalizeCriteria(value) {
-  if (Array.isArray(value)) return value
-  if (!value) return ['查看任务详情', '提交关联 PR', '等待委托人审核']
+  if (!value) return ['查看任务详情', '提交关联 PR', '等待维护者审核']
+  if (Array.isArray(value)) return value.filter(Boolean)
   return String(value)
-    .split(/\r?\n|；|;/)
+    .split(/\r?\n|[；;]/)
     .map((line) => line.trim())
     .filter(Boolean)
 }
 
 function normalizeIssueNumber(issue) {
-  const id = issue?.externalIssueId ?? issue?.issueId
-  if (!id) return '#?'
-  return String(id).startsWith('#') ? String(id) : `#${id}`
+  const externalId = issue?.externalIssueId ?? issue?.issueId
+  if (!externalId) return '未关联'
+  const text = String(externalId)
+  return text.startsWith('#') ? text : `#${text}`
 }
 
-function normalizeQuestDetail(detail) {
-  const techStack = Array.isArray(detail.techStack) ? detail.techStack : []
-  const tagNames = Array.isArray(detail.tags)
-    ? detail.tags.map((tag) => tag.name ?? tag).filter(Boolean)
+function normalizeQuestDetail(quest) {
+  const questId = quest.questId ?? quest.id
+  const techStack = Array.isArray(quest.techStack) ? quest.techStack : []
+  const tags = Array.isArray(quest.tags)
+    ? quest.tags.map((tag) => tag.name ?? tag).filter(Boolean)
     : []
-  const status = STATUS_LABELS[detail.status] ?? detail.status ?? '可接取'
 
   return {
-    id: String(detail.questId),
-    routeId: String(detail.questId),
-    title: detail.title ?? '未命名委托',
-    issuer: detail.publisher?.username ? `委托人 · ${detail.publisher.username}` : '委托人 · Git Guild',
-    category: detail.category?.name ?? '任务',
-    difficulty: detail.difficulty ?? 'C',
+    id: formatQuestCode(questId),
+    questId,
+    code: formatQuestCode(questId),
+    routeId: String(questId ?? ''),
+    title: quest.title ?? '未命名委托',
+    issuer: quest.publisher?.username ? `委托人 · ${quest.publisher.username}` : '委托人 · 未知',
+    category: quest.category?.name ?? '未分类',
+    difficulty: quest.difficulty ?? 'C',
     stack: techStack.length > 0 ? techStack.join(' / ') : '待补充',
     techStack,
-    status,
-    tags: tagNames,
-    reward: detail.rewardXp ? `${detail.rewardXp} XP` : '待定 XP',
-    summary: detail.description ?? '查看详情了解这份委托的背景和完成要求。',
-    criteria: normalizeCriteria(detail.completionCriteria),
-    assignment: detail.assignment,
-    detail: {
-      workflowState: WORKFLOW_STATES[detail.status] ?? 'available',
-      estimatedHours: detail.estimatedHours ?? 6,
-      description: detail.description,
-      repository: {
-        name: detail.repository?.name ?? '未绑定仓库',
-        branch: detail.repository?.defaultBranch ?? 'main',
-        syncStatus: detail.repository?.syncStatus ?? 'UNKNOWN',
-      },
-      issue: {
-        number: normalizeIssueNumber(detail.issue),
-        title: detail.issue?.title ?? detail.title ?? '未绑定 Issue',
-        status: detail.issue?.status ?? 'UNKNOWN',
-        url: detail.issue?.externalUrl,
-      },
+    rawStatus: quest.status,
+    status: STATUS_LABELS[quest.status] ?? quest.status ?? '未知状态',
+    tags,
+    reward: normalizeReward(quest.rewardXp),
+    summary: quest.description ?? '暂无任务说明。',
+    description: quest.description ?? '暂无任务说明。',
+    criteria: normalizeCriteria(quest.completionCriteria),
+    estimatedHours: quest.estimatedHours,
+    workflowState: WORKFLOW_STATES[quest.status] ?? 'available',
+    assignment: quest.assignment ?? null,
+    repository: {
+      repositoryId: quest.repository?.repositoryId ?? null,
+      name: quest.repository?.name ?? '未关联仓库',
+      branch: quest.repository?.defaultBranch ?? '未提供',
+      syncStatus: quest.repository?.syncStatus ?? '未知',
+    },
+    issue: {
+      issueId: quest.issue?.issueId ?? null,
+      number: normalizeIssueNumber(quest.issue),
+      title: quest.issue?.title ?? '未关联 Issue',
+      status: quest.issue?.status ?? '未知',
+    },
+    pr: {
+      number: 'Not created',
+      status: 'Not started',
     },
   }
 }
 
-const activeQuest = computed(() => {
-  if (liveQuestDetail.value) return normalizeQuestDetail(liveQuestDetail.value)
-  const questId = String(route.params.questId || 'QST-0427')
-  return questCommissions.find((quest) => quest.id === questId) ?? questCommissions[0]
-})
-
-const activeQuestIntent = computed(() => (route.query.intent === 'accept' ? 'accept' : 'view'))
-
-// Default to returning to whatever page the adventurer came from (quest board,
-// hall, workbench…). Fall back to the quest board when there's no history entry
-// to go back to (e.g. the detail page was opened directly via URL).
-function goBack() {
-  if (window.history.state?.back) {
-    router.back()
-  } else {
-    router.push({ name: 'quest-board' })
+async function loadQuestDetail() {
+  const apiQuestId = parseQuestApiId(routeQuestId.value)
+  if (!apiQuestId) {
+    activeQuest.value = null
+    loadError.value = '任务编号无效，请从悬赏任务板重新打开详情。'
+    return
   }
+
+  isLoading.value = true
+  loadError.value = ''
+
+  try {
+    const payload = await questApi.detail(apiQuestId)
+    activeQuest.value = normalizeQuestDetail(unwrapApiData(payload))
+  } catch (error) {
+    activeQuest.value = null
+    loadError.value = error?.message || '任务详情加载失败，请稍后重试。'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+function goBack() {
+  router.push({ name: 'quest-board' })
 }
 
 function openWorkbench() {
   router.push({ name: sessionStore.role === 'MAINTAINER' ? 'maintainer-workbench' : 'adventurer-workbench' })
 }
 
-function openSubmission(questId = activeQuest.value.id) {
+function openSubmission(questId = activeQuest.value?.questId ?? activeQuest.value?.id) {
   router.push({
     name: 'submission-counter',
     query: { questId },
   })
 }
 
-async function loadQuestDetail() {
-  liveQuestDetail.value = null
-  detailError.value = ''
-  if (!routeQuestId.value) return
-
-  isLoadingDetail.value = true
-  try {
-    const payload = await questApi.detail(routeQuestId.value)
-    liveQuestDetail.value = payload?.data ?? null
-  } catch (error) {
-    detailError.value = error?.message ?? '真实任务详情暂时不可用，当前显示演示数据。'
-  } finally {
-    isLoadingDetail.value = false
-  }
-}
-
-watch(() => route.params.questId, loadQuestDetail)
+watch(routeQuestId, loadQuestDetail)
 onMounted(loadQuestDetail)
 </script>
 
@@ -154,36 +174,50 @@ onMounted(loadQuestDetail)
       </button>
 
       <QuestDetail
+        v-if="activeQuest"
         :quest="activeQuest"
-        :quest-id="String(route.params.questId || '')"
         :intent="activeQuestIntent"
         @open-workbench="openWorkbench"
         @open-submission="openSubmission"
       />
-      <p v-if="isLoadingDetail" class="quest-detail-live-note">正在加载真实任务详情...</p>
-      <p v-else-if="detailError" class="quest-detail-live-note warning">{{ detailError }}</p>
+
+      <div v-else class="quest-detail-message" role="status" aria-live="polite">
+        <p class="kicker">{{ isLoading ? '正在读取' : '无法打开' }}</p>
+        <h1>{{ isLoading ? '正在加载委托详情' : '委托详情加载失败' }}</h1>
+        <p>{{ isLoading ? '正在从后端接口同步委托详情，请稍候。' : loadError }}</p>
+        <button v-if="!isLoading" class="primary-action" type="button" @click="loadQuestDetail">重试</button>
+      </div>
     </section>
   </main>
 </template>
 
 <style scoped>
-.quest-detail-live-note {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 12;
-  max-width: min(360px, calc(100vw - 48px));
-  margin: 0;
-  padding: 10px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 8px;
-  background: rgba(18, 23, 33, 0.88);
-  color: #f8fafc;
-  font-size: 0.9rem;
+.quest-detail-message {
+  width: min(620px, calc(100vw - 42px));
+  margin: clamp(98px, 12svh, 136px) auto 34px;
+  border: 1px solid rgba(238, 184, 91, 0.58);
+  border-radius: var(--radius);
+  padding: 24px;
+  color: #ffe7b5;
+  background:
+    linear-gradient(180deg, rgba(32, 17, 8, 0.86), rgba(15, 8, 4, 0.8)),
+    linear-gradient(135deg, rgba(216, 154, 50, 0.16), transparent 58%);
+  box-shadow: 0 20px 46px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 229, 163, 0.14);
+  backdrop-filter: blur(6px);
 }
 
-.quest-detail-live-note.warning {
-  border-color: rgba(245, 158, 11, 0.55);
-  color: #fde68a;
+.quest-detail-message h1 {
+  margin: 6px 0 0;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+}
+
+.quest-detail-message p:not(.kicker) {
+  margin: 12px 0 0;
+  color: rgba(255, 231, 183, 0.78);
+  line-height: 1.5;
+}
+
+.quest-detail-message button {
+  margin-top: 18px;
 }
 </style>

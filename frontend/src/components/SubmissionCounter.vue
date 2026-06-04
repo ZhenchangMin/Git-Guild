@@ -32,14 +32,22 @@ const errorMessage = ref('')
 const ringingBell = ref(false)
 const receipt = ref(null)
 
+// Accept the loose GitHub / Gitea / GitLab PR/MR URL shape. We intentionally
+// keep it lenient — strict origin checks belong on the backend. The keyword
+// must precede the digits with an explicit "/" (GitHub uses /pull/, Gitea
+// uses /pulls/, GitLab uses /merge_requests/).
+const PR_URL_PATTERN = /^https?:\/\/\S+\/(?:pull|pulls|merge_requests)\/\d+(?:[\/?#]\S*)?$/i
+
 const blankForm = () => ({
   repository: '',
   branch: '',
+  pullRequest: '',
   note: '',
 })
 const form = reactive(blankForm())
 const checks = reactive(Object.fromEntries(submissionChecks.map((label) => [label, false])))
 const evidence = ref([])
+const draftPullRequests = ref([])
 
 const firstInput = ref(null)
 const evidenceLabelInput = ref(null)
@@ -54,12 +62,38 @@ const draftKey = computed(() => {
   return `git-guild:submission-draft:${owner}:${questId}`
 })
 
+const numericQuestId = computed(() => {
+  if (props.quest?.numericId) return Number(props.quest.numericId)
+  const match = String(props.quest?.id ?? '').match(/\d+/)
+  return match ? Number(match[0]) : null
+})
+
+const selectedDraftPullRequest = computed(() => {
+  const value = form.pullRequest.trim()
+  if (!value) return null
+
+  return draftPullRequests.value.find((pr) => {
+    const externalPrId = pr.externalPrId ? String(pr.externalPrId) : ''
+    return (
+      pr.externalUrl === value ||
+      (externalPrId && value.includes(externalPrId)) ||
+      (pr.pullRequestId && value === String(pr.pullRequestId))
+    )
+  }) ?? null
+})
+
+const selectedPullRequestId = computed(() => selectedDraftPullRequest.value?.pullRequestId ?? null)
+
 function quietlySeedFromQuest() {
   const q = props.quest
   if (!q) return
   // Only fill empty fields; never overwrite something the user already typed.
   if (!form.repository) form.repository = q.detail?.repository?.name ?? 'git-guild / frontend'
-  if (!form.branch) form.branch = q.detail?.branch ?? `feature/${String(q.id || 'task').toLowerCase()}`
+  if (!form.branch) form.branch = `feature/${(q.id || 'task').toLowerCase()}`
+  const prn = q.detail?.pr?.number
+  if (!form.pullRequest && prn && prn !== 'Not created' && /^https?:/i.test(prn)) {
+    form.pullRequest = prn
+  }
   if (!form.note) {
     form.note = `准备提交 ${q.id} 的成果。请说明本次修改、测试结果，以及完成标准的逐项自检情况。`
   }
@@ -103,6 +137,35 @@ function hydrateFromDraft() {
   }
 
   quietlySeedFromQuest()
+  fetchDraftFromBackend()
+}
+
+// Try to load the draft from the backend endpoint (GET /quests/{questId}/submission-draft).
+// This fills repository, branch, and PR candidates if the user hasn't already typed them.
+async function fetchDraftFromBackend() {
+  draftPullRequests.value = []
+  if (!numericQuestId.value) return
+
+  try {
+    const response = await submissionApi.getDraft(numericQuestId.value)
+    const data = response?.data
+    if (!data) return
+    draftPullRequests.value = Array.isArray(data.pullRequests) ? data.pullRequests : []
+    // Fill from backend draft — don't overwrite user-typed values
+    if (!form.repository && data.repository?.name) {
+      form.repository = data.repository.name
+    }
+    if (!form.branch && data.branch) {
+      form.branch = data.branch
+    }
+    // If there's a PR candidate list and we have no PR yet, use the first one
+    if (!form.pullRequest && draftPullRequests.value.length > 0) {
+      const pr = draftPullRequests.value[0]
+      form.pullRequest = pr.externalUrl || `PR #${pr.externalPrId}`
+    }
+  } catch {
+    // Silently ignore — local draft is sufficient
+  }
 }
 
 watch(
@@ -135,8 +198,16 @@ const allChecksDone = computed(() => Object.values(checks).every(Boolean))
 
 const errors = computed(() => {
   const e = {}
+  if (!numericQuestId.value) e.quest = '当前提交柜台没有关联后端任务。'
   if (!form.repository.trim()) e.repository = '请填写仓库名。'
   if (!form.branch.trim()) e.branch = '请填写分支名。'
+  if (!form.pullRequest.trim()) {
+    e.pullRequest = '请粘贴 PR 链接。'
+  } else if (!PR_URL_PATTERN.test(form.pullRequest.trim())) {
+    e.pullRequest = '链接需指向 PR / Merge Request 详情页。'
+  } else if (!selectedPullRequestId.value) {
+    e.pullRequest = '请使用已同步到本地的 PR 候选；如果刚创建 PR，请先回工作台同步。'
+  }
   if (form.note.trim().length < 8) e.note = '提交说明至少 8 个字。'
   if (!allChecksDone.value) e.checks = '请完成提交前核对清单。'
   return e
@@ -169,16 +240,6 @@ const dynamicReviewSteps = computed(() => {
 
 const submitterName = computed(
   () => sessionStore.user?.displayName || sessionStore.user?.username || '冒险家',
-)
-
-// 关联 PR 来自工作台真实创建的 PR（随 quest 带入），只读展示，不再让用户粘贴 URL。
-const linkedPr = computed(() => props.quest?.detail?.pr ?? null)
-const linkedPrUrl = computed(() => {
-  const url = linkedPr.value?.number
-  return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : ''
-})
-const linkedPrLabel = computed(
-  () => linkedPr.value?.externalLabel || linkedPrUrl.value || '尚未创建 PR',
 )
 
 // ── Behaviour: open / close ────────────────────────────────────────────────
@@ -215,9 +276,13 @@ function saveDraft() {
 }
 
 function openPullRequest() {
-  const url = linkedPrUrl.value
+  const url = form.pullRequest.trim()
   if (!url) {
-    showToast('还没有关联 PR，请先在工作台创建真实 PR')
+    showToast('还没填 PR 链接')
+    return
+  }
+  if (!PR_URL_PATTERN.test(url)) {
+    showToast('PR 链接格式不对，无法打开')
     return
   }
   window.open(url, '_blank', 'noopener,noreferrer')
@@ -235,8 +300,10 @@ async function submitForReview() {
     errorMessage.value =
       errors.value.repository ||
       errors.value.branch ||
+      errors.value.pullRequest ||
       errors.value.note ||
       errors.value.checks ||
+      errors.value.quest ||
       '请完成必填项后再提交。'
     return
   }
@@ -249,15 +316,9 @@ async function submitForReview() {
   setTimeout(() => (ringingBell.value = false), 900)
 
   try {
-    const questId = Number(props.quest?.id)
-    const pullRequestId = Number(props.quest?.pullRequestId ?? props.quest?.detail?.pr?.pullRequestId)
-    if (!Number.isInteger(questId) || questId <= 0 || !Number.isInteger(pullRequestId) || pullRequestId <= 0) {
-      throw new Error('当前提交缺少真实 questId 或 pullRequestId，请先从工作台创建真实 PR。')
-    }
-
     const response = await submissionApi.create({
-      questId,
-      pullRequestId,
+      questId: numericQuestId.value,
+      pullRequestId: selectedPullRequestId.value,
       description: form.note.trim(),
       checklist: Object.entries(checks)
         .filter(([, checked]) => checked)
@@ -456,15 +517,15 @@ function formatDateTime(date) {
                 <small v-if="errors.branch" class="submission-field-error">{{ errors.branch }}</small>
               </label>
 
-              <div class="wide-field submission-linked-pr">
-                <span>关联 PR</span>
-                <p v-if="linkedPrUrl" class="submission-linked-pr-value">
-                  <a :href="linkedPrUrl" target="_blank" rel="noopener noreferrer">{{ linkedPrLabel }}</a>
-                </p>
-                <p v-else class="submission-linked-pr-hint">
-                  尚未关联 PR。请先在工作台基于任务分支创建真实 PR，再回到柜台提交。
-                </p>
-              </div>
+              <label class="wide-field" :class="{ 'has-error': errors.pullRequest }">
+                <span>PR / MR 链接</span>
+                <input
+                  v-model.trim="form.pullRequest"
+                  placeholder="https://github.com/owner/repo/pull/123"
+                  :disabled="isLocked"
+                />
+                <small v-if="errors.pullRequest" class="submission-field-error">{{ errors.pullRequest }}</small>
+              </label>
 
               <label class="wide-field" :class="{ 'has-error': errors.note }">
                 <span>提交说明</span>
@@ -618,7 +679,6 @@ function formatDateTime(date) {
             <button
               class="quiet-action"
               type="button"
-              :disabled="!linkedPrUrl"
               @click="openPullRequest"
             >查看 PR</button>
             <button
@@ -662,9 +722,9 @@ function formatDateTime(date) {
                 <div class="receipt-actions">
                   <button class="quiet-action" type="button" @click="closeSheet">关闭柜台</button>
                   <a
-                    v-if="linkedPrUrl"
+                    v-if="form.pullRequest"
                     class="primary-action"
-                    :href="linkedPrUrl"
+                    :href="form.pullRequest"
                     target="_blank"
                     rel="noopener noreferrer"
                   >前往 PR</a>

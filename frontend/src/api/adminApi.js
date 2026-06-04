@@ -1,20 +1,26 @@
-import { requestMock } from './httpClient'
+import { request, requestMock } from './httpClient'
 
 // 管理员控制台接口层。路径对齐 docs/P4/临时文档/P4-005 前后端接口契约清单.md
-// 与 docs/P3/API规范/（管理员审核 / 任务分类）。当前 httpClient 为 mock 实现。
+// 与 docs/P3/API规范/（管理员审核 / 任务分类）。任务审核已接真实后端，其他管理员模块仍保留 mock。
 
 export const adminApi = {
   // ── 任务审核（M1）──────────────────────────────────
   // 契约第 186 行：列表统一用 GET /admin/quests，不再使用 /admin/quest-review-applications。
   listAdminQuests(params) {
-    return requestMock('/admin/quests', { params })
+    const query = new URLSearchParams()
+    Object.entries(params ?? {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return
+      query.set(key, String(value))
+    })
+    const suffix = query.toString() ? `?${query}` : ''
+    return request(`/admin/quests${suffix}`)
   },
   getAdminQuest(questId) {
-    return requestMock(`/admin/quests/${questId}`)
+    return request(`/quests/${questId}`)
   },
   // 通过上架 / 退回补充 / 下架统一走单接口，按 decision 区分。
   submitAdminReview(questId, payload) {
-    return requestMock(`/quests/${questId}/admin-reviews`, { method: 'POST', body: payload })
+    return request(`/quests/${questId}/admin-reviews`, { method: 'POST', body: payload })
   },
 
   // ── 异常处理中心（M3 / M4 / M5）────────────────────

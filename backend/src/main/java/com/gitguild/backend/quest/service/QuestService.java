@@ -3,7 +3,11 @@ package com.gitguild.backend.quest.service;
 import com.gitguild.backend.quest.dto.CreateQuestRequest;
 import com.gitguild.backend.quest.dto.QuestResponses.AssignmentResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
+<<<<<<< HEAD
 import com.gitguild.backend.quest.dto.QuestResponses.MyAssignmentResponse;
+=======
+import com.gitguild.backend.quest.dto.QuestResponses.MyAssignmentsResponse;
+>>>>>>> 91914bd
 import com.gitguild.backend.quest.dto.QuestResponses.QuestDetailResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestPageResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.SubmitQuestResponse;
@@ -25,4 +29,6 @@ public interface QuestService {
     AssignmentResponse ensureTaskBranch(Long questId, Long assigneeId);
 
     List<MyAssignmentResponse> listMyActiveAssignments(Long assigneeId);
+
+    MyAssignmentsResponse getMyAssignments(Long userId);
 }

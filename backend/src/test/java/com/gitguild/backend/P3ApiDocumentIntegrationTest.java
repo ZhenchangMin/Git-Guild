@@ -1,7 +1,6 @@
 package com.gitguild.backend;
 
 import static org.hamcrest.Matchers.containsString;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -11,13 +10,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.gitguild.backend.codehost.gitea.GiteaAdapter;
-import com.gitguild.backend.codehost.gitea.dto.BranchInfo;
-import com.gitguild.backend.codehost.gitea.dto.FileCommitInfo;
-import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodeRepository;
+import com.gitguild.backend.codehost.gitea.GiteaAdapter;
+import com.gitguild.backend.codehost.gitea.dto.IssueInfo;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
@@ -40,9 +37,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -62,7 +59,7 @@ class P3ApiDocumentIntegrationTest {
     @Autowired private CodePullRequestRepository pullRequestRepository;
     @Autowired private SubmissionRepository submissionRepository;
     @Autowired private GrowthProfileRepository growthProfileRepository;
-    @MockitoBean private GiteaAdapter giteaAdapter;
+    @MockBean private GiteaAdapter giteaAdapter;
 
     @Test
     void authDocumentEndpointsWorkAsUserJourney() throws Exception {
@@ -194,6 +191,16 @@ class P3ApiDocumentIntegrationTest {
                 .andExpect(jsonPath("$.data.repositoryId").exists())
                 .andReturn();
         long repositoryId = data(repositoryResult).get("repositoryId").asLong();
+        mockMvc.perform(post("/api/v1/repositories/import")
+                        .header("Authorization", bearer(maintainerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "sourceUrl", "http://localhost:3000/p3/repo.git",
+                                "hostType", "GITEA"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.repositoryId").value(repositoryId));
+        when(giteaAdapter.listIssues("p3", "repo"))
+                .thenReturn(List.of(new IssueInfo(1, "P3 synced issue", "open", "http://localhost:3000/p3/repo/issues/1")));
 
         mockMvc.perform(get("/api/v1/repositories/" + repositoryId).header("Authorization", bearer(maintainerToken)))
                 .andExpect(status().isOk())
@@ -209,10 +216,10 @@ class P3ApiDocumentIntegrationTest {
                         .param("page", "1")
                         .param("size", "20"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items").isArray());
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.items[0].externalIssueId").value("1"))
+                .andExpect(jsonPath("$.data.items[0].title").value("P3 synced issue"));
 
-        when(giteaAdapter.createBranch(any(), any(), any(), any()))
-                .thenReturn(new BranchInfo("feature/p3", "base-sha"));
         mockMvc.perform(post("/api/v1/repositories/" + repositoryId + "/branches")
                         .header("Authorization", bearer(maintainerToken))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -220,8 +227,6 @@ class P3ApiDocumentIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("CREATED"));
 
-        when(giteaAdapter.createFile(any(), any(), any(), any(), any(), any()))
-                .thenReturn(new FileCommitInfo("commit-p3", "feature/p3", "proof.md", "http://localhost:3000/p3/repo/commit/commit-p3"));
         mockMvc.perform(post("/api/v1/repositories/" + repositoryId + "/commits")
                         .header("Authorization", bearer(maintainerToken))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -229,9 +234,6 @@ class P3ApiDocumentIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.commitId").exists());
 
-        when(giteaAdapter.createPullRequest(any(), any(), any(), any(), any(), any()))
-                .thenReturn(new PrInfo(24, "P3 PR", "open", false,
-                        "feature/p3", "main", "http://localhost:3000/p3/repo/pulls/24", "p3-maint-tax"));
         MvcResult prResult = mockMvc.perform(post("/api/v1/repositories/" + repositoryId + "/pull-requests")
                         .header("Authorization", bearer(maintainerToken))
                         .contentType(MediaType.APPLICATION_JSON)

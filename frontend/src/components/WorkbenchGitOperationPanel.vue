@@ -18,6 +18,10 @@ defineProps({
     type: String,
     required: true,
   },
+  tutorialSteps: {
+    type: Array,
+    default: () => [],
+  },
   source: {
     type: String,
     required: true,
@@ -52,6 +56,13 @@ function getActionLabel(action) {
     </div>
     <p class="section-helper">{{ helper }}</p>
     <p v-if="task" class="next-action-note">当前建议：{{ task.nextStep }}</p>
+    <ol v-if="tutorialSteps.length > 0" class="git-tutorial-list" aria-label="Git 操作教程">
+      <li v-for="step in tutorialSteps" :key="step.title">
+        <strong>{{ step.title }}</strong>
+        <span>{{ step.body }}</span>
+        <code v-if="step.command">{{ step.command }}</code>
+      </li>
+    </ol>
     <div class="card-actions detail-actions">
       <button
         v-for="action in actions"
@@ -127,5 +138,43 @@ function getActionLabel(action) {
   color: #ffe4ad;
   background: rgba(80, 43, 18, 0.36);
   line-height: 1.4;
+}
+
+.git-tutorial-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.git-tutorial-list li {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(240, 198, 118, 0.18);
+  border-radius: 5px;
+  padding: 10px;
+  background: rgba(7, 4, 2, 0.28);
+}
+
+.git-tutorial-list strong {
+  color: #ffe8b9;
+  line-height: 1.25;
+}
+
+.git-tutorial-list span {
+  color: rgba(255, 231, 183, 0.74);
+  line-height: 1.38;
+}
+
+.git-tutorial-list code {
+  overflow-x: auto;
+  border: 1px solid rgba(238, 184, 91, 0.22);
+  border-radius: 4px;
+  padding: 7px 8px;
+  color: #ffe4ad;
+  background: rgba(12, 7, 4, 0.55);
+  font-size: 0.76rem;
+  white-space: nowrap;
 }
 </style>

@@ -6,6 +6,8 @@ import com.gitguild.backend.review.domain.SubmissionStatus;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
@@ -14,7 +16,21 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             Long submitterId,
             Collection<SubmissionStatus> statuses);
 
-    List<Submission> findByStatusOrderBySubmittedAtDesc(SubmissionStatus status);
-
-    List<Submission> findAllByOrderBySubmittedAtDesc();
+    @Query("""
+            select distinct s
+            from Submission s
+            join fetch s.quest q
+            join fetch q.publisher publisher
+            join fetch q.repository r
+            join fetch r.owner owner
+            join fetch s.submitter submitter
+            join fetch s.pullRequest pr
+            where :admin = true
+               or publisher.userId = :reviewerId
+               or owner.userId = :reviewerId
+            order by s.submittedAt desc
+            """)
+    List<Submission> findReviewQueueForReviewer(
+            @Param("reviewerId") Long reviewerId,
+            @Param("admin") boolean admin);
 }

@@ -12,8 +12,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
+import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
-import com.gitguild.backend.codehost.service.CodeIssueService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Difficulty;
@@ -24,7 +24,6 @@ import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.dto.CreateQuestRequest;
 import com.gitguild.backend.quest.dto.QuestResponses.AssignmentResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
-import com.gitguild.backend.quest.dto.QuestResponses.MyAssignmentResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestDetailResponse;
 import com.gitguild.backend.quest.dto.QuestSearchCriteria;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
@@ -50,7 +49,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.http.HttpStatus;
 
 @ExtendWith(MockitoExtension.class)
 class QuestServiceImplTest {
@@ -68,11 +66,10 @@ class QuestServiceImplTest {
     @Mock
     private CodeIssueRepository issueRepository;
     @Mock
-    private CodeIssueService codeIssueService;
-    @Mock
-    private QuestTaskBranchService taskBranchService;
-    @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private CodePullRequestRepository pullRequestRepository;
 
     private QuestServiceImpl questService;
 
@@ -85,8 +82,7 @@ class QuestServiceImplTest {
                 tagRepository,
                 codeRepositoryRepository,
                 issueRepository,
-                codeIssueService,
-                taskBranchService,
+                pullRequestRepository,
                 userRepository,
                 new ObjectMapper());
     }
@@ -160,105 +156,13 @@ class QuestServiceImplTest {
             assignment.setAssignmentId(7001L);
             return assignment;
         });
-        when(taskBranchService.ensureTaskBranch(any(QuestAssignment.class)))
-                .thenReturn("task/quest-5001-assignment-7001-user3001");
 
         AssignmentResponse response = questService.acceptQuest(5001L, 3001L);
 
         assertThat(response.assignmentId()).isEqualTo(7001L);
         assertThat(response.questStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
-        assertThat(response.taskBranch()).isEqualTo("task/quest-5001-assignment-7001-user3001");
         assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
         verify(questRepository).save(quest);
-    }
-
-    @Test
-    void acceptQuestShouldStillSucceedWhenTaskBranchCreationFails() {
-        User maintainer = user(2001L, UserRole.MAINTAINER);
-        User assignee = user(3001L, UserRole.BEGINNER);
-        Quest quest = publishedQuest(maintainer);
-
-        when(userRepository.findById(3001L)).thenReturn(Optional.of(assignee));
-        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
-        when(assignmentRepository.existsByQuestAndAssigneeUserIdAndStatusIn(any(), any(), any())).thenReturn(false);
-        when(assignmentRepository.save(any(QuestAssignment.class))).thenAnswer(invocation -> {
-            QuestAssignment assignment = invocation.getArgument(0);
-            assignment.setAssignmentId(7001L);
-            return assignment;
-        });
-        // Gitea 不可达：接取不应被阻塞，taskBranch 返回 null
-        when(taskBranchService.ensureTaskBranch(any(QuestAssignment.class)))
-                .thenThrow(new BusinessException("CODE_HOST_UNAVAILABLE", HttpStatus.BAD_GATEWAY, "代码托管平台不可达", null));
-
-        AssignmentResponse response = questService.acceptQuest(5001L, 3001L);
-
-        assertThat(response.assignmentId()).isEqualTo(7001L);
-        assertThat(response.questStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
-        assertThat(response.taskBranch()).isNull();
-        verify(questRepository).save(quest);
-    }
-
-    @Test
-    void ensureTaskBranchShouldReturnBranchForActiveAssignment() {
-        User maintainer = user(2001L, UserRole.MAINTAINER);
-        User assignee = user(3001L, UserRole.BEGINNER);
-        Quest quest = inProgressQuest(maintainer);
-        QuestAssignment assignment = new QuestAssignment(quest, assignee);
-        assignment.setAssignmentId(7001L);
-
-        when(userRepository.findById(3001L)).thenReturn(Optional.of(assignee));
-        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
-        when(assignmentRepository.findByQuestAndAssigneeUserIdAndStatus(quest, 3001L, AssignmentStatus.ACTIVE))
-                .thenReturn(Optional.of(assignment));
-        when(taskBranchService.ensureTaskBranch(assignment))
-                .thenReturn("task/quest-5001-assignment-7001-user3001");
-
-        AssignmentResponse response = questService.ensureTaskBranch(5001L, 3001L);
-
-        assertThat(response.assignmentId()).isEqualTo(7001L);
-        assertThat(response.taskBranch()).isEqualTo("task/quest-5001-assignment-7001-user3001");
-    }
-
-    @Test
-    void ensureTaskBranchShouldRejectWhenNoActiveAssignment() {
-        User maintainer = user(2001L, UserRole.MAINTAINER);
-        User assignee = user(3001L, UserRole.BEGINNER);
-        Quest quest = inProgressQuest(maintainer);
-
-        when(userRepository.findById(3001L)).thenReturn(Optional.of(assignee));
-        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
-        when(assignmentRepository.findByQuestAndAssigneeUserIdAndStatus(quest, 3001L, AssignmentStatus.ACTIVE))
-                .thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> questService.ensureTaskBranch(5001L, 3001L))
-                .isInstanceOf(BusinessException.class)
-                .extracting("code")
-                .isEqualTo("ASSIGNMENT_NOT_FOUND");
-    }
-
-    @Test
-    void listMyActiveAssignmentsShouldReturnQuestRepositoryIssueAndTaskBranch() {
-        User maintainer = user(2001L, UserRole.MAINTAINER);
-        User assignee = user(3001L, UserRole.BEGINNER);
-        Quest quest = inProgressQuest(maintainer);
-        QuestAssignment assignment = new QuestAssignment(quest, assignee);
-        assignment.setAssignmentId(7001L);
-        assignment.setTaskBranch("task/quest-5001-assignment-7001-user3001");
-
-        when(userRepository.findById(3001L)).thenReturn(Optional.of(assignee));
-        when(assignmentRepository.findByAssigneeUserIdAndStatus(3001L, AssignmentStatus.ACTIVE))
-                .thenReturn(List.of(assignment));
-
-        List<MyAssignmentResponse> response = questService.listMyActiveAssignments(3001L);
-
-        assertThat(response).hasSize(1);
-        MyAssignmentResponse item = response.get(0);
-        assertThat(item.assignmentId()).isEqualTo(7001L);
-        assertThat(item.questId()).isEqualTo(5001L);
-        assertThat(item.title()).isEqualTo("实现 Issue 同步状态页面");
-        assertThat(item.taskBranch()).isEqualTo("task/quest-5001-assignment-7001-user3001");
-        assertThat(item.repository().name()).isEqualTo("git-guild");
-        assertThat(item.issue().externalIssueId()).isEqualTo("42");
     }
 
     @Test

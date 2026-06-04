@@ -2,11 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { questApi } from '../api/questApi'
 import QuestActionRail from './QuestActionRail.vue'
 import QuestJourney from './QuestJourney.vue'
-import { defaultSubmissionRequirements, questDetails } from '../data/quests'
 import { sessionStore } from '../stores/sessionStore'
-import { questApi } from '../api/questApi'
 
 const router = useRouter()
 const route = useRoute()
@@ -15,11 +14,6 @@ const props = defineProps({
   quest: {
     type: Object,
     required: true,
-  },
-  // 路由携带的真实后端 questId（数字字符串）；mock 演示数据为空。
-  questId: {
-    type: String,
-    default: '',
   },
   intent: {
     type: String,
@@ -31,9 +25,15 @@ const emit = defineEmits(['open-workbench', 'open-submission'])
 
 const localWorkflowState = ref('available')
 const inlineNotice = ref('')
-// 接取成功后由后端返回的真实 task branch（Issue #12）。
-const acceptedTaskBranch = ref('')
-const isAccepting = ref(false)
+const isAssigning = ref(false)
+
+const defaultSubmissionRequirements = [
+  '关联任务编号和任务标题。',
+  '关联 PR 链接。',
+  '成果说明，说明本次修改解决了什么问题。',
+  '完成标准逐项自检。',
+  '测试说明或运行截图；MVP 中附件可以为空。',
+]
 
 // Map each workflow status label to a seal colour, matching the quest board so
 // the same state reads identically across the board and the detail scroll.
@@ -46,43 +46,43 @@ const STATUS_TONE = {
   已完成: 'done',
 }
 
-const detail = computed(() => props.quest.detail ?? questDetails[props.quest.id] ?? {})
 const repository = computed(
   () =>
-    detail.value.repository ?? {
-      name: 'git-guild / frontend',
-      branch: 'main',
-      syncStatus: 'Synced',
+    props.quest.repository ?? {
+      name: '未关联仓库',
+      branch: '未提供',
+      syncStatus: '未知',
     },
 )
 const issue = computed(
   () =>
-    detail.value.issue ?? {
-      number: '#42',
+    props.quest.issue ?? {
+      number: '未关联',
       title: props.quest.title,
-      status: '可接取',
+      status: '未知',
     },
 )
 const pullRequest = computed(
   () =>
-    detail.value.pr ?? {
+    props.quest.pr ?? {
       number: 'Not created',
       status: 'Not started',
     },
 )
 const beginnerTags = computed(() => (props.quest.tags ?? []).filter((tag) => tag.includes('新手') || tag === '教程'))
-const estimatedHours = computed(() => detail.value.estimatedHours ?? 6)
-const description = computed(() => detail.value.description ?? props.quest.summary)
-const submissionRequirements = computed(() => detail.value.submissionRequirements ?? defaultSubmissionRequirements)
+const estimatedHours = computed(() => props.quest.estimatedHours ?? null)
+const estimatedHoursLabel = computed(() => (estimatedHours.value === null ? '未提供' : `${estimatedHours.value}h`))
+const description = computed(() => props.quest.description ?? props.quest.summary)
+const submissionRequirements = computed(() => props.quest.submissionRequirements ?? defaultSubmissionRequirements)
 const hasPullRequest = computed(() => pullRequest.value.number !== 'Not created')
 const isAcceptIntent = computed(() => props.intent === 'accept' && localWorkflowState.value === 'available')
 
 // Compact, icon-backed meta chips replace the old 6-column grid.
 const metaChips = computed(() => [
-  { key: 'difficulty', label: '难度', value: props.quest.difficulty ?? '待定' },
-  { key: 'reward', label: '奖励', value: props.quest.reward ?? '待定 XP' },
-  { key: 'hours', label: '预计时长', value: `${estimatedHours.value}h` },
-  { key: 'stack', label: '技术栈', value: props.quest.stack ?? '待补充' },
+  { key: 'difficulty', label: '难度', value: props.quest.difficulty },
+  { key: 'reward', label: '奖励', value: props.quest.reward },
+  { key: 'hours', label: '预计时长', value: estimatedHoursLabel.value },
+  { key: 'stack', label: '技术栈', value: props.quest.stack },
   { key: 'beginner', label: '新手标签', value: beginnerTags.value.length ? beginnerTags.value.join(' / ') : '普通任务' },
 ])
 
@@ -105,7 +105,7 @@ const workflowConfig = computed(() => {
     available: {
       status: '可接取',
       next: '确认完成标准后接取任务。',
-      primary: '接取委托',
+      primary: isAssigning.value ? '正在接取...' : '接取委托',
       secondary: '查看仓库',
     },
     'in-progress': {
@@ -146,10 +146,9 @@ const workflowConfig = computed(() => {
 const heroTone = computed(() => STATUS_TONE[workflowConfig.value.status] ?? 'open')
 
 watch(
-  () => [props.quest.id, props.intent, props.quest.status, detail.value.workflowState],
+  () => [props.quest.id, props.intent],
   () => {
-    localWorkflowState.value = detail.value.workflowState ?? (props.quest.status === '待审核' ? 'in-review' : 'available')
-    acceptedTaskBranch.value = props.quest.assignment?.taskBranch ?? ''
+    localWorkflowState.value = props.quest.workflowState ?? (props.quest.status === '待审核' ? 'in-review' : 'available')
     inlineNotice.value =
       props.intent === 'accept' && localWorkflowState.value === 'available'
         ? '请确认任务背景和完成标准后接取该任务。点击任务板的“接取”不会直接完成接取。'
@@ -157,57 +156,6 @@ watch(
   },
   { immediate: true },
 )
-
-// 判断路由 questId 是否为真实后端 id（数字）。mock 演示数据不是数字，走模拟分支。
-const realQuestId = computed(() => {
-  const id = Number(props.questId)
-  return Number.isInteger(id) && id > 0 ? id : null
-})
-
-async function acceptQuest() {
-  // 没有真实后端 questId（纯 mock 演示）时保持原模拟流程。
-  if (!realQuestId.value) {
-    localWorkflowState.value = 'in-progress'
-    inlineNotice.value = '已接取该任务，下一步请进入工作台创建任务分支。任务已加入你的工作台待办。'
-    return
-  }
-
-  isAccepting.value = true
-  try {
-    const payload = await questApi.assign(realQuestId.value)
-    const data = payload?.data ?? {}
-    localWorkflowState.value = 'in-progress'
-    acceptedTaskBranch.value = data.taskBranch ?? ''
-    if (acceptedTaskBranch.value) {
-      inlineNotice.value = `已接取该任务，已为你创建任务分支 ${acceptedTaskBranch.value}，进入工作台即可开始提交。`
-    } else {
-      // 接取成功但分支未创建（如 Gitea 暂不可达）：尝试幂等补建一次。
-      await retryTaskBranch()
-    }
-  } catch (error) {
-    inlineNotice.value =
-      error?.code === 'DUPLICATE_ASSIGNMENT'
-        ? '你已接取过该任务，可直接进入工作台继续。'
-        : `接取失败：${error?.message ?? '请稍后重试'}`
-    if (error?.code === 'DUPLICATE_ASSIGNMENT') {
-      localWorkflowState.value = 'in-progress'
-    }
-  } finally {
-    isAccepting.value = false
-  }
-}
-
-async function retryTaskBranch() {
-  try {
-    const payload = await questApi.ensureTaskBranch(realQuestId.value)
-    acceptedTaskBranch.value = payload?.data?.taskBranch ?? ''
-  } catch {
-    acceptedTaskBranch.value = ''
-  }
-  inlineNotice.value = acceptedTaskBranch.value
-    ? `已接取该任务，已为你创建任务分支 ${acceptedTaskBranch.value}，进入工作台即可开始提交。`
-    : '已接取该任务。任务分支稍后会自动创建，可在工作台点击“创建分支”重试。'
-}
 
 async function handlePrimaryAction() {
   if (localWorkflowState.value === 'available') {
@@ -217,7 +165,20 @@ async function handlePrimaryAction() {
       router.push({ name: 'login', query: { redirect: route.fullPath } })
       return
     }
-    await acceptQuest()
+
+    if (isAssigning.value) return
+    isAssigning.value = true
+    inlineNotice.value = ''
+
+    try {
+      await questApi.assign(props.quest.questId ?? props.quest.id)
+      localWorkflowState.value = 'in-progress'
+      inlineNotice.value = '已接取该任务，下一步请进入工作台创建任务分支。任务已加入你的工作台待办。'
+    } catch (error) {
+      inlineNotice.value = error?.message || '接取失败，请刷新任务详情后重试。'
+    } finally {
+      isAssigning.value = false
+    }
     return
   }
 
@@ -228,12 +189,12 @@ async function handlePrimaryAction() {
   }
 
   if (localWorkflowState.value === 'changes-requested') {
-    inlineNotice.value = '模拟反馈：请补充 PR 链接校验的异常提示，并在提交说明中写明测试结果。'
+    inlineNotice.value = '请到工作台查看维护者反馈，并根据反馈更新分支、PR 和提交材料。'
     return
   }
 
   if (localWorkflowState.value === 'completed') {
-    inlineNotice.value = '模拟成长记录：该任务已写入贡献记录，XP 已计入个人成长档案。'
+    inlineNotice.value = '该任务已完成，可到个人档案查看 XP 和贡献记录。'
     return
   }
 
@@ -248,7 +209,7 @@ function handleSecondaryAction() {
   }
 
   if (localWorkflowState.value === 'completed') {
-    inlineNotice.value = '模拟贡献记录：展示任务标题、仓库、合并 PR 和完成时间。'
+    inlineNotice.value = '可到个人档案查看任务标题、仓库、合并 PR 和完成时间。'
     return
   }
 
@@ -256,7 +217,7 @@ function handleSecondaryAction() {
 }
 
 function showIssueHint() {
-  inlineNotice.value = `已定位模拟 Issue ${issue.value.number}：${issue.value.title}。真实实现会在工作台中打开 Issue 详情。`
+  inlineNotice.value = `已定位 Issue ${issue.value.number}：${issue.value.title}。可进入工作台查看仓库与 Issue 上下文。`
 }
 </script>
 
@@ -265,7 +226,7 @@ function showIssueHint() {
     <header class="quest-detail-hero">
       <p class="kicker">悬赏任务详情</p>
       <div class="hero-title-row">
-        <h1>{{ quest.id }} · {{ quest.title }}</h1>
+        <h1>{{ quest.code ?? quest.id }} · {{ quest.title }}</h1>
         <span class="hero-state" :class="`tone-${heroTone}`">
           {{ workflowConfig.status }}
         </span>
@@ -327,7 +288,7 @@ function showIssueHint() {
           <h2>完成标准</h2>
           <p class="section-note">提交前请逐项确认。这里检查任务完成结果，不替代工作台中的 commit 和 PR 操作。</p>
           <div class="criteria-list">
-            <label v-for="line in quest.criteria ?? []" :key="line">
+            <label v-for="line in quest.criteria" :key="line">
               <input type="checkbox" disabled />
               <span>{{ line }}</span>
             </label>
@@ -364,10 +325,6 @@ function showIssueHint() {
             <div>
               <dt>默认分支</dt>
               <dd>{{ repository.branch }}</dd>
-            </div>
-            <div v-if="acceptedTaskBranch">
-              <dt>任务分支</dt>
-              <dd>{{ acceptedTaskBranch }}</dd>
             </div>
             <div>
               <dt>Issue</dt>

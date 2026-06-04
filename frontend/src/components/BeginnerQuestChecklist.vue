@@ -22,12 +22,14 @@ const props = defineProps({
 
 const checkedSteps = ref({})
 const storageReady = ref(false)
+const interactionNotice = ref('')
 
 const hasPullRequest = computed(() => {
   const number = String(props.pullRequest.number ?? '')
   return number && number !== 'Not created'
 })
 
+const canUseChecklist = computed(() => props.workflowState !== 'available')
 const storageKey = computed(() => `git-guild:beginner-checklist:${props.quest.id}`)
 const criteriaSummary = computed(() => props.quest.criteria?.join(' / ') || '任务详情中的完成标准')
 const branchName = computed(() => `quest/${props.quest.id.toLowerCase()}`)
@@ -116,6 +118,15 @@ const blockingReason = computed(() => {
 })
 
 watch(
+  () => props.workflowState,
+  () => {
+    if (canUseChecklist.value) {
+      interactionNotice.value = ''
+    }
+  },
+)
+
+watch(
   storageKey,
   () => {
     loadChecklist()
@@ -148,10 +159,21 @@ function loadChecklist() {
 }
 
 function toggleStep(stepId) {
+  if (!canUseChecklist.value) {
+    interactionNotice.value = '请先接取委托'
+    return
+  }
+
   checkedSteps.value = {
     ...checkedSteps.value,
     [stepId]: !checkedSteps.value[stepId],
   }
+}
+
+function guardChecklistInteraction(event) {
+  if (canUseChecklist.value) return
+  event.preventDefault()
+  interactionNotice.value = '请先接取委托'
 }
 
 function getStepState(step, index) {
@@ -159,6 +181,7 @@ function getStepState(step, index) {
     done: Boolean(checkedSteps.value[step.id]),
     recommended: index === recommendedIndex.value && completedCount.value < checklistSteps.value.length,
     blocked: index === recommendedIndex.value && Boolean(blockingReason.value),
+    locked: !canUseChecklist.value,
   }
 }
 </script>
@@ -166,7 +189,6 @@ function getStepState(step, index) {
 <template>
   <section class="beginner-checklist-card" aria-label="新手任务执行清单">
     <header class="checklist-head">
-      <p>按课堂演示顺序勾选。工作台处理项目与 Git 操作，提交柜台只处理平台内成果提交。</p>
       <div class="checklist-meter" :aria-label="`已完成 ${completedCount} / ${checklistSteps.length}`">
         <strong>{{ completedCount }} / {{ checklistSteps.length }}</strong>
         <span>{{ progressPercent }}%</span>
@@ -177,9 +199,10 @@ function getStepState(step, index) {
       <span :style="{ width: `${progressPercent}%` }"></span>
     </div>
 
-    <div class="checklist-next" :class="{ blocked: blockingReason }" aria-live="polite">
+    <div class="checklist-next" :class="{ blocked: blockingReason || interactionNotice }" aria-live="polite">
       <strong>{{ panelStatus }}</strong>
-      <p v-if="blockingReason">{{ blockingReason }}</p>
+      <p v-if="interactionNotice">{{ interactionNotice }}</p>
+      <p v-else-if="blockingReason">{{ blockingReason }}</p>
       <p v-else-if="nextStep">请在{{ nextStep.place }}完成：{{ nextStep.title }}。</p>
     </div>
 
@@ -189,11 +212,14 @@ function getStepState(step, index) {
         :key="step.id"
         class="beginner-step"
         :class="getStepState(step, index)"
+        :aria-disabled="!canUseChecklist"
+        @click="guardChecklistInteraction"
       >
         <label class="step-check">
           <input
             type="checkbox"
             :checked="Boolean(checkedSteps[step.id])"
+            :disabled="!canUseChecklist"
             :aria-describedby="`${step.id}-details`"
             @change="toggleStep(step.id)"
           />
@@ -224,15 +250,8 @@ function getStepState(step, index) {
 .checklist-head {
   display: flex;
   align-items: start;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
-}
-
-.checklist-head p {
-  max-width: 70ch;
-  margin: 8px 0 0;
-  color: rgba(255, 231, 183, 0.78);
-  line-height: 1.48;
 }
 
 .checklist-meter {
@@ -330,6 +349,23 @@ function getStepState(step, index) {
 
 .beginner-step.blocked {
   border-color: rgba(202, 104, 88, 0.72);
+}
+
+.beginner-step.locked {
+  border-color: rgba(202, 104, 88, 0.32);
+}
+
+.beginner-step.locked .step-check,
+.beginner-step.locked .step-body {
+  cursor: not-allowed;
+}
+
+.beginner-step.locked .step-check input {
+  cursor: not-allowed;
+}
+
+.beginner-step.locked:not(.recommended) {
+  opacity: 0.76;
 }
 
 .beginner-step.done {

@@ -1,5 +1,6 @@
 package com.gitguild.backend.review.service;
 
+import com.gitguild.backend.codehost.service.CodePullRequestSyncService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.growth.service.GrowthService;
 import com.gitguild.backend.notification.domain.NotificationType;
@@ -36,6 +37,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final QuestRepository questRepository;
     private final QuestAssignmentRepository assignmentRepository;
     private final UserRepository userRepository;
+    private final CodePullRequestSyncService pullRequestSyncService;
     private final GrowthService growthService;
     private final NotificationService notificationService;
 
@@ -45,6 +47,7 @@ public class ReviewServiceImpl implements ReviewService {
             QuestRepository questRepository,
             QuestAssignmentRepository assignmentRepository,
             UserRepository userRepository,
+            CodePullRequestSyncService pullRequestSyncService,
             GrowthService growthService,
             NotificationService notificationService) {
         this.submissionRepository = submissionRepository;
@@ -52,6 +55,7 @@ public class ReviewServiceImpl implements ReviewService {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.userRepository = userRepository;
+        this.pullRequestSyncService = pullRequestSyncService;
         this.growthService = growthService;
         this.notificationService = notificationService;
     }
@@ -67,6 +71,9 @@ public class ReviewServiceImpl implements ReviewService {
         }
         if (!submission.isReviewable()) {
             throw new BusinessException("SUBMISSION_ALREADY_REVIEWED", HttpStatus.CONFLICT, "Submission has already been reviewed", "submissionId=" + submissionId + ", currentStatus=" + submission.getStatus());
+        }
+        if (request.getDecision() == ReviewDecision.APPROVED) {
+            pullRequestSyncService.syncRepositoryPullRequests(submission.getQuest().getRepository());
         }
         if (request.getDecision() == ReviewDecision.APPROVED && !submission.getPullRequest().isMerged()) {
             throw new BusinessException("PR_NOT_MERGED", HttpStatus.CONFLICT, "Pull request is not merged", "pullRequestId=" + submission.getPullRequest().getPullRequestId());
