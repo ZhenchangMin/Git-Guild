@@ -1,7 +1,9 @@
 package com.gitguild.backend.review.service;
 
 import com.gitguild.backend.codehost.domain.CodePullRequest;
+import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
+import com.gitguild.backend.codehost.service.CodePullRequestSyncService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.notification.domain.NotificationType;
 import com.gitguild.backend.notification.service.NotificationService;
@@ -18,6 +20,7 @@ import com.gitguild.backend.review.domain.SubmissionStatus;
 import com.gitguild.backend.review.dto.CreateSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionDetailResponse;
 import com.gitguild.backend.review.repository.ReviewRecordRepository;
 import com.gitguild.backend.review.repository.SubmissionRepository;
@@ -43,6 +46,7 @@ public class SubmissionServiceImpl implements SubmissionService {
     private final QuestRepository questRepository;
     private final QuestAssignmentRepository assignmentRepository;
     private final CodePullRequestRepository pullRequestRepository;
+    private final CodePullRequestSyncService pullRequestSyncService;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
 
@@ -52,6 +56,7 @@ public class SubmissionServiceImpl implements SubmissionService {
             QuestRepository questRepository,
             QuestAssignmentRepository assignmentRepository,
             CodePullRequestRepository pullRequestRepository,
+            CodePullRequestSyncService pullRequestSyncService,
             UserRepository userRepository,
             NotificationService notificationService) {
         this.submissionRepository = submissionRepository;
@@ -59,6 +64,7 @@ public class SubmissionServiceImpl implements SubmissionService {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.pullRequestRepository = pullRequestRepository;
+        this.pullRequestSyncService = pullRequestSyncService;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
     }
@@ -118,6 +124,27 @@ public class SubmissionServiceImpl implements SubmissionService {
         return toDetail(submission, records);
     }
 
+    @Override
+    @Transactional
+    public List<SubmissionReviewQueueItemResponse> listReviewQueue(Long currentUserId) {
+        User currentUser = findUser(currentUserId);
+        if (currentUser.getRole() != UserRole.MAINTAINER && currentUser.getRole() != UserRole.ADMIN) {
+            throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN, "Current user cannot review submissions", "Only maintainer or admin can access review queue");
+        }
+        boolean admin = currentUser.getRole() == UserRole.ADMIN;
+        List<Submission> submissions = submissionRepository.findReviewQueueForReviewer(currentUserId, admin);
+        syncReviewQueuePullRequests(submissions);
+        return submissions.stream().map(this::toReviewQueueItem).toList();
+    }
+
+    private void syncReviewQueuePullRequests(List<Submission> submissions) {
+        submissions.stream()
+                .map(submission -> submission.getQuest().getRepository())
+                .filter(repository -> repository != null && repository.getSourceUrl() != null)
+                .distinct()
+                .forEach(pullRequestSyncService::syncRepositoryPullRequests);
+    }
+
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", HttpStatus.NOT_FOUND, "User not found", "userId=" + userId));
@@ -164,12 +191,43 @@ public class SubmissionServiceImpl implements SubmissionService {
                         pullRequest.getPullRequestId(),
                         pullRequest.getExternalPrId(),
                         pullRequest.getTitle(),
+                        pullRequest.getSourceBranch(),
+                        pullRequest.getTargetBranch(),
                         pullRequest.getStatus(),
                         pullRequest.getExternalUrl()),
                 submission.getDescription(),
                 submission.getStatus(),
                 submission.getSubmittedAt(),
                 records.stream().map(this::toReviewResponse).toList());
+    }
+
+    private SubmissionReviewQueueItemResponse toReviewQueueItem(Submission submission) {
+        Quest quest = submission.getQuest();
+        CodeRepository repository = quest.getRepository();
+        CodePullRequest pullRequest = submission.getPullRequest();
+        return new SubmissionReviewQueueItemResponse(
+                submission.getSubmissionId(),
+                new SubmissionResponses.QuestBrief(quest.getQuestId(), quest.getTitle(), quest.getStatus()),
+                new SubmissionResponses.UserBrief(submission.getSubmitter().getUserId(), submission.getSubmitter().getUsername()),
+                new SubmissionResponses.RepositoryBrief(
+                        repository.getRepositoryId(),
+                        repository.getName(),
+                        repository.getSourceUrl(),
+                        repository.getDefaultBranch(),
+                        repository.getSyncStatus()),
+                new SubmissionResponses.PullRequestBrief(
+                        pullRequest.getPullRequestId(),
+                        pullRequest.getExternalPrId(),
+                        pullRequest.getTitle(),
+                        pullRequest.getSourceBranch(),
+                        pullRequest.getTargetBranch(),
+                        pullRequest.getStatus(),
+                        pullRequest.getExternalUrl()),
+                submission.getDescription(),
+                submission.getStatus(),
+                quest.getRewardXp(),
+                quest.getCompletionCriteria(),
+                submission.getSubmittedAt());
     }
 
     private SubmissionResponses.ReviewRecordResponse toReviewResponse(ReviewRecord record) {

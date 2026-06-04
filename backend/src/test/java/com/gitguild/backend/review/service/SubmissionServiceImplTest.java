@@ -3,6 +3,7 @@ package com.gitguild.backend.review.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +12,7 @@ import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
+import com.gitguild.backend.codehost.service.CodePullRequestSyncService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.notification.service.NotificationService;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
@@ -25,6 +27,7 @@ import com.gitguild.backend.review.domain.Submission;
 import com.gitguild.backend.review.domain.SubmissionStatus;
 import com.gitguild.backend.review.dto.CreateSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
 import com.gitguild.backend.review.repository.ReviewRecordRepository;
 import com.gitguild.backend.review.repository.SubmissionRepository;
 import com.gitguild.backend.user.domain.User;
@@ -52,6 +55,8 @@ class SubmissionServiceImplTest {
     @Mock
     private CodePullRequestRepository pullRequestRepository;
     @Mock
+    private CodePullRequestSyncService pullRequestSyncService;
+    @Mock
     private UserRepository userRepository;
     @Mock
     private NotificationService notificationService;
@@ -66,6 +71,7 @@ class SubmissionServiceImplTest {
                 questRepository,
                 assignmentRepository,
                 pullRequestRepository,
+                pullRequestSyncService,
                 userRepository,
                 notificationService);
     }
@@ -194,6 +200,44 @@ class SubmissionServiceImplTest {
 
         verify(submissionRepository, never()).save(any());
         verify(questRepository, never()).save(any());
+    }
+
+    @Test
+    void listReviewQueueShouldReturnMaintainerVisibleSubmissions() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User submitter = user(3001L, UserRole.BEGINNER);
+        CodeRepository repository = repository(maintainer);
+        Quest quest = quest(maintainer, repository, QuestStatus.IN_REVIEW);
+        CodePullRequest pullRequest = pullRequest(repository);
+        Submission submission = new Submission(quest, submitter, pullRequest, "Implemented the feature.");
+        submission.setSubmissionId(9001L);
+
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
+        when(submissionRepository.findReviewQueueForReviewer(2001L, false)).thenReturn(List.of(submission));
+        when(pullRequestSyncService.syncRepositoryPullRequests(repository)).thenReturn(List.of(pullRequest));
+
+        List<SubmissionReviewQueueItemResponse> queue = submissionService.listReviewQueue(2001L);
+
+        verify(pullRequestSyncService).syncRepositoryPullRequests(repository);
+        assertThat(queue).hasSize(1);
+        assertThat(queue.get(0).submissionId()).isEqualTo(9001L);
+        assertThat(queue.get(0).quest().questId()).isEqualTo(5001L);
+        assertThat(queue.get(0).submitter().userId()).isEqualTo(3001L);
+        assertThat(queue.get(0).repository().repositoryId()).isEqualTo(1001L);
+        assertThat(queue.get(0).pullRequest().externalPrId()).isEqualTo("7");
+        assertThat(queue.get(0).status()).isEqualTo(SubmissionStatus.PENDING_REVIEW);
+    }
+
+    @Test
+    void listReviewQueueShouldRejectBeginner() {
+        when(userRepository.findById(3001L)).thenReturn(Optional.of(user(3001L, UserRole.BEGINNER)));
+
+        assertThatThrownBy(() -> submissionService.listReviewQueue(3001L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("FORBIDDEN");
+
+        verify(submissionRepository, never()).findReviewQueueForReviewer(any(), anyBoolean());
     }
 
     private CreateSubmissionRequest request() {

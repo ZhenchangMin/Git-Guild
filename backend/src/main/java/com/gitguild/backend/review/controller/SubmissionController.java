@@ -6,10 +6,12 @@ import com.gitguild.backend.review.dto.ReviewSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.ReviewRecordResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionDetailResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
 import com.gitguild.backend.review.service.ReviewService;
 import com.gitguild.backend.review.service.SubmissionService;
 import com.gitguild.backend.security.SecurityPrincipalUtils;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -49,6 +51,12 @@ public class SubmissionController {
             Authentication authentication) {
         return ApiResponse.success(submissionService.getSubmission(
                 submissionId,
+                SecurityPrincipalUtils.currentUserId(authentication)));
+    }
+
+    @GetMapping("/review-queue")
+    public ApiResponse<List<SubmissionReviewQueueItemResponse>> listReviewQueue(Authentication authentication) {
+        return ApiResponse.success(submissionService.listReviewQueue(
                 SecurityPrincipalUtils.currentUserId(authentication)));
     }
 

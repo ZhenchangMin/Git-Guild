@@ -47,6 +47,7 @@ const blankForm = () => ({
 const form = reactive(blankForm())
 const checks = reactive(Object.fromEntries(submissionChecks.map((label) => [label, false])))
 const evidence = ref([])
+const draftPullRequests = ref([])
 
 const firstInput = ref(null)
 const evidenceLabelInput = ref(null)
@@ -60,6 +61,28 @@ const draftKey = computed(() => {
   const questId = props.quest?.id || 'unknown'
   return `git-guild:submission-draft:${owner}:${questId}`
 })
+
+const numericQuestId = computed(() => {
+  if (props.quest?.numericId) return Number(props.quest.numericId)
+  const match = String(props.quest?.id ?? '').match(/\d+/)
+  return match ? Number(match[0]) : null
+})
+
+const selectedDraftPullRequest = computed(() => {
+  const value = form.pullRequest.trim()
+  if (!value) return null
+
+  return draftPullRequests.value.find((pr) => {
+    const externalPrId = pr.externalPrId ? String(pr.externalPrId) : ''
+    return (
+      pr.externalUrl === value ||
+      (externalPrId && value.includes(externalPrId)) ||
+      (pr.pullRequestId && value === String(pr.pullRequestId))
+    )
+  }) ?? null
+})
+
+const selectedPullRequestId = computed(() => selectedDraftPullRequest.value?.pullRequestId ?? null)
 
 function quietlySeedFromQuest() {
   const q = props.quest
@@ -114,6 +137,35 @@ function hydrateFromDraft() {
   }
 
   quietlySeedFromQuest()
+  fetchDraftFromBackend()
+}
+
+// Try to load the draft from the backend endpoint (GET /quests/{questId}/submission-draft).
+// This fills repository, branch, and PR candidates if the user hasn't already typed them.
+async function fetchDraftFromBackend() {
+  draftPullRequests.value = []
+  if (!numericQuestId.value) return
+
+  try {
+    const response = await submissionApi.getDraft(numericQuestId.value)
+    const data = response?.data
+    if (!data) return
+    draftPullRequests.value = Array.isArray(data.pullRequests) ? data.pullRequests : []
+    // Fill from backend draft — don't overwrite user-typed values
+    if (!form.repository && data.repository?.name) {
+      form.repository = data.repository.name
+    }
+    if (!form.branch && data.branch) {
+      form.branch = data.branch
+    }
+    // If there's a PR candidate list and we have no PR yet, use the first one
+    if (!form.pullRequest && draftPullRequests.value.length > 0) {
+      const pr = draftPullRequests.value[0]
+      form.pullRequest = pr.externalUrl || `PR #${pr.externalPrId}`
+    }
+  } catch {
+    // Silently ignore — local draft is sufficient
+  }
 }
 
 watch(
@@ -146,12 +198,15 @@ const allChecksDone = computed(() => Object.values(checks).every(Boolean))
 
 const errors = computed(() => {
   const e = {}
+  if (!numericQuestId.value) e.quest = '当前提交柜台没有关联后端任务。'
   if (!form.repository.trim()) e.repository = '请填写仓库名。'
   if (!form.branch.trim()) e.branch = '请填写分支名。'
   if (!form.pullRequest.trim()) {
     e.pullRequest = '请粘贴 PR 链接。'
   } else if (!PR_URL_PATTERN.test(form.pullRequest.trim())) {
     e.pullRequest = '链接需指向 PR / Merge Request 详情页。'
+  } else if (!selectedPullRequestId.value) {
+    e.pullRequest = '请使用已同步到本地的 PR 候选；如果刚创建 PR，请先回工作台同步。'
   }
   if (form.note.trim().length < 8) e.note = '提交说明至少 8 个字。'
   if (!allChecksDone.value) e.checks = '请完成提交前核对清单。'
@@ -248,6 +303,7 @@ async function submitForReview() {
       errors.value.pullRequest ||
       errors.value.note ||
       errors.value.checks ||
+      errors.value.quest ||
       '请完成必填项后再提交。'
     return
   }
@@ -261,13 +317,13 @@ async function submitForReview() {
 
   try {
     const response = await submissionApi.create({
-      questId: props.quest?.id ?? null,
-      repository: form.repository.trim(),
-      branch: form.branch.trim(),
-      pullRequest: form.pullRequest.trim(),
-      note: form.note.trim(),
-      checks: { ...checks },
-      evidence: evidence.value,
+      questId: numericQuestId.value,
+      pullRequestId: selectedPullRequestId.value,
+      description: form.note.trim(),
+      checklist: Object.entries(checks)
+        .filter(([, checked]) => checked)
+        .map(([label]) => label),
+      evidenceUrls: evidence.value.map((item) => item.url).filter(Boolean),
     })
     const submittedAt = new Date()
     const newReceipt = {

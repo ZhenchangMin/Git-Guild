@@ -11,6 +11,7 @@ import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestDetailResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestPageResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.SubmitQuestResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.MyAssignmentsResponse;
 import com.gitguild.backend.quest.dto.QuestSearchCriteria;
 import com.gitguild.backend.quest.service.QuestService;
 import jakarta.validation.Valid;
@@ -93,6 +94,12 @@ public class QuestController {
         AssignmentResponse response = questService.acceptQuest(questId, SecurityPrincipalUtils.currentUserId(authentication));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("任务接取成功", response));
+    }
+
+    @GetMapping("/me/assignments")
+    public ApiResponse<MyAssignmentsResponse> getMyAssignments(Authentication authentication) {
+        return ApiResponse.success(questService.getMyAssignments(
+                SecurityPrincipalUtils.currentUserId(authentication)));
     }
 
     private Long optionalUserId(Authentication authentication) {

@@ -1,19 +1,22 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import workbenchImg from '../../assets/workbench.png'
 import MaintainerReviewActions from '../../components/MaintainerReviewActions.vue'
 import MaintainerReviewDetail from '../../components/MaintainerReviewDetail.vue'
 import MaintainerReviewQueue from '../../components/MaintainerReviewQueue.vue'
-import { reviewApi } from '../../api'
-import { maintainerReviewQueue } from '../../data/maintainerReview'
+import { reviewApi, submissionApi } from '../../api'
 
 const router = useRouter()
 
-const reviews = ref(maintainerReviewQueue.map((review) => ({ ...review })))
+const reviews = ref([])
 const selectedReviewId = ref('')
 const reviewResult = ref(null)
+const reviewAlert = ref(null)
+const reviewAlertRef = ref(null)
+const loadError = ref('')
+const isLoadingReviews = ref(false)
 const isSubmittingReview = ref(false)
 const isActionPanelCollapsed = ref(false)
 
@@ -28,8 +31,140 @@ const reviewStats = computed(() => [
   { label: '待审核提交', value: pendingReviewCount.value, hint: '需要委托人给出结论' },
   { label: '已审核提交', value: reviewedCount.value, hint: '已给出通过、退回或驳回' },
   { label: '需退回修改', value: returnedCount.value, hint: '存在未通过检查项' },
-  { label: '队列总数', value: reviews.value.length, hint: '当前演示提交记录' },
+  { label: '队列总数', value: reviews.value.length, hint: '真实提交记录' },
 ])
+
+function padId(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '????'
+  return String(numeric).padStart(4, '0')
+}
+
+function formatDateTime(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function submittedAtOrder(value) {
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
+function mapSubmissionStatus(status) {
+  return {
+    PENDING_REVIEW: { label: '待审核', tone: 'review' },
+    APPROVED: { label: '审核通过', tone: 'approved' },
+    CHANGES_REQUESTED: { label: '已请求修改', tone: 'warning' },
+    REJECTED: { label: '已驳回', tone: 'warning' },
+  }[status] ?? { label: status || '未知状态', tone: 'review' }
+}
+
+function splitCompletionCriteria(criteria) {
+  return String(criteria || '')
+    .split(/\r?\n|[;；]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function buildCompletionCriteria(submission) {
+  const prStatus = submission.pullRequest?.status || 'UNKNOWN'
+  const base = [
+    {
+      checkpoint: 'PR 已关联到当前任务仓库',
+      passed: Boolean(submission.pullRequest?.pullRequestId),
+      comment: submission.pullRequest?.externalPrId
+        ? `已关联 PR #${submission.pullRequest.externalPrId}。`
+        : '提交记录缺少 PR 关联。',
+    },
+    {
+      checkpoint: 'PR 已合并',
+      passed: prStatus === 'MERGED',
+      comment: prStatus === 'MERGED'
+        ? 'PR 已合并，可以进入通过审核。'
+        : `当前 PR 状态为 ${prStatus}，审核通过会被后端保护逻辑拦截。`,
+    },
+    {
+      checkpoint: '成果说明已提交',
+      passed: Boolean(submission.description?.trim()),
+      comment: submission.description || '未填写成果说明。',
+    },
+  ]
+
+  const taskCriteria = splitCompletionCriteria(submission.completionCriteria).map((checkpoint) => ({
+    checkpoint,
+    passed: true,
+    comment: '请结合 PR 变更和提交说明人工确认。',
+  }))
+
+  return [...base, ...taskCriteria]
+}
+
+function mapSubmissionToReview(submission) {
+  const status = mapSubmissionStatus(submission.status)
+  const quest = submission.quest ?? {}
+  const repository = submission.repository ?? {}
+  const pullRequest = submission.pullRequest ?? {}
+  const externalPrId = pullRequest.externalPrId ? String(pullRequest.externalPrId) : ''
+  const prLabel = externalPrId ? `PR #${externalPrId}` : `PR ${pullRequest.pullRequestId ?? '—'}`
+  const branch =
+    pullRequest.sourceBranch && pullRequest.targetBranch
+      ? `${pullRequest.sourceBranch} -> ${pullRequest.targetBranch}`
+      : pullRequest.sourceBranch || repository.defaultBranch || '—'
+  const completionCriteria = buildCompletionCriteria(submission)
+
+  return {
+    id: `SUB-${padId(submission.submissionId)}`,
+    submissionId: submission.submissionId,
+    questId: `QST-${padId(quest.questId)}`,
+    questTitle: quest.title || '未命名委托',
+    submitter: submission.submitter?.username || `用户 ${submission.submitter?.userId ?? '—'}`,
+    repository: repository.name || repository.sourceUrl || '未关联仓库',
+    pullRequest: prLabel,
+    pullRequestUrl: pullRequest.externalUrl || '',
+    pullRequestTitle: pullRequest.title || '未命名 PR',
+    prState: pullRequest.status || 'UNKNOWN',
+    branch,
+    latestCommit: '请打开 PR 查看',
+    status: status.label,
+    statusTone: status.tone,
+    submittedAt: formatDateTime(submission.submittedAt),
+    submittedAtOrder: submittedAtOrder(submission.submittedAt),
+    rewardXp: submission.rewardXp ?? 0,
+    summary: submission.description || '该提交没有填写成果说明。',
+    completionCriteria,
+    evidence: [
+      pullRequest.externalUrl ? `PR 链接：${pullRequest.externalUrl}` : '',
+      submission.description ? `成果说明：${submission.description}` : '',
+    ].filter(Boolean),
+    suggestedSummary: completionCriteria.every((item) => item.passed)
+      ? 'PR 与成果说明已核对，符合通过条件。'
+      : 'PR 尚未满足全部通过条件，请根据未通过项给出修改意见。',
+  }
+}
+
+async function loadReviewQueue() {
+  isLoadingReviews.value = true
+  loadError.value = ''
+  try {
+    const response = await submissionApi.reviewQueue()
+    const items = Array.isArray(response?.data) ? response.data : []
+    reviews.value = items.map(mapSubmissionToReview)
+    if (!reviews.value.some((review) => review.id === selectedReviewId.value)) {
+      selectedReviewId.value =
+        reviews.value.find((review) => review.status === '待审核')?.id ||
+        reviews.value[0]?.id ||
+        ''
+    }
+  } catch (error) {
+    reviews.value = []
+    selectedReviewId.value = ''
+    loadError.value = error.message || '审核队列加载失败，请确认当前账号有维护者权限。'
+  } finally {
+    isLoadingReviews.value = false
+  }
+}
 
 function backToWorkbench() {
   router.push({ name: 'maintainer-workbench' })
@@ -38,6 +173,7 @@ function backToWorkbench() {
 function selectReview(reviewId) {
   selectedReviewId.value = reviewId
   reviewResult.value = null
+  reviewAlert.value = null
   isActionPanelCollapsed.value = false
 }
 
@@ -57,28 +193,65 @@ async function submitReview(payload) {
   if (!selectedReview.value) return
 
   const submissionId = selectedReview.value.submissionId
+  const currentReview = selectedReview.value
   isSubmittingReview.value = true
+  reviewAlert.value = null
   try {
     await reviewApi.reviewSubmission(submissionId, payload)
     updateReviewStatus(payload.decision)
+    await loadReviewQueue()
+    const successTitle =
+      payload.decision === 'APPROVED'
+        ? '审核已通过'
+        : payload.decision === 'REJECTED'
+          ? '提交已驳回'
+          : '修改请求已发送'
+    const successBody = `${currentReview.questId} 的审核结论已通过后端接口记录为 ${payload.decision}，submissionId=${submissionId}。`
+    reviewAlert.value = {
+      tone: payload.decision === 'APPROVED' ? 'success' : 'warning',
+      title: successTitle,
+      body: successBody,
+    }
     reviewResult.value = {
       tone: payload.decision === 'APPROVED' ? 'approved' : 'warning',
-      title:
-        payload.decision === 'APPROVED'
-          ? '审核已通过'
-          : payload.decision === 'REJECTED'
-            ? '提交已驳回'
-            : '修改请求已发送',
-      body: `${selectedReview.value.questId} 的审核结论已通过后端接口记录为 ${payload.decision}，submissionId=${submissionId}。`,
+      title: successTitle,
+      body: successBody,
     }
   } catch (error) {
+    const errorInfo = buildReviewErrorMessage(error, currentReview)
+    reviewAlert.value = {
+      tone: 'error',
+      title: errorInfo.title,
+      body: errorInfo.body,
+    }
     reviewResult.value = {
       tone: 'warning',
-      title: '审核提交失败',
-      body: error.message || `维护者审核接口提交失败，请确认 submissionId=${submissionId} 存在且当前账号有审核权限。`,
+      title: errorInfo.title,
+      body: errorInfo.body,
     }
+    await nextTick()
+    reviewAlertRef.value?.focus()
   } finally {
     isSubmittingReview.value = false
+  }
+}
+
+function buildReviewErrorMessage(error, review) {
+  if (error?.code === 'PR_NOT_MERGED') {
+    return {
+      title: 'PR 尚未合并，不能审核通过',
+      body: `${review.pullRequest} 当前状态为 ${review.prState || 'UNKNOWN'}。请先在 Gitea 合并 PR，再同步状态后重新审核；当前成果会保持待审核状态。`,
+    }
+  }
+  if (error?.code) {
+    return {
+      title: '审核提交失败',
+      body: `${error.code}：${error.message || '后端拒绝了本次审核请求'}。`,
+    }
+  }
+  return {
+    title: '审核提交失败',
+    body: error?.message || `维护者审核接口提交失败，请确认 submissionId=${review.submissionId} 存在且当前账号有审核权限。`,
   }
 }
 
@@ -91,12 +264,18 @@ function saveDraft(payload) {
 }
 
 function openPullRequest(review) {
+  if (review.pullRequestUrl) {
+    window.open(review.pullRequestUrl, '_blank', 'noopener,noreferrer')
+    return
+  }
   reviewResult.value = {
     tone: 'review',
     title: `${review.pullRequest} 状态已定位`,
-    body: `${review.pullRequestTitle} 位于 ${review.branch}，最新 commit 为 ${review.latestCommit}。课堂演示版暂不跳转 Gitea。`,
+    body: `${review.pullRequestTitle} 位于 ${review.branch}，当前提交记录没有可打开的 PR URL。`,
   }
 }
+
+onMounted(loadReviewQueue)
 </script>
 
 <template>
@@ -112,12 +291,12 @@ function openPullRequest(review) {
         <span>返回委托人工作台</span>
       </button>
 
-      <div class="maintainer-review-shell">
+      <div class="maintainer-review-shell" :class="{ 'has-review-alert': reviewAlert }">
         <header class="maintainer-review-header">
           <div>
             <p class="kicker">Maintainer Review Desk</p>
             <h1>委托人审核台</h1>
-            <p>查看待审核成果、确认 PR 状态和完成标准，并录入维护者审核意见。</p>
+            <p>查看真实提交成果、确认 PR 状态和完成标准，并录入维护者审核意见。</p>
           </div>
           <div class="maintainer-review-stats" aria-label="维护者审核统计">
             <article v-for="stat in reviewStats" :key="stat.label">
@@ -128,6 +307,19 @@ function openPullRequest(review) {
           </div>
         </header>
 
+        <section
+          v-if="reviewAlert"
+          ref="reviewAlertRef"
+          class="maintainer-review-alert"
+          :class="reviewAlert.tone"
+          tabindex="-1"
+          role="alert"
+          aria-live="assertive"
+        >
+          <strong>{{ reviewAlert.title }}</strong>
+          <p>{{ reviewAlert.body }}</p>
+        </section>
+
         <div class="maintainer-review-workspace">
           <MaintainerReviewQueue
             :reviews="reviews"
@@ -135,7 +327,23 @@ function openPullRequest(review) {
             @select="selectReview"
           />
 
-          <section v-if="!selectedReview" class="review-empty-state" aria-label="待选择提交">
+          <section v-if="isLoadingReviews" class="review-empty-state" aria-label="审核队列加载中">
+            <div>
+              <p class="kicker">Loading</p>
+              <h2>正在读取审核队列</h2>
+              <p>请稍候。</p>
+            </div>
+          </section>
+
+          <section v-else-if="loadError" class="review-empty-state" aria-label="审核队列加载失败">
+            <div>
+              <p class="kicker">Load Failed</p>
+              <h2>审核队列加载失败</h2>
+              <p>{{ loadError }}</p>
+            </div>
+          </section>
+
+          <section v-else-if="!selectedReview" class="review-empty-state" aria-label="待选择提交">
             <div>
               <p class="kicker">Waiting For Selection</p>
               <h2>{{ pendingReviewCount }} 份待审核委托</h2>
@@ -195,6 +403,10 @@ function openPullRequest(review) {
   gap: 16px;
 }
 
+.maintainer-review-shell.has-review-alert {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
 .maintainer-review-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(420px, 0.9fr);
@@ -251,6 +463,49 @@ function openPullRequest(review) {
   color: #ffe2a0;
   font-family: var(--font-display);
   font-size: 1.75rem;
+}
+
+.maintainer-review-alert {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(255, 196, 145, 0.62);
+  border-radius: 10px;
+  padding: 13px 16px;
+  color: #ffe8b9;
+  background:
+    linear-gradient(135deg, rgba(88, 28, 18, 0.86), rgba(30, 9, 5, 0.78)),
+    radial-gradient(circle at 6% 20%, rgba(255, 180, 130, 0.18), transparent 0 34%);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 235, 180, 0.14);
+}
+
+.maintainer-review-alert:focus {
+  outline: 2px solid rgba(255, 224, 157, 0.82);
+  outline-offset: 3px;
+}
+
+.maintainer-review-alert.success {
+  border-color: rgba(169, 208, 123, 0.62);
+  background:
+    linear-gradient(135deg, rgba(43, 74, 28, 0.84), rgba(12, 30, 10, 0.72)),
+    radial-gradient(circle at 6% 20%, rgba(169, 208, 123, 0.2), transparent 0 34%);
+}
+
+.maintainer-review-alert.warning {
+  border-color: rgba(240, 184, 104, 0.64);
+  background:
+    linear-gradient(135deg, rgba(91, 54, 16, 0.86), rgba(32, 17, 5, 0.76)),
+    radial-gradient(circle at 6% 20%, rgba(255, 210, 130, 0.18), transparent 0 34%);
+}
+
+.maintainer-review-alert strong {
+  color: #ffe2a0;
+  font-size: 1rem;
+}
+
+.maintainer-review-alert p {
+  margin: 0;
+  color: rgba(255, 231, 183, 0.78);
+  line-height: 1.48;
 }
 
 .maintainer-review-workspace {

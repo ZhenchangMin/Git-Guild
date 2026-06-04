@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
+import com.gitguild.backend.codehost.service.CodePullRequestSyncService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.growth.service.GrowthService;
 import com.gitguild.backend.notification.service.NotificationService;
@@ -54,6 +55,8 @@ class ReviewServiceImplTest {
     @Mock
     private UserRepository userRepository;
     @Mock
+    private CodePullRequestSyncService pullRequestSyncService;
+    @Mock
     private GrowthService growthService;
     @Mock
     private NotificationService notificationService;
@@ -68,6 +71,7 @@ class ReviewServiceImplTest {
                 questRepository,
                 assignmentRepository,
                 userRepository,
+                pullRequestSyncService,
                 growthService,
                 notificationService);
     }
@@ -83,6 +87,7 @@ class ReviewServiceImplTest {
 
         when(submissionRepository.findById(9001L)).thenReturn(Optional.of(submission));
         when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
+        when(pullRequestSyncService.syncRepositoryPullRequests(repository)).thenReturn(List.of(submission.getPullRequest()));
         when(assignmentRepository.findByQuestAndAssigneeUserIdAndStatus(quest, 3001L, AssignmentStatus.ACTIVE))
                 .thenReturn(Optional.of(assignment));
         when(reviewRecordRepository.save(any(ReviewRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -98,6 +103,7 @@ class ReviewServiceImplTest {
         assertThat(assignment.getStatus()).isEqualTo(AssignmentStatus.COMPLETED);
         verify(assignmentRepository).save(assignment);
         verify(growthService).grantQuestCompletion(submitter, quest);
+        verify(pullRequestSyncService).syncRepositoryPullRequests(repository);
         verify(submissionRepository).save(submission);
         verify(questRepository).save(quest);
     }
@@ -111,11 +117,43 @@ class ReviewServiceImplTest {
 
         when(submissionRepository.findById(9001L)).thenReturn(Optional.of(submission));
         when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
+        when(pullRequestSyncService.syncRepositoryPullRequests(repository)).thenReturn(List.of(submission.getPullRequest()));
 
         assertThatThrownBy(() -> reviewService.reviewSubmission(9001L, 2001L, request(ReviewDecision.APPROVED)))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo("PR_NOT_MERGED");
+
+        verify(pullRequestSyncService).syncRepositoryPullRequests(repository);
+    }
+
+    @Test
+    void reviewSubmissionShouldSyncPullRequestBeforeApproval() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User submitter = user(3001L, UserRole.BEGINNER);
+        CodeRepository repository = repository(maintainer);
+        Quest quest = quest(maintainer, repository);
+        CodePullRequest pullRequest = pullRequest(repository, "OPEN");
+        Submission submission = submission(quest, submitter, pullRequest);
+        QuestAssignment assignment = new QuestAssignment(quest, submitter);
+
+        when(submissionRepository.findById(9001L)).thenReturn(Optional.of(submission));
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
+        when(pullRequestSyncService.syncRepositoryPullRequests(repository)).thenAnswer(invocation -> {
+            pullRequest.setStatus("MERGED");
+            return List.of(pullRequest);
+        });
+        when(assignmentRepository.findByQuestAndAssigneeUserIdAndStatus(quest, 3001L, AssignmentStatus.ACTIVE))
+                .thenReturn(Optional.of(assignment));
+        when(reviewRecordRepository.save(any(ReviewRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ReviewRecordResponse response = reviewService.reviewSubmission(9001L, 2001L, request(ReviewDecision.APPROVED));
+
+        assertThat(response.submissionStatus()).isEqualTo(SubmissionStatus.APPROVED);
+        assertThat(response.questStatus()).isEqualTo(QuestStatus.COMPLETED);
+        assertThat(pullRequest.getStatus()).isEqualTo("MERGED");
+        verify(pullRequestSyncService).syncRepositoryPullRequests(repository);
+        verify(growthService).grantQuestCompletion(submitter, quest);
     }
 
     @Test

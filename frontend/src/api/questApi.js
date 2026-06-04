@@ -35,4 +35,10 @@ export const questApi = {
   tags(params) {
     return request(withQuery('/quest-tags', params))
   },
+  myAssignments() {
+    return request('/quests/me/assignments')
+  },
+  submissionDraft(questId) {
+    return request(`/quests/${questId}/submission-draft`)
+  },
 }

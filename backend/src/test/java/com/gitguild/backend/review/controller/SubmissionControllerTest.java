@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -14,6 +15,11 @@ import com.gitguild.backend.review.dto.CreateSubmissionRequest;
 import com.gitguild.backend.review.dto.ReviewSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.ReviewRecordResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.PullRequestBrief;
+import com.gitguild.backend.review.dto.SubmissionResponses.QuestBrief;
+import com.gitguild.backend.review.dto.SubmissionResponses.RepositoryBrief;
+import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.UserBrief;
 import com.gitguild.backend.review.domain.ReviewDecision;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.review.service.ReviewService;
@@ -123,5 +129,37 @@ class SubmissionControllerTest {
         verify(reviewService).reviewSubmission(eq(9001L), eq(2001L), requestCaptor.capture());
         assertThat(requestCaptor.getValue().getDecision()).isEqualTo(ReviewDecision.CHANGES_REQUESTED);
         assertThat(requestCaptor.getValue().getSummary()).isEqualTo("Please add more tests.");
+    }
+
+    @Test
+    void listReviewQueueShouldReturnCurrentReviewerQueue() throws Exception {
+        when(submissionService.listReviewQueue(2001L))
+                .thenReturn(List.of(new SubmissionReviewQueueItemResponse(
+                        9001L,
+                        new QuestBrief(5001L, "Implement submission API", QuestStatus.IN_REVIEW),
+                        new UserBrief(3001L, "beginner"),
+                        new RepositoryBrief(1001L, "git-guild", "http://localhost:3000/git-guild", "main", "SYNCED"),
+                        new PullRequestBrief(8001L, "7", "Implement submission API", "feature/submission", "main", "OPEN", "http://localhost:3000/pulls/7"),
+                        "Implemented the requested backend feature.",
+                        SubmissionStatus.PENDING_REVIEW,
+                        180,
+                        "Completion criteria",
+                        OffsetDateTime.parse("2026-05-29T11:00:00+08:00"))));
+
+        TestingAuthenticationToken authentication = new TestingAuthenticationToken(
+                new CurrentUserPrincipal(2001L, List.of("ROLE_MAINTAINER"), 0),
+                null);
+
+        mockMvc.perform(get("/api/v1/submissions/review-queue")
+                        .principal(authentication))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data[0].submissionId").value(9001))
+                .andExpect(jsonPath("$.data[0].quest.questId").value(5001))
+                .andExpect(jsonPath("$.data[0].submitter.username").value("beginner"))
+                .andExpect(jsonPath("$.data[0].pullRequest.externalPrId").value("7"))
+                .andExpect(jsonPath("$.data[0].status").value("PENDING_REVIEW"));
+
+        verify(submissionService).listReviewQueue(2001L);
     }
 }

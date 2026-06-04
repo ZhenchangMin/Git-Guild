@@ -1,7 +1,8 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { questApi } from '../../api/questApi'
 import submissionCounterImg from '../../assets/submission-counter-clerk-v0.png'
 import SubmissionCounter from '../../components/SubmissionCounter.vue'
 import { questDetails } from '../../data/quests'
@@ -10,9 +11,9 @@ import { sessionStore } from '../../stores/sessionStore'
 const route = useRoute()
 const router = useRouter()
 
-// Lightweight catalog used as fallback when the user lands here without a
-// full quest record. The richer fields (description, repository, PR) come
-// from quests.js via `questDetails`.
+const quest = ref(null)
+const questLoading = ref(false)
+
 const questCatalog = {
   'QST-0412': { title: 'Issue 同步状态页', difficulty: 'C', stack: 'Vue / Spring Boot', reward: '180 XP' },
   'QST-0427': { title: '重构成果提交流程', difficulty: 'D', stack: 'Vue / REST API', reward: '240 XP' },
@@ -22,15 +23,83 @@ const questCatalog = {
   'QST-0444': { title: '审核反馈归档', difficulty: 'D', stack: 'Spring Boot / Vue', reward: '260 XP' },
 }
 
-const activeQuest = computed(() => {
-  const questId = String(route.query.questId || 'QST-0427')
+function extractQuestNumericId(value) {
+  const match = String(value ?? '').match(/\d+/)
+  return match ? Number(match[0]) : null
+}
+
+function formatQuestKey(value) {
+  const numericId = extractQuestNumericId(value)
+  if (!numericId) return 'QST-0427'
+  return `QST-${String(numericId).padStart(4, '0')}`
+}
+
+const fallbackQuest = computed(() => {
+  const questId = formatQuestKey(route.query.questId)
   const summary = questCatalog[questId] ?? questCatalog['QST-0427']
   return {
     id: questId,
+    numericId: extractQuestNumericId(questId),
     ...summary,
     detail: questDetails[questId] ?? questDetails['QST-0427'],
   }
 })
+
+const activeQuest = computed(() => quest.value ?? fallbackQuest.value)
+
+async function fetchQuest(rawQuestId) {
+  const questId = extractQuestNumericId(rawQuestId)
+  if (!questId) {
+    quest.value = null
+    return
+  }
+  questLoading.value = true
+  try {
+    const response = await questApi.detail(questId)
+    const detail = response?.data
+    if (detail) {
+      quest.value = mapQuestDetail(detail)
+    }
+  } catch {
+    quest.value = null
+  } finally {
+    questLoading.value = false
+  }
+}
+
+function mapQuestDetail(detail) {
+  return {
+    id: `QST-${String(detail.questId).padStart(4, '0')}`,
+    numericId: detail.questId,
+    title: detail.title,
+    difficulty: detail.difficulty,
+    stack: (detail.techStack || []).join(' / ') || '未指定',
+    reward: detail.rewardXp ? `${detail.rewardXp} XP` : '0 XP',
+    detail: {
+      description: detail.description,
+      repository: {
+        name: detail.repository?.name || '',
+        branch: detail.repository?.defaultBranch || 'main',
+        syncStatus: detail.repository?.syncStatus || 'Synced',
+      },
+      issue: {
+        number: detail.issue?.externalIssueId ? `#${detail.issue.externalIssueId}` : '',
+        title: detail.issue?.title || '',
+        status: detail.issue?.status || '',
+      },
+      pr: {
+        number: 'Not created',
+        status: '尚未开始',
+      },
+    },
+  }
+}
+
+watch(
+  () => route.query.questId,
+  (questId) => fetchQuest(questId),
+  { immediate: true },
+)
 
 // After a successful submission we surface a small persistent banner on the
 // scene itself, so even if the user closes the modal the page still shows

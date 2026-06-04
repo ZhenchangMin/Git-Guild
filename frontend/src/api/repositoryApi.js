@@ -25,4 +25,8 @@ export const repositoryApi = {
     const suffix = query.toString() ? `?${query}` : ''
     return request(`/repositories/${repositoryId}/issues${suffix}`)
   },
+  // Get all repositories for the current user (for workbench)
+  myRepositories() {
+    return request('/repositories')
+  },
 }

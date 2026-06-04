@@ -4,8 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gitguild.backend.codehost.domain.CodeIssue;
+import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
+import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
@@ -17,10 +19,15 @@ import com.gitguild.backend.quest.domain.QuestTag;
 import com.gitguild.backend.quest.dto.CreateQuestRequest;
 import com.gitguild.backend.quest.dto.QuestResponses;
 import com.gitguild.backend.quest.dto.QuestResponses.AssignmentResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.AssignmentStats;
 import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.MyAssignmentItem;
+import com.gitguild.backend.quest.dto.QuestResponses.MyAssignmentsResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.PullRequestBrief;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestDetailResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestPageResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestSummaryResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.RepositoryBrief;
 import com.gitguild.backend.quest.dto.QuestResponses.SubmitQuestResponse;
 import com.gitguild.backend.quest.dto.QuestSearchCriteria;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
@@ -75,6 +82,7 @@ public class QuestServiceImpl implements QuestService {
     private final QuestTagRepository tagRepository;
     private final CodeRepositoryRepository codeRepositoryRepository;
     private final CodeIssueRepository issueRepository;
+    private final CodePullRequestRepository pullRequestRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
@@ -85,6 +93,7 @@ public class QuestServiceImpl implements QuestService {
             QuestTagRepository tagRepository,
             CodeRepositoryRepository codeRepositoryRepository,
             CodeIssueRepository issueRepository,
+            CodePullRequestRepository pullRequestRepository,
             UserRepository userRepository,
             ObjectMapper objectMapper) {
         this.questRepository = questRepository;
@@ -93,6 +102,7 @@ public class QuestServiceImpl implements QuestService {
         this.tagRepository = tagRepository;
         this.codeRepositoryRepository = codeRepositoryRepository;
         this.issueRepository = issueRepository;
+        this.pullRequestRepository = pullRequestRepository;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
     }
@@ -211,6 +221,70 @@ public class QuestServiceImpl implements QuestService {
                 quest.getStatus(),
                 assignment.getStatus().name(),
                 assignment.getAcceptedAt());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MyAssignmentsResponse getMyAssignments(Long userId) {
+        findUser(userId);  // 用户不存在则 404
+        List<QuestAssignment> assignments = assignmentRepository.findByAssigneeUserIdAndStatus(userId, AssignmentStatus.ACTIVE);
+        List<MyAssignmentItem> items = assignments.stream()
+                .map(this::toMyAssignmentItem)
+                .toList();
+
+        int inProgress = 0;
+        int inReview = 0;
+        int changesRequested = 0;
+        int completed = 0;
+        for (QuestAssignment a : assignments) {
+            switch (a.getQuest().getStatus()) {
+                case IN_PROGRESS -> inProgress++;
+                case IN_REVIEW -> inReview++;
+                case COMPLETED -> completed++;
+                default -> {} // DRAFT/PENDING_ADMIN_REVIEW/PUBLISHED/REJECTED/CLOSED — not shown in workbench yet
+            }
+        }
+        return new MyAssignmentsResponse(
+                new AssignmentStats(inProgress, inReview, changesRequested, completed),
+                items);
+    }
+
+    private MyAssignmentItem toMyAssignmentItem(QuestAssignment assignment) {
+        Quest quest = assignment.getQuest();
+        CodeRepository repo = quest.getRepository();
+        CodeIssue issue = quest.getIssue();
+
+        // 查找该 quest 仓库下的 PR，取最新一条
+        List<CodePullRequest> prs = pullRequestRepository.findAll().stream()
+                .filter(pr -> pr.getRepository().getRepositoryId().equals(repo.getRepositoryId()))
+                .toList();
+        PullRequestBrief prBrief = prs.isEmpty() ? null : new PullRequestBrief(
+                prs.get(prs.size() - 1).getPullRequestId(),
+                prs.get(prs.size() - 1).getExternalPrId(),
+                prs.get(prs.size() - 1).getTitle(),
+                prs.get(prs.size() - 1).getStatus(),
+                prs.get(prs.size() - 1).getSourceBranch(),
+                prs.get(prs.size() - 1).getExternalUrl());
+
+        String techStack = null;
+        try {
+            List<String> stacks = objectMapper.readValue(
+                    quest.getTechStackJson() != null ? quest.getTechStackJson() : "[]",
+                    new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+            techStack = stacks.isEmpty() ? null : String.join(", ", stacks);
+        } catch (Exception ignored) {
+        }
+
+        return new MyAssignmentItem(
+                quest.getQuestId(),
+                quest.getTitle(),
+                assignment.getStatus().name(),
+                quest.getDifficulty(),
+                quest.getRewardXp(),
+                techStack,
+                new RepositoryBrief(repo.getRepositoryId(), repo.getName(), repo.getSyncStatus()),
+                new QuestResponses.IssueBrief(issue.getIssueId(), issue.getExternalIssueId(), issue.getTitle(), issue.getStatus()),
+                prBrief);
     }
 
     private Specification<Quest> toSpecification(QuestSearchCriteria criteria) {

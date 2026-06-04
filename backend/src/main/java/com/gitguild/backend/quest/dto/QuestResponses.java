@@ -123,4 +123,47 @@ public final class QuestResponses {
             long totalItems,
             int totalPages) {
     }
+
+    /**
+     * 工作台"我的待办"单条记录——携带 quest、assigment 状态、仓库、PR 等前端一次性排版所需字段。
+     */
+    public record MyAssignmentItem(
+            Long questId,
+            String questTitle,
+            String assignmentStatus,
+            Difficulty difficulty,
+            Integer rewardXp,
+            String techStack,
+            RepositoryBrief repository,
+            IssueBrief issue,
+            PullRequestBrief pr) {
+    }
+
+    /**
+     * GET /quests/me/assignments 响应体（对应工作台"我的待办"区）。
+     * {@code stats} 是当前用户维度的计数摘要，{@code items} 是各接取条目。
+     */
+    public record MyAssignmentsResponse(
+            AssignmentStats stats,
+            List<MyAssignmentItem> items) {
+    }
+
+    public record AssignmentStats(
+            int inProgress,
+            int inReview,
+            int changesRequested,
+            int completed) {
+    }
+
+    /**
+     * 工作台 PR 摘要——仅携带排版必�的字段。
+     */
+    public record PullRequestBrief(
+            Long pullRequestId,
+            String externalPrId,
+            String title,
+            String status,
+            String sourceBranch,
+            String externalUrl) {
+    }
 }
