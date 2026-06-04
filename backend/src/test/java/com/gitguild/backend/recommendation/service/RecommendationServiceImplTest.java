@@ -13,11 +13,8 @@ import com.gitguild.backend.growth.domain.ContributionRecord;
 import com.gitguild.backend.growth.domain.GrowthProfile;
 import com.gitguild.backend.growth.repository.ContributionRecordRepository;
 import com.gitguild.backend.growth.repository.GrowthProfileRepository;
-import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Difficulty;
 import com.gitguild.backend.quest.domain.Quest;
-import com.gitguild.backend.quest.domain.QuestAssignment;
-import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.recommendation.dto.RecommendationResponse;
 import com.gitguild.backend.user.domain.User;
@@ -32,13 +29,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * 推荐引擎聚焦单测：策略校验、候选过滤、新手 boost、strongMatch 阈值、limit 截断。
+ * 推荐引擎聚焦单测：策略校验、全量候选排序、新手 boost、strongMatch 阈值。
  */
 @ExtendWith(MockitoExtension.class)
 class RecommendationServiceImplTest {
 
     @Mock private QuestRepository questRepository;
-    @Mock private QuestAssignmentRepository assignmentRepository;
     @Mock private ContributionRecordRepository contributionRecordRepository;
     @Mock private GrowthProfileRepository growthProfileRepository;
     @Mock private UserRepository userRepository;
@@ -48,7 +44,7 @@ class RecommendationServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new RecommendationServiceImpl(questRepository, assignmentRepository,
+        service = new RecommendationServiceImpl(questRepository,
                 contributionRecordRepository, growthProfileRepository, userRepository, objectMapper);
     }
 
@@ -70,8 +66,6 @@ class RecommendationServiceImplTest {
         when(growthProfileRepository.findByUserUserId(3001L)).thenReturn(Optional.empty());
         when(contributionRecordRepository.findByUserUserId(3001L)).thenReturn(List.of());
         when(questRepository.findByStatusIn(any())).thenReturn(List.of());
-        when(assignmentRepository.findByAssigneeUserIdAndStatus(3001L, AssignmentStatus.ACTIVE))
-                .thenReturn(List.of());
 
         RecommendationResponse result = service.recommendQuests(3001L, null, true, true, 5);
 
@@ -80,29 +74,27 @@ class RecommendationServiceImplTest {
     }
 
     @Test
-    void filtersOutActivelyAssignedAndCompletedQuests() {
+    void keepsAssignedAndCompletedBoardCandidatesForOrderingOnly() {
         User u = mockUser(3001L);
         CodeRepository repo = mockRepo();
         Quest q1 = mockQuest(7001L, Difficulty.B, "[\"Java\"]", repo);
         Quest q2 = mockQuest(7002L, Difficulty.C, "[\"Python\"]", repo);
         Quest q3 = mockQuest(7003L, Difficulty.A, "[\"Go\"]", repo);
-        // q3 is the only candidate that makes it to the result — its title is read
+        lenient().when(q1.getTitle()).thenReturn("Assigned Task");
+        lenient().when(q2.getTitle()).thenReturn("Completed Task");
         lenient().when(q3.getTitle()).thenReturn("Go Task");
 
-        QuestAssignment active = new QuestAssignment(q1, u);
         ContributionRecord completed = new ContributionRecord(u, q2, repo, "done", OffsetDateTime.now());
 
         when(userRepository.findById(3001L)).thenReturn(Optional.of(u));
         when(growthProfileRepository.findByUserUserId(3001L)).thenReturn(Optional.empty());
         when(contributionRecordRepository.findByUserUserId(3001L)).thenReturn(List.of(completed));
         when(questRepository.findByStatusIn(any())).thenReturn(List.of(q1, q2, q3));
-        when(assignmentRepository.findByAssigneeUserIdAndStatus(3001L, AssignmentStatus.ACTIVE))
-                .thenReturn(List.of(active));
 
         RecommendationResponse result = service.recommendQuests(3001L, "tech-difficulty", true, true, 5);
 
-        assertThat(result.items()).hasSize(1);
-        assertThat(result.items().get(0).quest().questId()).isEqualTo(7003L);
+        assertThat(result.items()).extracting(item -> item.quest().questId())
+                .containsExactlyInAnyOrder(7001L, 7002L, 7003L);
     }
 
     @Test
@@ -117,8 +109,6 @@ class RecommendationServiceImplTest {
         when(growthProfileRepository.findByUserUserId(3001L)).thenReturn(Optional.of(profile));
         when(contributionRecordRepository.findByUserUserId(3001L)).thenReturn(List.of());
         when(questRepository.findByStatusIn(any())).thenReturn(List.of(q));
-        when(assignmentRepository.findByAssigneeUserIdAndStatus(3001L, AssignmentStatus.ACTIVE))
-                .thenReturn(List.of());
 
         RecommendationResponse result = service.recommendQuests(3001L, "tech-difficulty", true, true, 5);
 
@@ -139,8 +129,6 @@ class RecommendationServiceImplTest {
         when(growthProfileRepository.findByUserUserId(3001L)).thenReturn(Optional.empty());
         when(contributionRecordRepository.findByUserUserId(3001L)).thenReturn(List.of(record));
         when(questRepository.findByStatusIn(any())).thenReturn(List.of(candidate));
-        when(assignmentRepository.findByAssigneeUserIdAndStatus(3001L, AssignmentStatus.ACTIVE))
-                .thenReturn(List.of());
 
         RecommendationResponse result = service.recommendQuests(3001L, "tech-difficulty", true, true, 5);
 
@@ -150,7 +138,7 @@ class RecommendationServiceImplTest {
     }
 
     @Test
-    void respectsLimit() {
+    void doesNotTruncateByLimit() {
         User u = mockUser(3001L);
         CodeRepository repo = mockRepo();
         List<Quest> quests = java.util.stream.IntStream.rangeClosed(1, 10)
@@ -165,12 +153,10 @@ class RecommendationServiceImplTest {
         when(growthProfileRepository.findByUserUserId(3001L)).thenReturn(Optional.empty());
         when(contributionRecordRepository.findByUserUserId(3001L)).thenReturn(List.of());
         when(questRepository.findByStatusIn(any())).thenReturn(quests);
-        when(assignmentRepository.findByAssigneeUserIdAndStatus(3001L, AssignmentStatus.ACTIVE))
-                .thenReturn(List.of());
 
         RecommendationResponse result = service.recommendQuests(3001L, "tech-difficulty", true, true, 3);
 
-        assertThat(result.items()).hasSize(3);
+        assertThat(result.items()).hasSize(10);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
@@ -190,7 +176,7 @@ class RecommendationServiceImplTest {
     /** 最小 Quest mock：只桩推荐引擎必调的 getter。title 由调用方按需桩（lenient 或显式）。 */
     private Quest mockQuest(Long id, Difficulty difficulty, String techStackJson, CodeRepository repo) {
         Quest q = org.mockito.Mockito.mock(Quest.class);
-        when(q.getQuestId()).thenReturn(id);
+        lenient().when(q.getQuestId()).thenReturn(id);
         lenient().when(q.getDifficulty()).thenReturn(difficulty);
         lenient().when(q.getTechStackJson()).thenReturn(techStackJson);
         lenient().when(q.getRewardXp()).thenReturn(100);

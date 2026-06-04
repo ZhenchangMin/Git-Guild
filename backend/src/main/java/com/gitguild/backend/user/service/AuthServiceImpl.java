@@ -74,7 +74,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmailOrUsername(request.getAccount(), request.getAccount())
                 .orElseThrow(this::invalidCredentials);
         ensureActive(user);
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {

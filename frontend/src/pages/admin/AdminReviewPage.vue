@@ -193,11 +193,6 @@ async function submitDecision(decision) {
   }
 }
 
-function switchAccount() {
-  clearSession()
-  router.push({ name: 'login' })
-}
-
 function logout() {
   clearSession()
   router.push({ name: 'login' })
@@ -208,13 +203,7 @@ function logout() {
   <main class="app-shell">
     <section class="scene work-scene" :style="{ backgroundImage: `url(${operationRoomImg})` }">
       <div class="session-action-stack" aria-label="账号操作">
-        <button class="back-orb" type="button" aria-label="切换账号" @click="switchAccount">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M15 6 9 12l6 6" />
-          </svg>
-          <span>切换账号</span>
-        </button>
-        <button class="back-orb logout-orb" type="button" aria-label="退出登录" @click="logout">
+        <button class="back-orb logout-orb logout-orb-admin" type="button" aria-label="退出登录" @click="logout">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M10 7V5a2 2 0 0 1 2-2h6v18h-6a2 2 0 0 1-2-2v-2" />
             <path d="M3 12h10" />

@@ -106,7 +106,8 @@ class AuthServiceImplTest {
     @Test
     void loginShouldReturnAccessAndRefreshTokens() {
         User user = user("alice@example.com", "GitGuild2026", UserRole.BEGINNER);
-        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmailOrUsername("alice@example.com", "alice@example.com"))
+                .thenReturn(Optional.of(user));
 
         AuthResponse response = authService.login(loginRequest("alice@example.com", "GitGuild2026"));
 
@@ -117,9 +118,20 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void loginShouldAcceptUsername() {
+        User user = user("alice@example.com", "GitGuild2026", UserRole.BEGINNER);
+        when(userRepository.findByEmailOrUsername("alice", "alice")).thenReturn(Optional.of(user));
+
+        AuthResponse response = authService.login(loginRequest("alice", "GitGuild2026"));
+
+        assertThat(response.user().userId()).isEqualTo(10001L);
+    }
+
+    @Test
     void loginShouldRejectWrongPassword() {
         User user = user("alice@example.com", "GitGuild2026", UserRole.BEGINNER);
-        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmailOrUsername("alice@example.com", "alice@example.com"))
+                .thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> authService.login(loginRequest("alice@example.com", "wrong-password")))
                 .isInstanceOf(BusinessException.class)
@@ -131,7 +143,8 @@ class AuthServiceImplTest {
     void loginShouldRejectDisabledAccount() {
         User user = user("alice@example.com", "GitGuild2026", UserRole.BEGINNER);
         user.setStatus(UserStatus.DISABLED);
-        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmailOrUsername("alice@example.com", "alice@example.com"))
+                .thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> authService.login(loginRequest("alice@example.com", "GitGuild2026")))
                 .isInstanceOf(BusinessException.class)
@@ -200,9 +213,9 @@ class AuthServiceImplTest {
         return request;
     }
 
-    private LoginRequest loginRequest(String email, String password) {
+    private LoginRequest loginRequest(String account, String password) {
         LoginRequest request = new LoginRequest();
-        request.setEmail(email);
+        request.setAccount(account);
         request.setPassword(password);
         request.setRemember(false);
         return request;

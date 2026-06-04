@@ -8,7 +8,7 @@ import java.util.List;
  *
  * <p>{@code strategy} 标识本次推荐使用的策略名（当前仅有 {@code "tech-difficulty"}），
  * {@code generatedAt} 为本次推荐生成时刻（每次请求均重新计算，不缓存）。
- * {@code items} 按 {@code score} 降序排列，已截断至请求的 {@code limit}。
+ * {@code items} 与 Quest Board 默认候选集数量一致，并按 {@code score} 降序排列。
  */
 public record RecommendationResponse(
         UserBrief user,
