@@ -1174,6 +1174,59 @@ h2 {
   box-shadow: 0 0 0 7px rgba(242, 139, 99, 0.12), 0 0 24px rgba(242, 139, 99, 0.3);
 }
 
+/* Admin console — enlarged, always-labeled logout action (only on AdminReviewPage) */
+.logout-orb-admin {
+  width: auto;
+  min-width: 0;
+  height: 52px;
+  min-height: 52px;
+  gap: 12px;
+  padding: 0 24px 0 20px;
+  border-width: 1.5px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(58, 22, 12, 0.66), rgba(31, 12, 7, 0.6));
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.44), inset 0 0 0 1px rgba(255, 178, 138, 0.08);
+}
+
+.logout-orb-admin svg {
+  width: 28px;
+  height: 28px;
+  stroke-width: 2.2;
+}
+
+/* Promote the hover-only tooltip into a permanent inline label */
+.logout-orb-admin span {
+  position: static;
+  left: auto;
+  top: auto;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+  font-family: var(--font-title, inherit);
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  color: #ffd0bd;
+}
+
+.logout-orb-admin:hover,
+.logout-orb-admin:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 8px rgba(242, 139, 99, 0.12), 0 18px 40px rgba(0, 0, 0, 0.48),
+    0 0 30px rgba(242, 139, 99, 0.34);
+}
+
+.logout-orb-admin:hover span,
+.logout-orb-admin:focus-visible span {
+  transform: none;
+  color: #ffe1d3;
+}
+
 .help-orb {
   position: fixed;
   top: 22px;
