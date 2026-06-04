@@ -1,25 +1,24 @@
 package com.gitguild.backend.user.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
 public class LoginRequest {
 
-    @NotBlank(message = "email 不能为空")
-    @Email(message = "email 格式不正确")
-    private String email;
+    /** 登录标识：可填用户名或邮箱。不再强制邮箱格式，以支持用户名登录。 */
+    @NotBlank(message = "account 不能为空")
+    private String account;
 
     @NotBlank(message = "password 不能为空")
     private String password;
 
     private boolean remember;
 
-    public String getEmail() {
-        return email;
+    public String getAccount() {
+        return account;
     }
 
-    public void setEmail(String email) {
-        this.email = email;
+    public void setAccount(String account) {
+        this.account = account;
     }
 
     public String getPassword() {

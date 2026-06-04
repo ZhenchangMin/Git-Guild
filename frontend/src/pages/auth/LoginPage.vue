@@ -171,7 +171,7 @@ async function submitAuth(event) {
     }
 
     const loginResponse = await authApi.login({
-      email: form.account.trim(),
+      account: form.account.trim(),
       password: form.password,
       remember: form.remember,
     })
@@ -266,14 +266,14 @@ onBeforeUnmount(() => {
               </label>
 
               <label class="guild-field">
-                <span>账号 / 邮箱</span>
+                <span>{{ isRegisterMode ? '邮箱' : '用户名 / 邮箱' }}</span>
                 <input
                   ref="accountInput"
                   v-model.trim="form.account"
-                  type="email"
-                  autocomplete="email"
+                  :type="isRegisterMode ? 'email' : 'text'"
+                  :autocomplete="isRegisterMode ? 'email' : 'username'"
                   required
-                  placeholder="alice@example.com"
+                  :placeholder="isRegisterMode ? 'alice@example.com' : '用户名或邮箱'"
                 />
               </label>
 

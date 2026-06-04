@@ -75,7 +75,7 @@ class P3ApiDocumentIntegrationTest {
         MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
-                                "email", email,
+                                "account", email,
                                 "password", "Password123",
                                 "remember", true))))
                 .andExpect(status().isOk())
@@ -85,6 +85,15 @@ class P3ApiDocumentIntegrationTest {
                 .andReturn();
         String accessToken = data(login).get("accessToken").asText();
         String refreshToken = data(login).get("refreshToken").asText();
+
+        // 同一账号也支持用用户名登录。
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "account", username,
+                                "password", "Password123"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").exists());
 
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -111,7 +120,7 @@ class P3ApiDocumentIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("email", "bad-email", "password", "x"))))
+                        .content(json(Map.of("account", "", "password", "x"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
