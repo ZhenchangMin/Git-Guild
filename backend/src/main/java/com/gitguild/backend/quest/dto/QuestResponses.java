@@ -156,7 +156,7 @@ public final class QuestResponses {
     }
 
     /**
-     * 工作台 PR 摘要——仅携带排版必�的字段。
+     * 工作台 PR 摘要——仅携带排版必要的字段。
      */
     public record PullRequestBrief(
             Long pullRequestId,
