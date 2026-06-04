@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface CodeIssueRepository extends JpaRepository<CodeIssue, Long> {
 
     Optional<CodeIssue> findByIssueIdAndRepositoryRepositoryId(Long issueId, Long repositoryId);
+
+    Optional<CodeIssue> findByRepositoryRepositoryIdAndExternalIssueId(Long repositoryId, String externalIssueId);
 }

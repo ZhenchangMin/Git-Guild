@@ -1,6 +1,6 @@
 // 管理员审核任务发布 / 下架的演示数据。
 // 状态、决策与字段命名对齐 docs/P3/API规范-“管理员审核”部分.md：
-//   questStatus ∈ { PENDING_ADMIN_REVIEW, DRAFT, PUBLISHED, CLOSED }
+//   questStatus ∈ { PENDING_ADMIN_REVIEW, DRAFT, PUBLISHED, REJECTED, CLOSED }
 //   decision    ∈ { APPROVE_PUBLISH, REJECT_PUBLISH, TAKE_DOWN }
 
 // 任务状态 → 中文标签与展示色调（statusTone 复用既有 CSS：pending/approved/return/danger）。
@@ -8,6 +8,7 @@ export const questStatusMeta = {
   PENDING_ADMIN_REVIEW: { label: '待管理员审核', tone: 'pending' },
   DRAFT: { label: '已退回草稿', tone: 'return' },
   PUBLISHED: { label: '已发布上架', tone: 'approved' },
+  REJECTED: { label: '已退回补充', tone: 'return' },
   CLOSED: { label: '已下架关闭', tone: 'danger' },
 }
 
@@ -23,9 +24,9 @@ export const decisionMeta = {
   REJECT_PUBLISH: {
     label: '退回补充',
     requires: 'PENDING_ADMIN_REVIEW',
-    nextStatus: 'DRAFT',
+    nextStatus: 'REJECTED',
     intent: 'quiet',
-    message: '任务发布申请已退回草稿，发布者需补齐后重新提交管理员审核。',
+    message: '任务发布申请已退回补充，发布者需补齐后重新提交管理员审核。',
   },
   TAKE_DOWN: {
     label: '下架处理',

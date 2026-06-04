@@ -1,9 +1,9 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { adminApi } from '../../api/adminApi'
-import { adminQuestApplications, decisionMeta, questStatusMeta } from '../../data/admin'
+import { decisionMeta, questStatusMeta } from '../../data/admin'
 import operationRoomImg from '../../assets/operation room.png'
 import { clearSession } from '../../stores/sessionStore'
 
@@ -11,6 +11,8 @@ const router = useRouter()
 
 const ADMIN_NAME = '管理员 · 审核台'
 const REASON_MAX = 500
+
+const DEFAULT_PAGE_SIZE = 20
 
 function cloneApplication(application) {
   return {
@@ -24,14 +26,16 @@ function cloneApplication(application) {
   }
 }
 
-const applications = ref(adminQuestApplications.map(cloneApplication))
-const activeId = ref(applications.value[0]?.id ?? null)
+const applications = ref([])
+const activeId = ref(null)
 const statusFilter = ref('ALL')
 
 const reason = ref('')
 const visibleToPublisher = ref(true)
 const reasonError = ref('')
 const submitting = ref(false)
+const loading = ref(false)
+const loadError = ref('')
 const reasonField = ref(null)
 
 const actionResult = ref({
@@ -44,13 +48,159 @@ const statusFilterOptions = [
   { key: 'ALL', label: '全部' },
   { key: 'PENDING_ADMIN_REVIEW', label: '待审核' },
   { key: 'PUBLISHED', label: '已上架' },
-  { key: 'DRAFT', label: '已退回' },
+  { key: 'REJECTED', label: '已退回' },
   { key: 'CLOSED', label: '已下架' },
 ]
 
 const statusHint = {
   DRAFT: '任务已退回，等待发布者补充完整后重新提交审核。',
+  REJECTED: '任务已退回，等待发布者补充完整后重新提交审核。',
   CLOSED: '任务已下架关闭，如需重新发布请走后台管理流程单独处理。',
+  PUBLISHED: '任务已通过管理员审核并上架，当前不需要继续处理。',
+}
+
+onMounted(() => {
+  loadAdminQuests()
+})
+
+async function loadAdminQuests() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    const response = await adminApi.listAdminQuests({ page: 1, size: DEFAULT_PAGE_SIZE })
+    const items = response?.data?.items ?? []
+    const mapped = await Promise.all(items.map(toApplication))
+    applications.value = mapped.map(cloneApplication)
+    activeId.value = applications.value[0]?.id ?? null
+    actionResult.value = {
+      tone: applications.value.length ? 'idle' : 'return',
+      title: applications.value.length ? '等待管理员审核' : '暂无待审核委托',
+      body: applications.value.length
+        ? '从左侧队列选择任务发布申请，核对清晰度、合规性、Issue 关联与完成标准，填写审核原因后再做决定。'
+        : '真实后端当前没有 PENDING_ADMIN_REVIEW 状态的任务。请先用委托人账号发布并提交审核。',
+    }
+  } catch (error) {
+    loadError.value = readableError(error, '管理员审核队列读取失败。')
+    actionResult.value = {
+      tone: 'danger',
+      title: '审核队列读取失败',
+      body: loadError.value,
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+async function toApplication(summary) {
+  let detail = null
+  try {
+    const detailResponse = await adminApi.getAdminQuest(summary.questId)
+    detail = detailResponse?.data ?? null
+  } catch {
+    detail = null
+  }
+
+  const source = detail ?? summary
+  const title = source.title ?? summary.title ?? '未命名委托'
+  const description = source.description ?? summary.descriptionPreview ?? '暂无描述'
+  const completionCriteria = source.completionCriteria ?? ''
+  const repository = source.repository?.name ?? '未关联仓库'
+  const issue = source.issue
+    ? `#${source.issue.externalIssueId ?? source.issue.issueId} · ${source.issue.title ?? '未命名 Issue'}`
+    : '未关联 Issue'
+  const publisher = source.publisher?.username ?? summary.publisher?.username ?? '未知委托人'
+  const status = source.status ?? summary.status ?? 'PENDING_ADMIN_REVIEW'
+
+  return {
+    id: `APP-${source.questId ?? summary.questId}`,
+    questId: source.questId ?? summary.questId,
+    questCode: `QST-${source.questId ?? summary.questId}`,
+    title,
+    publisher: `委托人 · ${publisher}`,
+    repository,
+    issue,
+    submittedAt: formatDateTime(source.createdAt ?? summary.createdAt),
+    questStatus: status,
+    summary: description,
+    targetAudience: 'P4-029 端到端联调',
+    reward: `${source.rewardXp ?? summary.rewardXp ?? 0} XP`,
+    difficulty: source.difficulty ?? summary.difficulty ?? '未标注',
+    clarityChecks: buildClarityChecks(title, description, completionCriteria),
+    complianceChecks: buildComplianceChecks(source),
+    completionStandards: splitCompletionStandards(completionCriteria),
+    risks: [],
+    reviewRecords: [
+      {
+        decision: 'SUBMITTED',
+        adminName: `委托人 · ${publisher}`,
+        reviewedAt: formatDateTime(source.updatedAt ?? source.createdAt ?? summary.createdAt),
+        reason: '发布者提交任务发布申请，等待管理员审核。',
+      },
+    ],
+  }
+}
+
+function buildClarityChecks(title, description, completionCriteria) {
+  return [
+    {
+      label: '任务目标明确',
+      note: title ? `标题为「${title}」，可作为任务目标核验依据。` : '任务标题缺失，建议退回补充。',
+    },
+    {
+      label: '背景说明充分',
+      note: description ? preview(description, 90) : '任务描述为空，建议退回补充。',
+    },
+    {
+      label: '完成标准可验收',
+      note: completionCriteria ? preview(completionCriteria, 90) : '完成标准为空，建议退回补充。',
+    },
+  ]
+}
+
+function buildComplianceChecks(quest) {
+  return [
+    {
+      label: '仓库与 Issue 已关联',
+      note: quest?.repository && quest?.issue ? '仓库和 Issue 信息已随任务提交。' : '仓库或 Issue 信息不完整。',
+    },
+    {
+      label: '奖励与难度已设置',
+      note: quest?.rewardXp && quest?.difficulty ? `${quest.difficulty} 难度，奖励 ${quest.rewardXp} XP。` : '奖励或难度缺失。',
+    },
+    {
+      label: '未绕过管理员上架流程',
+      note: '任务处于管理员审核队列，审核通过后才会出现在任务板。',
+    },
+  ]
+}
+
+function splitCompletionStandards(value) {
+  return String(value ?? '')
+    .split(/\r?\n|[；;]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function preview(value, maxLength) {
+  const text = String(value ?? '')
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
+}
+
+function formatDateTime(value) {
+  if (!value) return '刚刚'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '刚刚'
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hh = String(date.getHours()).padStart(2, '0')
+  const mm = String(date.getMinutes()).padStart(2, '0')
+  return `${month}-${day} ${hh}:${mm}`
+}
+
+function readableError(error, fallback) {
+  if (error?.details) return `${fallback} ${error.details}`
+  if (error?.message) return `${fallback} ${error.message}`
+  return fallback
 }
 
 const filteredApplications = computed(() =>
@@ -164,16 +314,16 @@ async function submitDecision(decision) {
       reason: trimmed,
       visibleToPublisher: visibleToPublisher.value,
     }
-    // 对接 POST /quests/{questId}/admin-reviews（当前为 mock）。
-    await adminApi.submitAdminReview(application.questId, payload)
+    const response = await adminApi.submitAdminReview(application.questId, payload)
+    const reviewed = response?.data
 
-    application.questStatus = meta.nextStatus
+    application.questStatus = reviewed?.questStatus ?? meta.nextStatus
     application.reviewRecords = [
       ...application.reviewRecords,
       {
         decision,
         adminName: ADMIN_NAME,
-        reviewedAt: formatNow(),
+        reviewedAt: reviewed?.reviewedAt ? formatDateTime(reviewed.reviewedAt) : formatNow(),
         reason: trimmed,
         visibleToPublisher: visibleToPublisher.value,
       },
@@ -188,6 +338,12 @@ async function submitDecision(decision) {
       body: `${meta.message}${notify}`,
     }
     reason.value = ''
+  } catch (error) {
+    actionResult.value = {
+      tone: 'danger',
+      title: '审核提交失败',
+      body: readableError(error, '管理员审核提交失败。'),
+    }
   } finally {
     submitting.value = false
   }
@@ -271,7 +427,7 @@ function logout() {
               <em>{{ statusOf(application).label }}</em>
             </button>
             <p v-if="filteredApplications.length === 0" class="admin-empty-queue">
-              当前筛选下没有任务发布申请。
+              {{ loading ? '正在读取真实审核队列...' : loadError || '当前筛选下没有任务发布申请。' }}
             </p>
           </div>
         </aside>

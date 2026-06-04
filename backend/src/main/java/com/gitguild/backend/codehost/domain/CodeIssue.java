@@ -76,6 +76,17 @@ public class CodeIssue {
         return "OPEN".equals(status);
     }
 
+    public void updateFromSync(String title, String status, String externalUrl) {
+        if (title != null && !title.isBlank()) {
+            this.title = title;
+        }
+        if (status != null && !status.isBlank()) {
+            this.status = status;
+        }
+        this.externalUrl = externalUrl;
+        this.syncedAt = OffsetDateTime.now();
+    }
+
     public Long getIssueId() {
         return issueId;
     }

@@ -14,6 +14,12 @@ export const questApi = {
   list(params) {
     return request(withQuery('/quests', params))
   },
+  create(payload) {
+    return request('/quests', { method: 'POST', body: payload })
+  },
+  submitForReview(questId) {
+    return request(`/quests/${questId}/submit`, { method: 'POST' })
+  },
   detail(questId) {
     return request(`/quests/${questId}`)
   },
@@ -22,5 +28,11 @@ export const questApi = {
   },
   recommendations(params) {
     return request(withQuery('/recommendations/quests', params))
+  },
+  categories(params) {
+    return request(withQuery('/quest-categories', params))
+  },
+  tags(params) {
+    return request(withQuery('/quest-tags', params))
   },
 }

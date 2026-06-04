@@ -1,342 +1,341 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
-import { repositorySyncDefaults, repositorySyncExceptions, repositorySyncProjects } from '../data/repositorySync'
+import { questApi } from '../api/questApi'
+import { repositoryApi } from '../api/repositoryApi'
 
-const clone = (value) => JSON.parse(JSON.stringify(value))
-
-const repositories = ref(clone(repositorySyncProjects))
-const syncExceptions = ref(clone(repositorySyncExceptions))
-const selectedRepositoryId = ref(repositories.value[0]?.id ?? null)
-const selectedTopicId = ref('start')
-const importForm = ref({ ...repositorySyncDefaults })
-const importStage = ref('idle')
-const showFailureDetail = ref(false)
-const notice = ref({
-  title: '前台向导待命',
-  body: '你可以先问我怎么开始，也可以直接选择仓库接入、任务流程、PR 联动或异常求助。',
-  tone: 'info',
+const repositoryForm = ref({
+  sourceUrl: '',
+  name: 'gitguild-demo',
+  hostType: 'GITEA',
 })
 
-const guideTopics = [
-  {
-    id: 'start',
-    label: '我该从哪开始',
-    title: '先找一个适合自己的任务',
-    body: '建议从任务板筛选“新手友好”和熟悉技术栈，再进入任务详情查看完成标准。接取后回到工作台做分支、commit 和 PR。',
-    steps: ['打开悬赏任务板浏览任务', '在任务详情确认完成标准', '接取后进入工作台', '完成代码协作后去提交柜台登记成果'],
-  },
-  {
-    id: 'repo',
-    label: '仓库接入怎么做',
-    title: '仓库接入只是前台服务之一',
-    body: 'MVP 采用 GitHub 到 Gitea 的单向同步。这里提供导入和同步状态指引，但不会把前台变成单一仓库控制台。',
-    steps: ['填写源仓库与目标 Gitea 组织', '创建镜像仓库', '同步代码、Issue 和 PR 状态', '失败时查看原因并重试'],
-  },
-  {
-    id: 'workflow',
-    label: '任务和 PR 怎么关联',
-    title: '任务成果提交和项目提交是两件事',
-    body: '工作台负责创建分支、上传提交、发起 PR；提交柜台负责把任务成果提交给维护者审核。',
-    steps: ['任务绑定 Issue', '工作台创建任务分支', '上传变更生成 commit', '发起 PR 后到提交柜台登记成果'],
-  },
-  {
-    id: 'exception',
-    label: '遇到异常怎么办',
-    title: '先看原因、影响和下一步',
-    body: '导入失败、同步失败、PR 未关联、权限不足等异常，都应该告诉用户为什么失败、影响哪里、下一步做什么。',
-    steps: ['确认异常类型', '查看影响范围', '按建议操作重试或提交管理员处理', '处理后观察状态是否恢复'],
-  },
-]
-
-const selectedGuide = computed(
-  () => guideTopics.find((topic) => topic.id === selectedTopicId.value) ?? guideTopics[0],
-)
-const selectedRepository = computed(
-  () => repositories.value.find((repository) => repository.id === selectedRepositoryId.value) ?? repositories.value[0],
-)
-const syncSummary = computed(() => {
-  const repository = selectedRepository.value
-  if (!repository) return []
-  return repository.pipelines.map((pipeline) => ({
-    id: pipeline.id,
-    label: pipeline.label,
-    status: pipeline.status,
-    tone: pipeline.tone,
-  }))
+const publishForm = ref({
+  repositoryId: '',
+  issueId: '',
+  title: 'P4-029 demo issue',
+  description: 'Add a visible demo change for end-to-end integration.',
+  completionCriteria: 'PR 已创建并通过维护者审核；说明中包含变更摘要和验证结果。',
+  difficulty: 'B',
+  techStack: 'Vue,Spring Boot,Gitea',
+  estimatedHours: 2,
+  rewardXp: 80,
+  categoryId: '',
+  tagIds: '',
 })
-const pendingExceptionCount = computed(
-  () => syncExceptions.value.filter((exception) => exception.status === '待处理').length,
-)
 
-function selectTopic(topicId) {
-  selectedTopicId.value = topicId
-  showFailureDetail.value = false
-  const topic = guideTopics.find((item) => item.id === topicId)
-  notice.value = {
-    title: topic?.title ?? '前台向导已切换',
-    body: topic?.body ?? '选择一个主题后，我会用对话气泡说明下一步。',
-    tone: topicId === 'exception' ? 'warn' : 'info',
+const categories = ref([])
+const tags = ref([])
+const loading = ref(false)
+const taxonomyLoading = ref(false)
+const issueLoading = ref(false)
+const stage = ref('ready')
+const lastQuest = ref(null)
+const lastRepository = ref(null)
+const repositoryIssues = ref([])
+const errorMessage = ref('')
+const isPublishOpen = ref(false)
+
+const notice = computed(() => {
+  if (errorMessage.value) {
+    return {
+      tone: 'warn',
+      title: '这份委托还不能送出',
+      body: errorMessage.value,
+      steps: ['确认已选择委托人身份', '检查仓库和 Issue 信息是否已准备好', '修正表单后再次提交'],
+    }
+  }
+
+  if (stage.value === 'published') {
+    return {
+      tone: 'success',
+      title: '委托已送达审核台',
+      body: `委托 #${lastQuest.value?.questId ?? ''} 已提交给管理员审核。审核通过后，冒险家就能在任务板看到并接取这份委托。`,
+      steps: ['等待管理员审核', '审核通过后任务会上架', '回到任务板确认委托可见'],
+    }
+  }
+
+  return {
+    tone: 'info',
+    title: '需要发布新的委托吗？',
+    body: '打开右下角发布单，先关联 Gitea 仓库，再选择 Issue，最后填写委托说明并送交管理员审核。',
+    steps: ['关联仓库', '绑定 Issue', '填写委托说明与完成标准'],
+  }
+})
+
+const categoryOptions = computed(() => categories.value.filter((category) => category.enabled !== false))
+const tagOptions = computed(() => tags.value.filter((tag) => tag.enabled !== false))
+const issueOptions = computed(() => repositoryIssues.value.filter((issue) => issue.status !== 'CLOSED'))
+
+onMounted(() => {
+  loadTaxonomy()
+})
+
+async function loadTaxonomy() {
+  taxonomyLoading.value = true
+  try {
+    const [categoryResponse, tagResponse] = await Promise.all([
+      questApi.categories(),
+      questApi.tags({ size: 50 }),
+    ])
+    categories.value = categoryResponse?.data ?? []
+    tags.value = tagResponse?.data?.items ?? []
+    if (!publishForm.value.categoryId && categories.value[0]?.categoryId) {
+      publishForm.value.categoryId = String(categories.value[0].categoryId)
+    }
+  } catch (error) {
+    errorMessage.value = readableError(error, '分类和标签读取失败，可先手动填写 categoryId。')
+  } finally {
+    taxonomyLoading.value = false
   }
 }
 
-function selectRepository(repository) {
-  selectedRepositoryId.value = repository.id
-  selectedTopicId.value = 'repo'
-  showFailureDetail.value = false
-  notice.value = {
-    title: `${repository.title} 已选中`,
-    body: repository.failure
-      ? '这个仓库存在同步异常。看板娘会先解释影响，再给出重试入口。'
-      : '该仓库同步状态正常，可作为课堂演示的成功路径。',
-    tone: repository.failure ? 'warn' : 'success',
+async function importRepository() {
+  errorMessage.value = ''
+  loading.value = true
+  try {
+    const response = await repositoryApi.importRepository({
+      sourceUrl: repositoryForm.value.sourceUrl.trim(),
+      name: repositoryForm.value.name.trim(),
+      hostType: repositoryForm.value.hostType,
+    })
+    const repository = response?.data
+    lastRepository.value = repository
+    publishForm.value.repositoryId = String(repository.repositoryId)
+    await repositoryApi.sync(repository.repositoryId)
+    await loadIssues()
+  } catch (error) {
+    errorMessage.value = readableError(error, '仓库关联失败。')
+  } finally {
+    loading.value = false
   }
 }
 
-function pushLog(repository, type, text) {
-  repository.logs.unshift({ time: '刚刚', type, text })
-  repository.logs = repository.logs.slice(0, 4)
-}
-
-function beginImport() {
-  importStage.value = 'done'
-  selectedTopicId.value = 'repo'
-
-  const importedRepository = {
-    id: 'new-import',
-    title: importForm.value.targetName || 'new-import',
-    source: importForm.value.sourceUrl.replace(/^https?:\/\//, ''),
-    target: `gitea.local/${importForm.value.targetOwner}/${importForm.value.targetName}`,
-    branch: importForm.value.branch,
-    owner: '委托人 · 前台向导',
-    importedAt: '刚刚',
-    lastSyncedAt: '刚刚',
-    nextSyncAt: importForm.value.schedule,
-    mode: '单向同步',
-    summary: '前台已模拟完成导入，真实后端接入前仅作为课堂演示状态。',
-    stats: [
-      { label: '代码分支', value: '1' },
-      { label: '开放 Issue', value: '6' },
-      { label: '开放 PR', value: '2' },
-      { label: '最近提交', value: 'demo42f' },
-    ],
-    pipelines: [
-      { id: 'code', label: '代码同步', status: '已同步', tone: 'ok', detail: '代码已模拟镜像到 Gitea。', updatedAt: '刚刚' },
-      { id: 'issue', label: 'Issue 同步', status: '已同步', tone: 'ok', detail: 'Issue 已模拟刷新。', updatedAt: '刚刚' },
-      { id: 'pr', label: 'PR 状态同步', status: '已同步', tone: 'ok', detail: 'PR 状态已模拟刷新。', updatedAt: '刚刚' },
-    ],
-    logs: [
-      { time: '刚刚', type: 'success', text: '前台已模拟创建 Gitea 镜像仓库。' },
-      { time: '刚刚', type: 'success', text: '首次代码、Issue、PR 状态同步完成。' },
-    ],
-    failure: null,
+async function loadIssues() {
+  if (!publishForm.value.repositoryId) {
+    repositoryIssues.value = []
+    return
   }
 
-  const existingIndex = repositories.value.findIndex((repository) => repository.id === importedRepository.id)
-  if (existingIndex >= 0) {
-    repositories.value.splice(existingIndex, 1, importedRepository)
-  } else {
-    repositories.value.unshift(importedRepository)
-  }
-  selectedRepositoryId.value = importedRepository.id
-  notice.value = {
-    title: '导入演示完成',
-    body: '仓库已进入可同步状态。前台仍以引导为主，详细开发操作请进入工作台。',
-    tone: 'success',
+  issueLoading.value = true
+  try {
+    const response = await repositoryApi.issues(publishForm.value.repositoryId, { size: 50 })
+    repositoryIssues.value = response?.data?.items ?? []
+    if (!publishForm.value.issueId && repositoryIssues.value[0]?.issueId) {
+      publishForm.value.issueId = String(repositoryIssues.value[0].issueId)
+    }
+  } catch (error) {
+    errorMessage.value = readableError(error, 'Issue 列表读取失败，可先手动填写 issueId。')
+  } finally {
+    issueLoading.value = false
   }
 }
 
-function resyncRepository() {
-  const repository = selectedRepository.value
-  if (!repository) return
+async function publishQuest() {
+  errorMessage.value = ''
+  loading.value = true
+  try {
+    const payload = {
+      repositoryId: toNumber(publishForm.value.repositoryId, 'repositoryId'),
+      issueId: toNumber(publishForm.value.issueId, 'issueId'),
+      title: publishForm.value.title.trim(),
+      description: publishForm.value.description.trim(),
+      completionCriteria: publishForm.value.completionCriteria.trim(),
+      difficulty: publishForm.value.difficulty,
+      techStack: splitCsv(publishForm.value.techStack),
+      estimatedHours: toNumber(publishForm.value.estimatedHours, 'estimatedHours'),
+      rewardXp: toNumber(publishForm.value.rewardXp, 'rewardXp'),
+      categoryId: toNumber(publishForm.value.categoryId, 'categoryId'),
+      tagIds: splitCsv(publishForm.value.tagIds).map((value) => toNumber(value, 'tagId')),
+    }
 
-  repository.pipelines = repository.pipelines.map((pipeline) => ({
-    ...pipeline,
-    status: '已同步',
-    tone: 'ok',
-    detail: `${pipeline.label} 已通过手动同步恢复。`,
-    updatedAt: '刚刚',
-  }))
-  repository.lastSyncedAt = '刚刚'
-  repository.nextSyncAt = '明天 09:00'
-  repository.failure = null
-  pushLog(repository, 'success', '手动重新同步完成，异常状态已恢复。')
-  showFailureDetail.value = false
-  notice.value = {
-    title: '同步已恢复',
-    body: '代码、Issue 和 PR 状态已刷新。若是实际系统，还需要后端记录同步日志。',
-    tone: 'success',
+    const createResponse = await questApi.create(payload)
+    const quest = createResponse?.data
+    lastQuest.value = quest
+    await questApi.submitForReview(quest.questId)
+    stage.value = 'published'
+    isPublishOpen.value = false
+  } catch (error) {
+    errorMessage.value = readableError(error, '委托发布失败。')
+  } finally {
+    loading.value = false
   }
 }
 
-function showFailure() {
-  showFailureDetail.value = true
-  selectedTopicId.value = 'exception'
-  notice.value = {
-    title: '失败详情已展开',
-    body: '请先确认原因和影响，再决定重试、补权限或交给管理员处理。',
-    tone: 'warn',
-  }
+function splitCsv(value) {
+  return String(value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
-function resolveSyncException(exception) {
-  exception.status = exception.resultStatus
-  exception.statusTone = exception.resultTone
-
-  if (exception.type === '仓库导入失败') {
-    beginImport()
-  } else {
-    const failedRepository = repositories.value.find((repository) => repository.id === 'backend-warning')
-    if (failedRepository) selectedRepositoryId.value = failedRepository.id
-    resyncRepository()
+function toNumber(value, field) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${field} 必须是大于 0 的数字。`)
   }
+  return parsed
+}
 
-  notice.value = {
-    title: `${exception.type}：${exception.status}`,
-    body: exception.resultMessage,
-    tone: exception.resultTone === 'approved' ? 'success' : 'warn',
-  }
+function readableError(error, fallback) {
+  if (error?.details) return `${fallback} ${error.details}`
+  if (error?.message) return `${fallback} ${error.message}`
+  return fallback
 }
 </script>
 
 <template>
-  <div class="frontdesk-guide" aria-label="前台看板娘引导">
-    <aside class="frontdesk-topic-rail">
-      <p class="kicker">前台向导</p>
-      <h1>前台向导</h1>
-      <p>这里主要负责指引和答疑，具体开发操作请进入工作台。</p>
-
-      <div class="frontdesk-topic-list">
-        <button
-          v-for="topic in guideTopics"
-          :key="topic.id"
-          type="button"
-          :class="{ active: selectedTopicId === topic.id }"
-          @click="selectTopic(topic.id)"
-        >
-          {{ topic.label }}
-        </button>
-      </div>
-    </aside>
-
+  <div class="frontdesk-guide" aria-label="前台发布委托向导">
     <section class="mascot-dialogue" :class="notice.tone" aria-live="polite">
       <span class="dialogue-tail" aria-hidden="true"></span>
       <p class="kicker">看板娘提示</p>
       <h2>{{ notice.title }}</h2>
       <p>{{ notice.body }}</p>
       <ol>
-        <li v-for="step in selectedGuide.steps" :key="step">{{ step }}</li>
+        <li v-for="step in notice.steps" :key="step">{{ step }}</li>
       </ol>
     </section>
 
-    <aside class="frontdesk-pocket frontdesk-repo-pocket">
+    <button
+      class="publish-fab"
+      type="button"
+      :aria-expanded="isPublishOpen"
+      aria-controls="publish-quest-panel"
+      @click="isPublishOpen = !isPublishOpen"
+    >
+      {{ isPublishOpen ? '收起发布单' : '发布委托' }}
+    </button>
+
+    <form
+      v-if="isPublishOpen"
+      id="publish-quest-panel"
+      class="frontdesk-pocket publish-bubble"
+      @submit.prevent="publishQuest"
+    >
       <div class="pocket-head">
         <div>
-        <p class="kicker">仓库帮助</p>
-          <h2>仓库与同步指引</h2>
+          <p class="kicker">发布单</p>
+          <h2>发布委托</h2>
         </div>
-        <span>{{ selectedRepository?.mode }}</span>
-      </div>
-
-      <div class="repository-mini-list">
-        <button
-          v-for="repository in repositories"
-          :key="repository.id"
-          type="button"
-          :class="{ active: selectedRepository?.id === repository.id, warning: repository.failure }"
-          @click="selectRepository(repository)"
-        >
-          <strong>{{ repository.title }}</strong>
-          <small>{{ repository.source }}</small>
+        <button class="panel-close" type="button" aria-label="收起发布单" @click="isPublishOpen = false">
+          关闭
         </button>
       </div>
 
-      <div v-if="selectedRepository" class="sync-chip-row">
-        <span v-for="item in syncSummary" :key="item.id" :class="item.tone">
-          {{ item.label }} · {{ item.status }}
-        </span>
-      </div>
-
-      <div class="pocket-actions">
-        <button class="quiet-action" type="button" @click="resyncRepository">重新同步</button>
-        <button class="quiet-action danger" type="button" :disabled="!selectedRepository?.failure" @click="showFailure">
-          查看失败原因
+      <section class="form-section">
+        <div class="section-head">
+          <strong>关联仓库</strong>
+          <span>{{ lastRepository ? `已关联 ID ${lastRepository.repositoryId}` : '先登记仓库' }}</span>
+        </div>
+        <label>
+          Gitea 仓库 URL
+          <input
+            v-model="repositoryForm.sourceUrl"
+            type="url"
+            placeholder="http://localhost:3000/owner/repo.git"
+          />
+        </label>
+        <div class="form-grid compact">
+          <label>
+            仓库名称
+            <input v-model="repositoryForm.name" placeholder="gitguild-demo" />
+          </label>
+          <label>
+            业务库仓库编号
+            <input v-model="publishForm.repositoryId" inputmode="numeric" placeholder="导入后自动填写" required />
+          </label>
+        </div>
+        <button class="quiet-action section-action" type="button" :disabled="loading" @click="importRepository">
+          {{ loading ? '关联中' : '导入仓库并使用' }}
         </button>
-      </div>
-    </aside>
+      </section>
 
-    <aside class="frontdesk-pocket import-bubble" :class="{ open: selectedTopicId === 'repo' }">
-      <div class="pocket-head">
-        <div>
-          <p class="kicker">Import Bubble</p>
-          <h2>需要接入仓库？</h2>
+      <section class="form-section">
+        <div class="section-head">
+          <strong>绑定 Issue</strong>
+          <span>{{ issueOptions.length ? `可选 ${issueOptions.length} 条` : '来自同一仓库' }}</span>
         </div>
-        <span>{{ importStage === 'done' ? '已演示' : '可选' }}</span>
-      </div>
-
-      <form class="mini-import-form" @submit.prevent="beginImport">
         <label>
-          源仓库
-          <input v-model="importForm.sourceUrl" type="url" />
+          业务库 Issue 编号
+          <select v-if="issueOptions.length" v-model="publishForm.issueId" required>
+            <option v-for="issue in issueOptions" :key="issue.issueId" :value="String(issue.issueId)">
+              {{ issue.issueId }} · {{ issue.title || issue.externalIssueId }}
+            </option>
+          </select>
+          <input v-else v-model="publishForm.issueId" inputmode="numeric" placeholder="issues 表中的 issue_id" required />
+        </label>
+        <button class="quiet-action section-action" type="button" :disabled="issueLoading || !publishForm.repositoryId" @click="loadIssues">
+          {{ issueLoading ? '读取中' : '读取 Issue 列表' }}
+        </button>
+        <p class="section-note">这里使用业务库 Issue 编号；Gitea 页面上的 #1 不是同一个值。</p>
+      </section>
+
+      <label>
+        委托标题
+        <input v-model="publishForm.title" required maxlength="200" />
+      </label>
+      <label>
+        背景说明
+        <textarea v-model="publishForm.description" rows="3" required></textarea>
+      </label>
+      <label>
+        完成标准
+        <textarea v-model="publishForm.completionCriteria" rows="3" required></textarea>
+      </label>
+
+      <div class="form-grid">
+        <label>
+          难度
+          <select v-model="publishForm.difficulty">
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+          </select>
         </label>
         <label>
-          Gitea 组织
-          <input v-model="importForm.targetOwner" />
+          预计小时
+          <input v-model="publishForm.estimatedHours" type="number" min="1" required />
         </label>
         <label>
-          仓库名
-          <input v-model="importForm.targetName" />
+          奖励 XP
+          <input v-model="publishForm.rewardXp" type="number" min="1" required />
         </label>
-        <button class="primary-action" type="submit">模拟导入</button>
-      </form>
-    </aside>
-
-    <aside class="frontdesk-pocket exception-bubble" :class="{ open: selectedTopicId === 'exception' }">
-      <div class="pocket-head">
-        <div>
-          <p class="kicker">Exception Help</p>
-          <h2>异常求助</h2>
-        </div>
-        <span>{{ pendingExceptionCount }} 待处理</span>
       </div>
 
-      <div class="exception-mini-list">
-        <article v-for="exception in syncExceptions" :key="exception.id" :class="exception.statusTone">
-          <div>
-            <strong>{{ exception.type }}</strong>
-            <em>{{ exception.status }}</em>
-          </div>
-          <p>{{ exception.reason }}</p>
-          <button
-            class="quiet-action"
-            type="button"
-            :disabled="exception.status !== '待处理'"
-            @click="resolveSyncException(exception)"
-          >
-            {{ exception.status === '待处理' ? exception.actionLabel : '处理完成' }}
-          </button>
-        </article>
-      </div>
-    </aside>
+      <label>
+        技术栈
+        <input v-model="publishForm.techStack" placeholder="Vue,Spring Boot,Gitea" required />
+      </label>
 
-    <section v-if="showFailureDetail && selectedRepository?.failure" class="frontdesk-failure-popover">
-      <button type="button" aria-label="关闭失败详情" @click="showFailureDetail = false">×</button>
-      <p class="kicker">Failure Detail</p>
-      <h2>{{ selectedRepository.failure.title }}</h2>
-      <dl>
-        <div>
-          <dt>原因</dt>
-          <dd>{{ selectedRepository.failure.reason }}</dd>
-        </div>
-        <div>
-          <dt>影响</dt>
-          <dd>{{ selectedRepository.failure.impact }}</dd>
-        </div>
-      </dl>
-      <ul>
-        <li v-for="item in selectedRepository.failure.recovery" :key="item">{{ item }}</li>
-      </ul>
-    </section>
+      <div class="form-grid compact">
+        <label>
+          分类
+          <select v-if="categoryOptions.length" v-model="publishForm.categoryId">
+            <option v-for="category in categoryOptions" :key="category.categoryId" :value="String(category.categoryId)">
+              {{ category.name }}
+            </option>
+          </select>
+          <input v-else v-model="publishForm.categoryId" inputmode="numeric" placeholder="categoryId" required />
+        </label>
+        <label>
+          标签
+          <input v-model="publishForm.tagIds" inputmode="numeric" placeholder="可留空；多个用逗号分隔" />
+        </label>
+      </div>
+
+      <p class="form-note">
+        发布后会先进入管理员审核；审核通过后才会出现在任务板。
+      </p>
+      <p v-if="taxonomyLoading" class="form-note">正在读取分类和标签...</p>
+      <div v-if="tagOptions.length" class="tag-hints" aria-label="可用标签">
+        <span v-for="tag in tagOptions.slice(0, 6)" :key="tag.tagId">{{ tag.tagId }} · {{ tag.name }}</span>
+      </div>
+
+      <button class="primary-action" type="submit" :disabled="loading">
+        {{ loading ? '处理中' : '发布并提交审核' }}
+      </button>
+    </form>
   </div>
 </template>
 
@@ -353,94 +352,45 @@ function resolveSyncException(exception) {
   pointer-events: auto;
 }
 
-.frontdesk-topic-rail,
 .frontdesk-pocket,
-.mascot-dialogue,
-.frontdesk-failure-popover {
+.mascot-dialogue {
   border: 1px solid rgba(238, 184, 91, 0.56);
   border-radius: var(--radius);
   box-shadow: 0 20px 54px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 232, 176, 0.16);
   backdrop-filter: blur(7px);
   background:
-    linear-gradient(180deg, rgba(31, 17, 9, 0.82), rgba(15, 8, 4, 0.74)),
+    linear-gradient(180deg, rgba(31, 17, 9, 0.84), rgba(15, 8, 4, 0.78)),
     radial-gradient(circle at 10% 0%, rgba(216, 154, 50, 0.18), transparent 38%);
 }
 
-.frontdesk-topic-rail {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: min(300px, 28vw);
-  padding: 18px;
-}
-
-.frontdesk-topic-rail h1 {
-  margin: 4px 0 8px;
-  color: #ffe2a0;
-  font-family: var(--font-display);
-  font-size: clamp(1.8rem, 3vw, 2.8rem);
-}
-
-.frontdesk-topic-rail p,
 .mascot-dialogue p,
 .frontdesk-pocket p,
-.frontdesk-failure-popover p,
-.frontdesk-failure-popover li {
+.frontdesk-pocket label {
   color: rgba(255, 231, 183, 0.76);
   line-height: 1.5;
 }
 
-.frontdesk-topic-list {
-  display: grid;
-  gap: 9px;
-  margin-top: 16px;
-}
-
-.frontdesk-topic-list button,
-.repository-mini-list button {
-  border: 1px solid rgba(238, 184, 91, 0.28);
-  border-radius: 999px;
-  padding: 9px 12px;
-  color: #ffe8b9;
-  text-align: left;
-  background: rgba(13, 8, 4, 0.46);
-  cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
-}
-
-.frontdesk-topic-list button:hover,
-.frontdesk-topic-list button:focus-visible,
-.frontdesk-topic-list button.active,
-.repository-mini-list button:hover,
-.repository-mini-list button:focus-visible,
-.repository-mini-list button.active {
-  border-color: var(--gold-bright);
-  background: rgba(63, 34, 13, 0.68);
-  transform: translateY(-1px);
-}
-
 .mascot-dialogue {
   position: absolute;
-  right: 6%;
-  top: 4%;
-  width: min(540px, 42vw);
-  padding: 20px 22px;
-  border-radius: 26px 26px 26px 8px;
+  left: 28px;
+  top: 8%;
+  width: min(500px, 38vw);
+  padding: 22px 24px;
+  border-radius: 26px 26px 8px 26px;
 }
 
 .dialogue-tail {
   position: absolute;
-  right: 100%;
+  left: 100%;
   bottom: 34px;
   width: 34px;
   height: 24px;
-  clip-path: polygon(100% 0, 0 55%, 100% 100%);
+  clip-path: polygon(0 0, 100% 55%, 0 100%);
   background: rgba(31, 17, 9, 0.82);
 }
 
 .mascot-dialogue h2,
-.frontdesk-pocket h2,
-.frontdesk-failure-popover h2 {
+.frontdesk-pocket h2 {
   margin: 4px 0 8px;
   color: #ffe2a0;
   font-family: var(--font-display);
@@ -460,7 +410,7 @@ function resolveSyncException(exception) {
 }
 
 .mascot-dialogue.warn {
-  border-color: rgba(238, 184, 91, 0.78);
+  border-color: rgba(238, 120, 82, 0.72);
 }
 
 .frontdesk-pocket {
@@ -470,36 +420,124 @@ function resolveSyncException(exception) {
   padding: 16px;
 }
 
-.frontdesk-repo-pocket {
-  left: 0;
-  bottom: 0;
-  width: min(360px, 32vw);
-}
-
-.import-bubble {
-  right: 0;
-  bottom: 0;
-  width: min(360px, 31vw);
-}
-
-.exception-bubble {
-  right: 0;
-  top: 42%;
-  width: min(380px, 32vw);
-  max-height: 38vh;
+.publish-bubble {
+  right: 28px;
+  bottom: 82px;
+  width: min(520px, 43vw);
+  max-height: min(70vh, 690px);
   overflow: auto;
 }
 
-.pocket-head {
+.pocket-head,
+.section-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
 
-.pocket-head > span,
-.sync-chip-row span,
-.exception-mini-list em {
+.section-head {
+  align-items: center;
+  color: #ffe1a0;
+}
+
+.section-head strong {
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.section-head span,
+.section-note {
+  color: rgba(255, 231, 183, 0.62);
+  font-size: 0.74rem;
+}
+
+.panel-close {
+  min-width: 52px;
+  min-height: 32px;
+  border: 1px solid rgba(238, 184, 91, 0.36);
+  border-radius: 6px;
+  color: #ffe8b9;
+  background: rgba(8, 5, 3, 0.46);
+  cursor: pointer;
+}
+
+.panel-close:hover,
+.panel-close:focus-visible {
+  border-color: var(--gold-bright);
+  outline: none;
+}
+
+.frontdesk-pocket label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.8rem;
+}
+
+.frontdesk-pocket input,
+.frontdesk-pocket select,
+.frontdesk-pocket textarea {
+  width: 100%;
+  border: 1px solid rgba(224, 163, 72, 0.44);
+  border-radius: 6px;
+  padding: 9px 10px;
+  color: #ffe9bb;
+  background: rgba(8, 5, 3, 0.54);
+}
+
+.frontdesk-pocket textarea {
+  resize: vertical;
+}
+
+.frontdesk-pocket input:focus,
+.frontdesk-pocket select:focus,
+.frontdesk-pocket textarea:focus {
+  outline: 2px solid rgba(255, 203, 119, 0.34);
+  border-color: var(--gold-bright);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.form-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-section {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(224, 163, 72, 0.28);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(17, 9, 4, 0.34);
+}
+
+.section-action {
+  justify-self: end;
+  min-height: 34px;
+  padding-inline: 16px;
+}
+
+.section-note,
+.form-note {
+  margin: 0;
+}
+
+.form-note {
+  color: rgba(255, 231, 183, 0.66);
+  font-size: 0.78rem;
+}
+
+.tag-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-hints span {
   border: 1px solid rgba(238, 184, 91, 0.42);
   border-radius: 999px;
   padding: 3px 8px;
@@ -509,141 +547,44 @@ function resolveSyncException(exception) {
   background: rgba(80, 43, 18, 0.44);
 }
 
-.repository-mini-list,
-.sync-chip-row,
-.exception-mini-list,
-.mini-import-form {
-  display: grid;
-  gap: 9px;
+.primary-action {
+  min-height: 38px;
 }
 
-.repository-mini-list button {
-  display: grid;
-  border-radius: 8px;
+.primary-action:disabled {
+  cursor: wait;
+  opacity: 0.68;
 }
 
-.repository-mini-list small {
-  margin-top: 3px;
-  color: rgba(255, 231, 183, 0.62);
-}
-
-.repository-mini-list button.warning {
-  border-color: rgba(204, 95, 65, 0.58);
-}
-
-.sync-chip-row {
-  grid-template-columns: 1fr;
-}
-
-.sync-chip-row span.ok {
-  border-color: rgba(129, 184, 98, 0.68);
-  color: #dcf4c2;
-}
-
-.sync-chip-row span.warn,
-.sync-chip-row span.working {
-  border-color: rgba(238, 184, 91, 0.72);
-  color: #fff0c5;
-}
-
-.sync-chip-row span.danger {
-  border-color: rgba(238, 120, 82, 0.72);
-  color: #ffd7c9;
-}
-
-.pocket-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.mini-import-form label {
-  display: grid;
-  gap: 5px;
-  color: rgba(255, 231, 183, 0.72);
-  font-size: 0.8rem;
-}
-
-.mini-import-form input {
-  width: 100%;
-  min-height: 34px;
-  border: 1px solid rgba(224, 163, 72, 0.44);
-  border-radius: 6px;
-  padding: 0 10px;
-  color: #ffe9bb;
-  background: rgba(8, 5, 3, 0.48);
-}
-
-.exception-mini-list article {
-  display: grid;
-  gap: 8px;
-  border: 1px solid rgba(238, 184, 91, 0.28);
-  border-radius: 8px;
-  padding: 11px;
-  background: rgba(7, 4, 2, 0.28);
-}
-
-.exception-mini-list article.danger {
-  border-color: rgba(238, 120, 82, 0.72);
-}
-
-.exception-mini-list article.return {
-  border-color: rgba(238, 184, 91, 0.64);
-}
-
-.exception-mini-list article.approved {
-  border-color: rgba(129, 184, 98, 0.68);
-}
-
-.exception-mini-list article > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.exception-mini-list strong {
-  color: #ffe8b9;
-}
-
-.exception-mini-list p {
-  margin: 0;
-  font-size: 0.82rem;
-}
-
-.frontdesk-failure-popover {
+.publish-fab {
   position: absolute;
-  right: min(400px, 35vw);
-  bottom: 0;
-  width: min(420px, 34vw);
-  padding: 16px;
-}
-
-.frontdesk-failure-popover > button {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  border: 0;
-  color: #ffe8b9;
-  font-size: 1.2rem;
-  background: transparent;
+  right: 28px;
+  bottom: 28px;
+  min-width: 220px;
+  min-height: 66px;
+  border: 1px solid rgba(255, 221, 151, 0.72);
+  border-radius: 18px;
+  color: #351b08;
+  font-family: var(--font-display);
+  font-size: 1.32rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  background:
+    linear-gradient(180deg, #ffe7b4, #d99639),
+    radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.48), transparent 36%);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.44),
+    0 0 0 5px rgba(67, 35, 11, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
   cursor: pointer;
+  transition: transform 160ms ease, filter 160ms ease;
 }
 
-.frontdesk-failure-popover dl {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0;
-}
-
-.frontdesk-failure-popover dt {
-  color: rgba(255, 231, 183, 0.62);
-  font-size: 0.76rem;
-}
-
-.frontdesk-failure-popover dd {
-  margin: 2px 0 0;
-  color: rgba(255, 231, 183, 0.78);
-  line-height: 1.42;
+.publish-fab:hover,
+.publish-fab:focus-visible {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  outline: none;
 }
 
 @media (max-width: 980px) {
@@ -656,10 +597,8 @@ function resolveSyncException(exception) {
     margin: 72px auto 24px;
   }
 
-  .frontdesk-topic-rail,
   .mascot-dialogue,
-  .frontdesk-pocket,
-  .frontdesk-failure-popover {
+  .frontdesk-pocket {
     position: relative;
     left: auto;
     right: auto;
@@ -669,8 +608,22 @@ function resolveSyncException(exception) {
     max-height: none;
   }
 
+  .publish-fab {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    justify-self: end;
+  }
+
   .dialogue-tail {
     display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .form-grid,
+  .form-grid.compact {
+    grid-template-columns: 1fr;
   }
 }
 </style>
