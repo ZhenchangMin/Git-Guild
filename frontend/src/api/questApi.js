@@ -20,6 +20,10 @@ export const questApi = {
   assign(questId) {
     return request(`/quests/${questId}/assignments`, { method: 'POST' })
   },
+  // 为当前用户在该 Quest 的 active 接取记录确保 task branch（幂等，Issue #12）
+  ensureTaskBranch(questId) {
+    return request(`/quests/${questId}/task-branch`, { method: 'POST' })
+  },
   recommendations(params) {
     return request(withQuery('/recommendations/quests', params))
   },

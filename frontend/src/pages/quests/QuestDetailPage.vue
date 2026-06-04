@@ -52,6 +52,7 @@ function openSubmission(questId = activeQuest.value.id) {
 
       <QuestDetail
         :quest="activeQuest"
+        :quest-id="String(route.params.questId || '')"
         :intent="activeQuestIntent"
         @open-workbench="openWorkbench"
         @open-submission="openSubmission"

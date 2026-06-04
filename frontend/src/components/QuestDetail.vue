@@ -6,6 +6,7 @@ import QuestActionRail from './QuestActionRail.vue'
 import QuestJourney from './QuestJourney.vue'
 import { defaultSubmissionRequirements, questDetails } from '../data/quests'
 import { sessionStore } from '../stores/sessionStore'
+import { questApi } from '../api/questApi'
 
 const router = useRouter()
 const route = useRoute()
@@ -14,6 +15,11 @@ const props = defineProps({
   quest: {
     type: Object,
     required: true,
+  },
+  // 路由携带的真实后端 questId（数字字符串）；mock 演示数据为空。
+  questId: {
+    type: String,
+    default: '',
   },
   intent: {
     type: String,
@@ -25,6 +31,9 @@ const emit = defineEmits(['open-workbench', 'open-submission'])
 
 const localWorkflowState = ref('available')
 const inlineNotice = ref('')
+// 接取成功后由后端返回的真实 task branch（Issue #12）。
+const acceptedTaskBranch = ref('')
+const isAccepting = ref(false)
 
 // Map each workflow status label to a seal colour, matching the quest board so
 // the same state reads identically across the board and the detail scroll.
@@ -140,6 +149,7 @@ watch(
   () => [props.quest.id, props.intent],
   () => {
     localWorkflowState.value = detail.value.workflowState ?? (props.quest.status === '待审核' ? 'in-review' : 'available')
+    acceptedTaskBranch.value = ''
     inlineNotice.value =
       props.intent === 'accept' && localWorkflowState.value === 'available'
         ? '请确认任务背景和完成标准后接取该任务。点击任务板的“接取”不会直接完成接取。'
@@ -148,7 +158,58 @@ watch(
   { immediate: true },
 )
 
-function handlePrimaryAction() {
+// 判断路由 questId 是否为真实后端 id（数字）。mock 演示数据不是数字，走模拟分支。
+const realQuestId = computed(() => {
+  const id = Number(props.questId)
+  return Number.isInteger(id) && id > 0 ? id : null
+})
+
+async function acceptQuest() {
+  // 没有真实后端 questId（纯 mock 演示）时保持原模拟流程。
+  if (!realQuestId.value) {
+    localWorkflowState.value = 'in-progress'
+    inlineNotice.value = '已接取该任务，下一步请进入工作台创建任务分支。任务已加入你的工作台待办。'
+    return
+  }
+
+  isAccepting.value = true
+  try {
+    const payload = await questApi.assign(realQuestId.value)
+    const data = payload?.data ?? {}
+    localWorkflowState.value = 'in-progress'
+    acceptedTaskBranch.value = data.taskBranch ?? ''
+    if (acceptedTaskBranch.value) {
+      inlineNotice.value = `已接取该任务，已为你创建任务分支 ${acceptedTaskBranch.value}，进入工作台即可开始提交。`
+    } else {
+      // 接取成功但分支未创建（如 Gitea 暂不可达）：尝试幂等补建一次。
+      await retryTaskBranch()
+    }
+  } catch (error) {
+    inlineNotice.value =
+      error?.code === 'DUPLICATE_ASSIGNMENT'
+        ? '你已接取过该任务，可直接进入工作台继续。'
+        : `接取失败：${error?.message ?? '请稍后重试'}`
+    if (error?.code === 'DUPLICATE_ASSIGNMENT') {
+      localWorkflowState.value = 'in-progress'
+    }
+  } finally {
+    isAccepting.value = false
+  }
+}
+
+async function retryTaskBranch() {
+  try {
+    const payload = await questApi.ensureTaskBranch(realQuestId.value)
+    acceptedTaskBranch.value = payload?.data?.taskBranch ?? ''
+  } catch {
+    acceptedTaskBranch.value = ''
+  }
+  inlineNotice.value = acceptedTaskBranch.value
+    ? `已接取该任务，已为你创建任务分支 ${acceptedTaskBranch.value}，进入工作台即可开始提交。`
+    : '已接取该任务。任务分支稍后会自动创建，可在工作台点击“创建分支”重试。'
+}
+
+async function handlePrimaryAction() {
   if (localWorkflowState.value === 'available') {
     // Guests can browse the commission scroll but must register before
     // claiming a quest — bounce them to the gate with a redirect back here.
@@ -156,8 +217,7 @@ function handlePrimaryAction() {
       router.push({ name: 'login', query: { redirect: route.fullPath } })
       return
     }
-    localWorkflowState.value = 'in-progress'
-    inlineNotice.value = '已接取该任务，下一步请进入工作台创建任务分支。任务已加入你的工作台待办。'
+    await acceptQuest()
     return
   }
 
@@ -304,6 +364,10 @@ function showIssueHint() {
             <div>
               <dt>默认分支</dt>
               <dd>{{ repository.branch }}</dd>
+            </div>
+            <div v-if="acceptedTaskBranch">
+              <dt>任务分支</dt>
+              <dd>{{ acceptedTaskBranch }}</dd>
             </div>
             <div>
               <dt>Issue</dt>

@@ -17,6 +17,7 @@ import {
   workbenchUser,
 } from '../data/workbench'
 import { sessionStore } from '../stores/sessionStore'
+import { questApi } from '../api/questApi'
 import {
   loadNotifications,
   markNotificationRead,
@@ -591,12 +592,39 @@ function updateRepositoryActivity(task) {
 function ensureTaskBranch(task) {
   if (task.branch) return false
 
+  // 真实接取记录（携带数字 questId）：调后端 task-branch 幂等端点（Issue #12），
+  // 真实分支名返回后覆盖本地占位；mock 演示任务无 questId，保留本地命名。
+  if (isRealQuestId(task.questId)) {
+    requestRealTaskBranch(task)
+  }
+
   task.branch = `feature/${task.id.toLowerCase()}-${task.title.toLowerCase().replaceAll(' ', '-')}`
   task.nextStep = '上传提交后创建 PR'
   task.counterLink = '未登记'
   task.counterDetail = '分支已创建，但还没有 commit 和 PR；任务成果暂时不能去提交柜台登记。'
   updateRepositoryActivity(task)
   return true
+}
+
+function isRealQuestId(questId) {
+  const id = Number(questId)
+  return Number.isInteger(id) && id > 0
+}
+
+async function requestRealTaskBranch(task) {
+  try {
+    const payload = await questApi.ensureTaskBranch(task.questId)
+    const branch = payload?.data?.taskBranch
+    if (branch) {
+      task.branch = branch
+      operationResult.value = {
+        title: '任务分支已就绪',
+        body: `${task.id} 的任务分支为 ${branch}（来自 Gitea）。`,
+      }
+    }
+  } catch {
+    // 后端不可用时保留本地占位分支名，用户可再次点击重试。
+  }
 }
 
 function ensureTaskCommit(task) {
