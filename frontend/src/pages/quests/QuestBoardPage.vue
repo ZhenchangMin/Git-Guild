@@ -383,7 +383,16 @@ function openQuestDetail(questId, intent = 'view') {
   })
 }
 
-function backToHall() {
+// Visitors never had a hall to come from — the board is their entry point. Send
+// them back to the login gate instead, mirroring the accept-quest flow.
+const isVisitor = computed(() => sessionStore.role === 'VISITOR')
+const backLabel = computed(() => (isVisitor.value ? '返回登录' : '返回公会大厅'))
+
+function goBack() {
+  if (isVisitor.value) {
+    router.push({ name: 'login' })
+    return
+  }
   router.push({ name: 'hall' })
 }
 
@@ -403,11 +412,11 @@ onMounted(loadRecommendedQuests)
 <template>
   <main class="app-shell">
     <section class="scene work-scene quest-mode" :style="{ backgroundImage: `url(${questBoardImg})` }">
-      <button class="back-orb" type="button" aria-label="返回公会大厅" @click="backToHall">
+      <button class="back-orb" type="button" :aria-label="backLabel" @click="goBack">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
         </svg>
-        <span>返回公会大厅</span>
+        <span>{{ backLabel }}</span>
       </button>
 
       <div class="quest-board-workspace" aria-label="悬赏板">
