@@ -22,7 +22,12 @@ public final class SubmissionResponses {
             String externalPrId,
             String title,
             String status,
-            String externalUrl) {
+            String externalUrl,
+            String sourceBranch,
+            String targetBranch) {
+    }
+
+    public record RepositoryBrief(Long repositoryId, String name, String defaultBranch, String syncStatus) {
     }
 
     public record ReviewItemResponse(Long itemId, String checkpoint, String comment, boolean passed) {
@@ -60,5 +65,17 @@ public final class SubmissionResponses {
             SubmissionStatus status,
             OffsetDateTime submittedAt,
             List<ReviewRecordResponse> reviewRecords) {
+    }
+
+    public record ReviewQueueItemResponse(
+            Long submissionId,
+            QuestBrief quest,
+            UserBrief submitter,
+            RepositoryBrief repository,
+            PullRequestBrief pullRequest,
+            String description,
+            String completionCriteria,
+            SubmissionStatus status,
+            OffsetDateTime submittedAt) {
     }
 }

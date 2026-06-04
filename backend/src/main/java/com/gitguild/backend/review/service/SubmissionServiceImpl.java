@@ -18,6 +18,7 @@ import com.gitguild.backend.review.domain.SubmissionStatus;
 import com.gitguild.backend.review.dto.CreateSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.ReviewQueueItemResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionDetailResponse;
 import com.gitguild.backend.review.repository.ReviewRecordRepository;
 import com.gitguild.backend.review.repository.SubmissionRepository;
@@ -118,6 +119,24 @@ public class SubmissionServiceImpl implements SubmissionService {
         return toDetail(submission, records);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReviewQueueItemResponse> listReviewQueue(Long currentUserId, SubmissionStatus status) {
+        User reviewer = findUser(currentUserId);
+        if (reviewer.getRole() != UserRole.MAINTAINER && reviewer.getRole() != UserRole.ADMIN) {
+            throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN,
+                    "Current user cannot review submissions", "Only maintainers and admins can access review queue");
+        }
+
+        List<Submission> submissions = status == null
+                ? submissionRepository.findAllByOrderBySubmittedAtDesc()
+                : submissionRepository.findByStatusOrderBySubmittedAtDesc(status);
+        return submissions.stream()
+                .filter(submission -> canReview(submission, reviewer))
+                .map(this::toReviewQueueItem)
+                .toList();
+    }
+
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", HttpStatus.NOT_FOUND, "User not found", "userId=" + userId));
@@ -153,6 +172,13 @@ public class SubmissionServiceImpl implements SubmissionService {
                 || submission.getQuest().getRepository().getOwner().getUserId().equals(currentUserId);
     }
 
+    private boolean canReview(Submission submission, User reviewer) {
+        Long reviewerId = reviewer.getUserId();
+        return reviewer.getRole() == UserRole.ADMIN
+                || submission.getQuest().getPublisher().getUserId().equals(reviewerId)
+                || submission.getQuest().getRepository().getOwner().getUserId().equals(reviewerId);
+    }
+
     private SubmissionDetailResponse toDetail(Submission submission, List<ReviewRecord> records) {
         Quest quest = submission.getQuest();
         CodePullRequest pullRequest = submission.getPullRequest();
@@ -165,11 +191,39 @@ public class SubmissionServiceImpl implements SubmissionService {
                         pullRequest.getExternalPrId(),
                         pullRequest.getTitle(),
                         pullRequest.getStatus(),
-                        pullRequest.getExternalUrl()),
+                        pullRequest.getExternalUrl(),
+                        pullRequest.getSourceBranch(),
+                        pullRequest.getTargetBranch()),
                 submission.getDescription(),
                 submission.getStatus(),
                 submission.getSubmittedAt(),
                 records.stream().map(this::toReviewResponse).toList());
+    }
+
+    private ReviewQueueItemResponse toReviewQueueItem(Submission submission) {
+        Quest quest = submission.getQuest();
+        CodePullRequest pullRequest = submission.getPullRequest();
+        return new ReviewQueueItemResponse(
+                submission.getSubmissionId(),
+                new SubmissionResponses.QuestBrief(quest.getQuestId(), quest.getTitle(), quest.getStatus()),
+                new SubmissionResponses.UserBrief(submission.getSubmitter().getUserId(), submission.getSubmitter().getUsername()),
+                new SubmissionResponses.RepositoryBrief(
+                        quest.getRepository().getRepositoryId(),
+                        quest.getRepository().getName(),
+                        quest.getRepository().getDefaultBranch(),
+                        quest.getRepository().getSyncStatus()),
+                new SubmissionResponses.PullRequestBrief(
+                        pullRequest.getPullRequestId(),
+                        pullRequest.getExternalPrId(),
+                        pullRequest.getTitle(),
+                        pullRequest.getStatus(),
+                        pullRequest.getExternalUrl(),
+                        pullRequest.getSourceBranch(),
+                        pullRequest.getTargetBranch()),
+                submission.getDescription(),
+                quest.getCompletionCriteria(),
+                submission.getStatus(),
+                submission.getSubmittedAt());
     }
 
     private SubmissionResponses.ReviewRecordResponse toReviewResponse(ReviewRecord record) {

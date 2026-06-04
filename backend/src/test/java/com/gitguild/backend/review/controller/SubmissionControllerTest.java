@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -14,6 +15,7 @@ import com.gitguild.backend.review.dto.CreateSubmissionRequest;
 import com.gitguild.backend.review.dto.ReviewSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.ReviewRecordResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.ReviewQueueItemResponse;
 import com.gitguild.backend.review.domain.ReviewDecision;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.review.service.ReviewService;
@@ -123,5 +125,42 @@ class SubmissionControllerTest {
         verify(reviewService).reviewSubmission(eq(9001L), eq(2001L), requestCaptor.capture());
         assertThat(requestCaptor.getValue().getDecision()).isEqualTo(ReviewDecision.CHANGES_REQUESTED);
         assertThat(requestCaptor.getValue().getSummary()).isEqualTo("Please add more tests.");
+    }
+
+    @Test
+    void listSubmissionsShouldReturnReviewQueueForCurrentUser() throws Exception {
+        when(submissionService.listReviewQueue(2001L, SubmissionStatus.PENDING_REVIEW))
+                .thenReturn(List.of(new ReviewQueueItemResponse(
+                        9001L,
+                        new com.gitguild.backend.review.dto.SubmissionResponses.QuestBrief(5001L, "Finish adapter", QuestStatus.IN_PROGRESS),
+                        new com.gitguild.backend.review.dto.SubmissionResponses.UserBrief(3001L, "adventurer"),
+                        new com.gitguild.backend.review.dto.SubmissionResponses.RepositoryBrief(1001L, "demo-repo", "main", "SYNCED"),
+                        new com.gitguild.backend.review.dto.SubmissionResponses.PullRequestBrief(
+                                8001L,
+                                "7",
+                                "QST-5001 finish adapter",
+                                "OPEN",
+                                "http://localhost:3000/spike-admin/demo-repo/pulls/7",
+                                "task/quest-5001",
+                                "main"),
+                        "Implemented the adapter MVP.",
+                        "PR connects to Gitea",
+                        SubmissionStatus.PENDING_REVIEW,
+                        OffsetDateTime.parse("2026-05-29T11:00:00+08:00"))));
+
+        TestingAuthenticationToken authentication = new TestingAuthenticationToken(
+                new CurrentUserPrincipal(2001L, List.of("ROLE_MAINTAINER"), 0),
+                null);
+
+        mockMvc.perform(get("/api/v1/submissions")
+                        .param("status", "PENDING_REVIEW")
+                        .principal(authentication))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data[0].submissionId").value(9001))
+                .andExpect(jsonPath("$.data[0].quest.questId").value(5001))
+                .andExpect(jsonPath("$.data[0].pullRequest.pullRequestId").value(8001));
+
+        verify(submissionService).listReviewQueue(2001L, SubmissionStatus.PENDING_REVIEW);
     }
 }

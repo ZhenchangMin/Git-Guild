@@ -1,12 +1,12 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import workbenchImg from '../../assets/workbench.png'
 import MaintainerReviewActions from '../../components/MaintainerReviewActions.vue'
 import MaintainerReviewDetail from '../../components/MaintainerReviewDetail.vue'
 import MaintainerReviewQueue from '../../components/MaintainerReviewQueue.vue'
-import { reviewApi } from '../../api'
+import { repositoryApi, reviewApi, submissionApi } from '../../api'
 import { maintainerReviewQueue } from '../../data/maintainerReview'
 
 const router = useRouter()
@@ -15,6 +15,7 @@ const reviews = ref(maintainerReviewQueue.map((review) => ({ ...review })))
 const selectedReviewId = ref('')
 const reviewResult = ref(null)
 const isSubmittingReview = ref(false)
+const isLoadingReviewQueue = ref(false)
 const isActionPanelCollapsed = ref(false)
 
 const selectedReview = computed(
@@ -30,6 +31,86 @@ const reviewStats = computed(() => [
   { label: '需退回修改', value: returnedCount.value, hint: '存在未通过检查项' },
   { label: '队列总数', value: reviews.value.length, hint: '当前演示提交记录' },
 ])
+
+function formatSubmittedAt(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '刚刚'
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getMonth() + 1}-${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function submittedAtOrder(value) {
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
+function completionCriteriaItems(text = '') {
+  const items = String(text)
+    .split(/\r?\n|；|;/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+  const criteria = items.length > 0 ? items : ['完成标准已由任务描述确认']
+  return criteria.map((checkpoint) => ({
+    checkpoint,
+    passed: true,
+    comment: '待维护者确认。',
+  }))
+}
+
+function normalizeLiveReview(item) {
+  const questId = item.quest?.questId
+  const externalPrId = item.pullRequest?.externalPrId ?? item.pullRequest?.pullRequestId
+  return {
+    id: `SUB-${item.submissionId}`,
+    live: true,
+    submissionId: item.submissionId,
+    repositoryId: item.repository?.repositoryId,
+    pullRequestId: item.pullRequest?.pullRequestId,
+    pullRequestUrl: item.pullRequest?.externalUrl,
+    questId: `QST-${String(questId).padStart(4, '0')}`,
+    questTitle: item.quest?.title ?? '未命名任务',
+    summary: item.description ?? '冒险家已提交成果，等待审核。',
+    submitter: item.submitter?.username ?? 'adventurer',
+    rewardXp: 0,
+    status: item.status === 'PENDING_REVIEW' ? '待审核' : item.status,
+    statusTone: item.status === 'PENDING_REVIEW' ? 'review' : 'approved',
+    submittedAt: formatSubmittedAt(item.submittedAt),
+    submittedAtOrder: submittedAtOrder(item.submittedAt),
+    repository: item.repository?.name ?? '未绑定仓库',
+    pullRequest: `PR #${externalPrId}`,
+    pullRequestTitle: item.pullRequest?.title ?? `QST-${questId} 提交成果`,
+    prState: item.pullRequest?.status ?? 'OPEN',
+    branch: item.pullRequest?.sourceBranch ?? 'task branch',
+    latestCommit: '已由工作台提交',
+    completionCriteria: completionCriteriaItems(item.completionCriteria),
+    evidence: [item.pullRequest?.externalUrl].filter(Boolean),
+    suggestedSummary: 'PR 已确认，完成标准通过。',
+  }
+}
+
+async function loadReviewQueue() {
+  isLoadingReviewQueue.value = true
+  try {
+    const payload = await submissionApi.list({ status: 'PENDING_REVIEW' })
+    const items = Array.isArray(payload?.data) ? payload.data : []
+    if (items.length > 0) {
+      reviews.value = items.map(normalizeLiveReview)
+      selectedReviewId.value = reviews.value[0]?.id ?? ''
+    }
+  } catch (error) {
+    reviewResult.value = {
+      tone: 'warning',
+      title: '真实审核队列暂不可用',
+      body: error?.message ?? '当前保留演示队列，可稍后刷新重试。',
+    }
+  } finally {
+    isLoadingReviewQueue.value = false
+  }
+}
+
+onMounted(() => {
+  loadReviewQueue()
+})
 
 function backToWorkbench() {
   router.push({ name: 'maintainer-workbench' })
@@ -59,6 +140,19 @@ async function submitReview(payload) {
   const submissionId = selectedReview.value.submissionId
   isSubmittingReview.value = true
   try {
+    if (
+      payload.decision === 'APPROVED' &&
+      selectedReview.value.live &&
+      selectedReview.value.repositoryId &&
+      selectedReview.value.pullRequestId &&
+      selectedReview.value.prState !== 'MERGED'
+    ) {
+      const mergePayload = await repositoryApi.mergePullRequest(
+        selectedReview.value.repositoryId,
+        selectedReview.value.pullRequestId,
+      )
+      selectedReview.value.prState = mergePayload?.data?.status ?? 'MERGED'
+    }
     await reviewApi.reviewSubmission(submissionId, payload)
     updateReviewStatus(payload.decision)
     reviewResult.value = {
@@ -91,6 +185,16 @@ function saveDraft(payload) {
 }
 
 function openPullRequest(review) {
+  if (review.pullRequestUrl) {
+    window.open(review.pullRequestUrl, '_blank', 'noopener,noreferrer')
+    reviewResult.value = {
+      tone: 'review',
+      title: `${review.pullRequest} 已打开`,
+      body: review.pullRequestUrl,
+    }
+    return
+  }
+
   reviewResult.value = {
     tone: 'review',
     title: `${review.pullRequest} 状态已定位`,

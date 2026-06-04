@@ -23,7 +23,37 @@ const questCatalog = {
 }
 
 const activeQuest = computed(() => {
-  const questId = String(route.query.questId || 'QST-0427')
+  const rawQuestId = route.query.questId
+  const numericQuestId = Number(rawQuestId)
+  if (Number.isInteger(numericQuestId) && numericQuestId > 0) {
+    const title = String(route.query.title || `Quest #${numericQuestId}`)
+    const repository = String(route.query.repository || '')
+    const branch = String(route.query.branch || '')
+    const pullRequest = String(route.query.pullRequest || '')
+    const pullRequestId = Number(route.query.pullRequestId)
+    return {
+      id: numericQuestId,
+      title,
+      difficulty: String(route.query.difficulty || '-'),
+      stack: String(route.query.stack || 'Gitea / Git-Guild'),
+      reward: String(route.query.reward || 'XP'),
+      pullRequestId: Number.isInteger(pullRequestId) && pullRequestId > 0 ? pullRequestId : null,
+      detail: {
+        repository: {
+          repositoryId: Number(route.query.repositoryId) || null,
+          name: repository,
+        },
+        branch,
+        pr: {
+          number: pullRequest,
+          externalLabel: String(route.query.prNumber || ''),
+          pullRequestId: Number.isInteger(pullRequestId) && pullRequestId > 0 ? pullRequestId : null,
+        },
+      },
+    }
+  }
+
+  const questId = String(rawQuestId || 'QST-0427')
   const summary = questCatalog[questId] ?? questCatalog['QST-0427']
   return {
     id: questId,

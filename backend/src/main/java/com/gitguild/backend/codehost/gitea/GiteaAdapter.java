@@ -1,6 +1,7 @@
 package com.gitguild.backend.codehost.gitea;
 
 import com.gitguild.backend.codehost.gitea.dto.BranchInfo;
+import com.gitguild.backend.codehost.gitea.dto.FileCommitInfo;
 import com.gitguild.backend.codehost.gitea.dto.IssueInfo;
 import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.gitea.dto.RepositoryInfo;
@@ -89,4 +90,21 @@ public interface GiteaAdapter {
      * @return 创建后的仓库元数据，含 id、full_name、html_url、default_branch
      */
     RepositoryInfo createRepository(String name, String description);
+
+    /**
+     * 在指定分支创建一个文件提交（Issue #13）。
+     *
+     * <p>MVP 工作台用它把冒险家的成果说明写入 task branch，形成真实 commit。
+     */
+    FileCommitInfo createFile(String owner, String repo, String branch, String path, String message, String content);
+
+    /**
+     * 基于 task branch 创建 Gitea PR（Issue #14）。
+     */
+    PrInfo createPullRequest(String owner, String repo, String title, String body, String sourceBranch, String targetBranch);
+
+    /**
+     * 合并指定 PR，供课程作业 MVP 审核闭环代理执行。
+     */
+    PrInfo mergePullRequest(String owner, String repo, int prNumber);
 }

@@ -73,7 +73,7 @@ public class CodeIssue {
     }
 
     public boolean canCreateQuest() {
-        return "OPEN".equals(status);
+        return "OPEN".equalsIgnoreCase(status);
     }
 
     public Long getIssueId() {

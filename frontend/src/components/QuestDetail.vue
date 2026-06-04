@@ -46,7 +46,7 @@ const STATUS_TONE = {
   已完成: 'done',
 }
 
-const detail = computed(() => questDetails[props.quest.id] ?? {})
+const detail = computed(() => props.quest.detail ?? questDetails[props.quest.id] ?? {})
 const repository = computed(
   () =>
     detail.value.repository ?? {
@@ -70,7 +70,7 @@ const pullRequest = computed(
       status: 'Not started',
     },
 )
-const beginnerTags = computed(() => props.quest.tags.filter((tag) => tag.includes('新手') || tag === '教程'))
+const beginnerTags = computed(() => (props.quest.tags ?? []).filter((tag) => tag.includes('新手') || tag === '教程'))
 const estimatedHours = computed(() => detail.value.estimatedHours ?? 6)
 const description = computed(() => detail.value.description ?? props.quest.summary)
 const submissionRequirements = computed(() => detail.value.submissionRequirements ?? defaultSubmissionRequirements)
@@ -79,10 +79,10 @@ const isAcceptIntent = computed(() => props.intent === 'accept' && localWorkflow
 
 // Compact, icon-backed meta chips replace the old 6-column grid.
 const metaChips = computed(() => [
-  { key: 'difficulty', label: '难度', value: props.quest.difficulty },
-  { key: 'reward', label: '奖励', value: props.quest.reward },
+  { key: 'difficulty', label: '难度', value: props.quest.difficulty ?? '待定' },
+  { key: 'reward', label: '奖励', value: props.quest.reward ?? '待定 XP' },
   { key: 'hours', label: '预计时长', value: `${estimatedHours.value}h` },
-  { key: 'stack', label: '技术栈', value: props.quest.stack },
+  { key: 'stack', label: '技术栈', value: props.quest.stack ?? '待补充' },
   { key: 'beginner', label: '新手标签', value: beginnerTags.value.length ? beginnerTags.value.join(' / ') : '普通任务' },
 ])
 
@@ -146,10 +146,10 @@ const workflowConfig = computed(() => {
 const heroTone = computed(() => STATUS_TONE[workflowConfig.value.status] ?? 'open')
 
 watch(
-  () => [props.quest.id, props.intent],
+  () => [props.quest.id, props.intent, props.quest.status, detail.value.workflowState],
   () => {
     localWorkflowState.value = detail.value.workflowState ?? (props.quest.status === '待审核' ? 'in-review' : 'available')
-    acceptedTaskBranch.value = ''
+    acceptedTaskBranch.value = props.quest.assignment?.taskBranch ?? ''
     inlineNotice.value =
       props.intent === 'accept' && localWorkflowState.value === 'available'
         ? '请确认任务背景和完成标准后接取该任务。点击任务板的“接取”不会直接完成接取。'
@@ -327,7 +327,7 @@ function showIssueHint() {
           <h2>完成标准</h2>
           <p class="section-note">提交前请逐项确认。这里检查任务完成结果，不替代工作台中的 commit 和 PR 操作。</p>
           <div class="criteria-list">
-            <label v-for="line in quest.criteria" :key="line">
+            <label v-for="line in quest.criteria ?? []" :key="line">
               <input type="checkbox" disabled />
               <span>{{ line }}</span>
             </label>

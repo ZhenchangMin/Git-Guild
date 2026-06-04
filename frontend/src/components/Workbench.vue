@@ -18,6 +18,7 @@ import {
 } from '../data/workbench'
 import { sessionStore } from '../stores/sessionStore'
 import { questApi } from '../api/questApi'
+import { repositoryApi } from '../api/repositoryApi'
 import {
   loadNotifications,
   markNotificationRead,
@@ -58,6 +59,7 @@ const operationResult = ref({
 })
 const simulatedCommitIndex = ref(2)
 const simulatedPullRequestIndex = ref(24)
+const isLoadingAssignments = ref(false)
 
 const allTasks = computed(() =>
   taskGroupList.value.flatMap((group) =>
@@ -308,6 +310,102 @@ const selectedFeedbackFlowContext = computed(() => {
 const xpProgress = computed(() => `${Math.round((workbenchUser.xpCurrent / workbenchUser.xpTarget) * 100)}%`)
 const activeRoleLabel = computed(() => (sessionStore.role === 'MAINTAINER' ? '委托人' : workbenchUser.role))
 
+function formatIssueNumber(issue) {
+  const id = issue?.externalIssueId ?? issue?.issueId
+  if (!id) return '#?'
+  return String(id).startsWith('#') ? String(id) : `#${id}`
+}
+
+function normalizeLiveTask(item) {
+  const branch = item.taskBranch ?? ''
+  return {
+    id: `QST-${String(item.questId).padStart(4, '0')}`,
+    questId: item.questId,
+    assignmentId: item.assignmentId,
+    title: item.title ?? '未命名委托',
+    difficulty: item.difficulty ?? '',
+    techStack: item.techStack ?? [],
+    rewardXp: item.rewardXp ?? 0,
+    repositoryId: item.repository?.repositoryId ?? null,
+    repository: item.repository?.name ?? '未绑定仓库',
+    defaultBranch: item.repository?.defaultBranch ?? 'main',
+    issue: formatIssueNumber(item.issue),
+    prStatus: '未发起',
+    branch,
+    recentCommit: '待上传',
+    commitUrl: '',
+    pullRequestId: null,
+    pullRequestUrl: '',
+    prNumber: '',
+    prState: '未创建',
+    checkResult: '等待 PR',
+    counterLink: '未登记',
+    counterDetail: branch
+      ? '真实任务分支已就绪；上传 commit 并发起 PR 后再到提交柜台登记成果。'
+      : '接取记录来自后端；需要先创建真实 task branch。',
+    nextStep: branch ? '上传提交后创建 PR' : '创建真实 task branch',
+    live: true,
+    actions: [
+      { label: '查看仓库', type: 'repository' },
+      { label: '创建分支', type: 'branch' },
+      { label: '上传提交', type: 'commit' },
+      { label: '发起 PR', type: 'pull-request' },
+      { label: '提交成果', type: 'submit', primary: true },
+    ],
+  }
+}
+
+function mergeLiveRepository(item) {
+  const name = item.repository?.name
+  if (!name || findRepositoryRecord(name)) return
+  repositoryList.value.unshift({
+    name,
+    syncStatus: item.repository?.syncStatus ?? 'UNKNOWN',
+    defaultBranch: item.repository?.defaultBranch ?? 'main',
+    branches: item.taskBranch ? 1 : 0,
+    issues: item.issue ? 1 : 0,
+    pullRequests: 0,
+    lastCommit: '待上传',
+    live: true,
+  })
+}
+
+async function loadLiveAssignments() {
+  if (sessionStore.role !== 'ADVENTURER') return
+  isLoadingAssignments.value = true
+  try {
+    const payload = await questApi.myAssignments()
+    const items = Array.isArray(payload?.data) ? payload.data : []
+    const liveTasks = items.map(normalizeLiveTask)
+    items.forEach(mergeLiveRepository)
+
+    const inProgressGroup = taskGroupList.value.find((group) => group.id === 'in-progress')
+    if (inProgressGroup) {
+      inProgressGroup.tasks = [
+        ...liveTasks,
+        ...inProgressGroup.tasks.filter((task) => !task.live),
+      ]
+      if (liveTasks.length > 0) {
+        selectedTaskId.value = liveTasks[0].id
+      }
+    }
+
+    if (liveTasks.length > 0) {
+      operationResult.value = {
+        title: '真实接取任务已加载',
+        body: `已从后端同步 ${liveTasks.length} 个进行中的任务，可继续创建 task branch、commit 和 PR。`,
+      }
+    }
+  } catch (error) {
+    operationResult.value = {
+      title: '真实接取任务暂不可用',
+      body: error?.message ?? '工作台当前保留演示任务，可稍后刷新重试。',
+    }
+  } finally {
+    isLoadingAssignments.value = false
+  }
+}
+
 function selectTask(task) {
   selectedTaskId.value = task.id
   selectedEmailId.value = null
@@ -391,6 +489,7 @@ function toggleMailbox() {
 onMounted(() => {
   // 进入工作台即拉取并轮询真实通知，使信箱未读数与公会大厅通知铃保持一致。
   startNotificationPolling()
+  loadLiveAssignments()
 })
 
 onUnmounted(() => {
@@ -575,6 +674,25 @@ function findActionTaskRecord() {
   return task ? findTaskRecord(task.id) : null
 }
 
+function buildSubmissionRoutePayload(task, fallbackQuestId) {
+  if (!task) return fallbackQuestId
+  if (!isRealQuestId(task.questId)) return fallbackQuestId
+
+  return {
+    questId: task.questId,
+    title: task.title,
+    repositoryId: task.repositoryId,
+    repository: task.repository,
+    branch: task.branch,
+    pullRequestId: task.pullRequestId,
+    pullRequest: task.pullRequestUrl,
+    prNumber: task.prNumber,
+    stack: Array.isArray(task.techStack) ? task.techStack.join(' / ') : '',
+    difficulty: task.difficulty ?? '',
+    reward: task.rewardXp ? `${task.rewardXp} XP` : '',
+  }
+}
+
 function updateRepositoryActivity(task) {
   const repository = findRepositoryRecord(task.repository)
   if (!repository) return
@@ -593,9 +711,12 @@ function ensureTaskBranch(task) {
   if (task.branch) return false
 
   // 真实接取记录（携带数字 questId）：调后端 task-branch 幂等端点（Issue #12），
-  // 真实分支名返回后覆盖本地占位；mock 演示任务无 questId，保留本地命名。
+  // 成功后写入真实分支名；失败时保持 branch 为空，允许用户再次点击重试。
   if (isRealQuestId(task.questId)) {
     requestRealTaskBranch(task)
+    task.nextStep = '等待 Gitea 返回任务分支'
+    task.counterDetail = '正在请求后端创建真实 task branch；失败时可再次点击“创建分支”。'
+    return true
   }
 
   task.branch = `feature/${task.id.toLowerCase()}-${task.title.toLowerCase().replaceAll(' ', '-')}`
@@ -612,22 +733,83 @@ function isRealQuestId(questId) {
 }
 
 async function requestRealTaskBranch(task) {
+  if (task.branchRequestPending) return
+  task.branchRequestPending = true
   try {
     const payload = await questApi.ensureTaskBranch(task.questId)
     const branch = payload?.data?.taskBranch
     if (branch) {
       task.branch = branch
+      task.nextStep = '上传提交后创建 PR'
+      task.counterDetail = '真实 task branch 已创建；上传 commit 并发起 PR 后再到提交柜台登记成果。'
+      updateRepositoryActivity(task)
       operationResult.value = {
         title: '任务分支已就绪',
         body: `${task.id} 的任务分支为 ${branch}（来自 Gitea）。`,
       }
     }
-  } catch {
-    // 后端不可用时保留本地占位分支名，用户可再次点击重试。
+  } catch (error) {
+    task.branch = ''
+    task.nextStep = '创建真实 task branch'
+    task.counterDetail = '后端暂未创建 task branch；请确认 Gitea 可用后再次点击“创建分支”。'
+    operationResult.value = {
+      title: '任务分支创建失败',
+      body: error?.message ?? `${task.id} 暂未能从 Gitea 创建分支，可再次点击重试。`,
+    }
+  } finally {
+    task.branchRequestPending = false
   }
 }
 
-function ensureTaskCommit(task) {
+function isRealRepositoryTask(task) {
+  const repositoryId = Number(task?.repositoryId)
+  return Number.isInteger(repositoryId) && repositoryId > 0
+}
+
+function buildCommitContent(task) {
+  return [
+    `# ${task.id} ${task.title}`,
+    '',
+    `- Repository: ${task.repository}`,
+    `- Branch: ${task.branch}`,
+    `- Issue: ${task.issue}`,
+    '- Result: Git-Guild workbench generated a real Gitea commit for the MVP path.',
+    '',
+  ].join('\n')
+}
+
+async function ensureTaskCommit(task) {
+  if (task.commitRequestPending) return null
+
+  if (isRealRepositoryTask(task)) {
+    task.commitRequestPending = true
+    try {
+      const payload = await repositoryApi.createCommit(task.repositoryId, {
+        branch: task.branch,
+        message: `${task.id} ${task.title} MVP proof`,
+        content: buildCommitContent(task),
+      })
+      const commitId = payload?.data?.commitId ?? 'unknown'
+      task.recentCommit = commitId
+      task.commitUrl = payload?.data?.externalUrl ?? ''
+      task.nextStep = task.prNumber ? '同步 PR 状态后去提交柜台登记成果' : '创建 PR 并等待基础检查'
+      task.counterLink = task.prNumber ? '待登记成果' : '未登记'
+      task.checkResult = task.prNumber ? '基础检查排队中' : task.checkResult
+      task.counterDetail = task.prNumber
+        ? '真实 commit 已上传到当前 PR；任务成果提交仍需到提交柜台完成。'
+        : '真实 commit 已上传到 task branch；创建 PR 后即可登记成果。'
+      const pullRequest = task.prNumber ? pullRequestList.value.find((item) => item.id === task.prNumber) : null
+      if (pullRequest) {
+        pullRequest.status = task.prState === '退回修改' ? '退回修改' : '打开'
+        pullRequest.checks = task.checkResult
+      }
+      updateRepositoryActivity(task)
+      return commitId
+    } finally {
+      task.commitRequestPending = false
+    }
+  }
+
   const commitId = `c0ffee${simulatedCommitIndex.value}`
   simulatedCommitIndex.value += 1
   task.recentCommit = commitId
@@ -646,7 +828,51 @@ function ensureTaskCommit(task) {
   return commitId
 }
 
-function ensureTaskPullRequest(task) {
+async function ensureTaskPullRequest(task) {
+  if (task.pullRequestRequestPending) return null
+
+  if (isRealRepositoryTask(task)) {
+    task.pullRequestRequestPending = true
+    try {
+      const payload = await repositoryApi.createPullRequest(task.repositoryId, {
+        title: `${task.id} ${task.title}`,
+        body: `${task.id} 已通过 Git-Guild 工作台上传真实 commit，等待维护者审核。`,
+        sourceBranch: task.branch,
+        targetBranch: task.defaultBranch ?? 'main',
+      })
+      const pullRequest = payload?.data
+      if (!pullRequest?.pullRequestId) {
+        throw new Error('后端没有返回 pullRequestId')
+      }
+
+      task.pullRequestId = pullRequest.pullRequestId
+      task.pullRequestUrl = pullRequest.externalUrl ?? ''
+      task.prNumber = `PR #${pullRequest.externalPrId ?? pullRequest.pullRequestId}`
+      task.prState = pullRequest.status === 'MERGED' ? '已合并' : '打开'
+      task.prStatus = `${task.prNumber} ${task.prState}`
+      task.checkResult = '基础检查排队中'
+      pullRequestList.value.push({
+        id: task.prNumber,
+        taskId: task.id,
+        title: pullRequest.title ?? `${task.id} ${task.title}`,
+        status: task.prState,
+        checks: task.checkResult,
+        action: '查看 PR',
+        externalUrl: task.pullRequestUrl,
+      })
+
+      const repository = findRepositoryRecord(task.repository)
+      if (repository) repository.pullRequests += 1
+
+      task.counterLink = '待登记成果'
+      task.counterDetail = '真实 PR 已创建；同步检查状态后可到提交柜台登记成果。'
+      task.nextStep = '基础检查通过后去提交柜台登记成果'
+      return task.prNumber
+    } finally {
+      task.pullRequestRequestPending = false
+    }
+  }
+
   if (!task.prNumber) {
     const prId = `PR #${simulatedPullRequestIndex.value}`
     simulatedPullRequestIndex.value += 1
@@ -698,7 +924,7 @@ function blockGitAction(actionType, task, source) {
   }
 }
 
-function runLinkedGitAction(actionType, source) {
+async function runLinkedGitAction(actionType, source) {
   const task = findActionTaskRecord()
 
   if (!task) {
@@ -717,26 +943,52 @@ function runLinkedGitAction(actionType, source) {
   if (actionType === 'branch') {
     const created = ensureTaskBranch(task)
     operationResult.value = {
-      title: created ? '已创建任务分支' : '任务分支已存在',
-      body: `${task.id} 当前分支为 ${task.branch}。这一步只完成项目代码工作，还不能提交任务成果。`,
+      title: created && task.branch ? '已创建任务分支' : created ? '正在创建任务分支' : '任务分支已存在',
+      body: task.branch
+        ? `${task.id} 当前分支为 ${task.branch}。这一步只完成项目代码工作，还不能提交任务成果。`
+        : `${task.id} 正在等待后端返回真实 task branch。`,
     }
     return true
   }
 
   if (actionType === 'commit') {
-    const commitId = ensureTaskCommit(task)
     operationResult.value = {
-      title: '上传提交已记录',
-      body: `${task.id} 已生成最近 commit ${commitId}。还需要 PR 通过检查后，才能到提交柜台登记任务成果。`,
+      title: '正在上传提交',
+      body: `${task.id} 正在通过后端写入 Gitea task branch。`,
+    }
+    try {
+      const commitId = await ensureTaskCommit(task)
+      if (commitId) {
+        operationResult.value = {
+          title: '上传提交已记录',
+          body: `${task.id} 已生成真实 commit ${commitId}。还需要 PR 通过检查后，才能到提交柜台登记任务成果。`,
+        }
+      }
+    } catch (error) {
+      operationResult.value = {
+        title: '上传提交失败',
+        body: error?.message ?? `${task.id} 暂未能写入 Gitea，请稍后重试。`,
+      }
     }
     return true
   }
 
   if (actionType === 'pull-request') {
-    ensureTaskPullRequest(task)
     operationResult.value = {
-      title: 'PR 已创建',
-      body: `${task.id} 已关联 ${task.prNumber}，检查结果为“${task.checkResult}”。项目提交已在工作台完成，任务成果提交仍在提交柜台完成。`,
+      title: '正在创建 PR',
+      body: `${task.id} 正在通过后端向 Gitea 创建 PR。`,
+    }
+    try {
+      await ensureTaskPullRequest(task)
+      operationResult.value = {
+        title: 'PR 已创建',
+        body: `${task.id} 已关联 ${task.prNumber}，检查结果为“${task.checkResult}”。项目提交已在工作台完成，任务成果提交仍在提交柜台完成。`,
+      }
+    } catch (error) {
+      operationResult.value = {
+        title: 'PR 创建失败',
+        body: error?.message ?? `${task.id} 暂未能创建 Gitea PR，请稍后重试。`,
+      }
     }
     return true
   }
@@ -753,7 +1005,7 @@ function runLinkedGitAction(actionType, source) {
   return false
 }
 
-function runAction(action, source = '当前事项') {
+async function runAction(action, source = '当前事项') {
   if (action.type === 'submit') {
     const taskId = action.questId ?? selectedFeedback.value?.questId ?? selectedTask.value?.id ?? linkPanelTask.value?.id
     const task = taskId ? findTaskRecord(taskId) : null
@@ -766,7 +1018,7 @@ function runAction(action, source = '当前事项') {
       return
     }
 
-    emit('open-submission', taskId)
+    emit('open-submission', buildSubmissionRoutePayload(task, taskId))
     return
   }
 
@@ -799,7 +1051,7 @@ function runAction(action, source = '当前事项') {
   }
 
   if (['branch', 'commit', 'pull-request', 'sync-pr'].includes(action.type)) {
-    if (runLinkedGitAction(action.type, source)) return
+    if (await runLinkedGitAction(action.type, source)) return
   }
 
   const resultMap = {

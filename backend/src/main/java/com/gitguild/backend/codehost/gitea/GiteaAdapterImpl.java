@@ -1,11 +1,14 @@
 package com.gitguild.backend.codehost.gitea;
 
 import com.gitguild.backend.codehost.gitea.dto.BranchInfo;
+import com.gitguild.backend.codehost.gitea.dto.FileCommitInfo;
 import com.gitguild.backend.codehost.gitea.dto.IssueInfo;
 import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.gitea.dto.RepositoryInfo;
 import com.gitguild.backend.common.BusinessException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -128,6 +131,7 @@ public class GiteaAdapterImpl implements GiteaAdapter {
         reqBody.put("name", name);
         reqBody.put("private", false);
         reqBody.put("default_branch", "main");
+        reqBody.put("auto_init", true);
         if (description != null && !description.isBlank()) {
             reqBody.put("description", description);
         }
@@ -137,6 +141,62 @@ public class GiteaAdapterImpl implements GiteaAdapter {
                 .retrieve()
                 .body(Map.class), "create repo name=" + name);
         return toRepositoryInfo(body);
+    }
+
+    @Override
+    public FileCommitInfo createFile(
+            String owner,
+            String repo,
+            String branch,
+            String path,
+            String message,
+            String content) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("branch", branch);
+        reqBody.put("message", message);
+        reqBody.put("content", Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8)));
+        Map body = execute(() -> client.post()
+                .uri("/repos/{owner}/{repo}/contents/{path}", owner, repo, path)
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "repo=" + owner + "/" + repo + " create file " + path);
+        return toFileCommitInfo(body, branch, path);
+    }
+
+    @Override
+    public PrInfo createPullRequest(
+            String owner,
+            String repo,
+            String title,
+            String body,
+            String sourceBranch,
+            String targetBranch) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("title", title);
+        reqBody.put("head", sourceBranch);
+        reqBody.put("base", targetBranch);
+        if (body != null && !body.isBlank()) {
+            reqBody.put("body", body);
+        }
+        Map result = execute(() -> client.post()
+                .uri("/repos/{owner}/{repo}/pulls", owner, repo)
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "repo=" + owner + "/" + repo + " create pull " + sourceBranch);
+        return toPrInfo(result);
+    }
+
+    @Override
+    public PrInfo mergePullRequest(String owner, String repo, int prNumber) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("Do", "merge");
+        reqBody.put("delete_branch_after_merge", false);
+        execute(() -> client.post()
+                .uri("/repos/{owner}/{repo}/pulls/{index}/merge", owner, repo, prNumber)
+                .body(reqBody)
+                .retrieve()
+                .toBodilessEntity(), "repo=" + owner + "/" + repo + " merge pull #" + prNumber);
+        return getPullRequest(owner, repo, prNumber);
     }
 
     /**
@@ -213,6 +273,14 @@ public class GiteaAdapterImpl implements GiteaAdapter {
                 baseBranch,
                 (String) m.get("html_url"),
                 authorLogin);
+    }
+
+    @SuppressWarnings("unchecked")
+    private FileCommitInfo toFileCommitInfo(Map m, String branch, String path) {
+        Map<String, Object> commit = (Map<String, Object>) m.get("commit");
+        String commitSha = commit != null ? (String) commit.get("sha") : null;
+        String htmlUrl = commit != null ? (String) commit.get("html_url") : null;
+        return new FileCommitInfo(commitSha, branch, path, htmlUrl);
     }
 
     @SuppressWarnings("unchecked")

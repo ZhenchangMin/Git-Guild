@@ -10,10 +10,15 @@ function backToHall() {
   router.push({ name: 'hall' })
 }
 
-function openSubmission(questId) {
+function openSubmission(quest) {
+  const query = typeof quest === 'object' && quest !== null
+    ? Object.fromEntries(Object.entries(quest).filter(([, value]) => value !== undefined && value !== null && value !== ''))
+    : quest
+      ? { questId: quest }
+      : {}
   router.push({
     name: 'submission-counter',
-    query: questId ? { questId } : {},
+    query,
   })
 }
 

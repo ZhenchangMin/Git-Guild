@@ -253,6 +253,16 @@ public class QuestServiceImpl implements QuestService {
         return toAssignmentResponse(assignment, quest, assignee, taskBranch);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<QuestResponses.MyAssignmentResponse> listMyActiveAssignments(Long assigneeId) {
+        findUser(assigneeId);
+        return assignmentRepository.findByAssigneeUserIdAndStatus(assigneeId, AssignmentStatus.ACTIVE)
+                .stream()
+                .map(this::toMyAssignmentResponse)
+                .toList();
+    }
+
     private String tryEnsureTaskBranch(QuestAssignment assignment) {
         try {
             return taskBranchService.ensureTaskBranch(assignment);
@@ -273,6 +283,33 @@ public class QuestServiceImpl implements QuestService {
                 assignment.getStatus().name(),
                 taskBranch,
                 assignment.getAcceptedAt());
+    }
+
+    private QuestResponses.MyAssignmentResponse toMyAssignmentResponse(QuestAssignment assignment) {
+        Quest quest = assignment.getQuest();
+        return new QuestResponses.MyAssignmentResponse(
+                assignment.getAssignmentId(),
+                quest.getQuestId(),
+                quest.getTitle(),
+                quest.getCompletionCriteria(),
+                quest.getDifficulty(),
+                fromJson(quest.getTechStackJson()),
+                quest.getRewardXp(),
+                quest.getStatus(),
+                assignment.getStatus().name(),
+                assignment.getTaskBranch(),
+                assignment.getAcceptedAt(),
+                new QuestResponses.RepositoryBrief(
+                        quest.getRepository().getRepositoryId(),
+                        quest.getRepository().getName(),
+                        quest.getRepository().getDefaultBranch(),
+                        quest.getRepository().getSyncStatus()),
+                new QuestResponses.IssueBrief(
+                        quest.getIssue().getIssueId(),
+                        quest.getIssue().getExternalIssueId(),
+                        quest.getIssue().getTitle(),
+                        quest.getIssue().getStatus(),
+                        quest.getIssue().getExternalUrl()));
     }
 
     private Specification<Quest> toSpecification(QuestSearchCriteria criteria) {

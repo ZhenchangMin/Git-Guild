@@ -99,6 +99,22 @@ public final class QuestResponses {
             OffsetDateTime acceptedAt) {
     }
 
+    public record MyAssignmentResponse(
+            Long assignmentId,
+            Long questId,
+            String title,
+            String completionCriteria,
+            Difficulty difficulty,
+            List<String> techStack,
+            Integer rewardXp,
+            QuestStatus questStatus,
+            String assignmentStatus,
+            String taskBranch,
+            OffsetDateTime acceptedAt,
+            RepositoryBrief repository,
+            IssueBrief issue) {
+    }
+
     public record AdminReviewResponse(
             Long adminReviewId,
             Long questId,

@@ -66,7 +66,7 @@ function quietlySeedFromQuest() {
   if (!q) return
   // Only fill empty fields; never overwrite something the user already typed.
   if (!form.repository) form.repository = q.detail?.repository?.name ?? 'git-guild / frontend'
-  if (!form.branch) form.branch = `feature/${(q.id || 'task').toLowerCase()}`
+  if (!form.branch) form.branch = q.detail?.branch ?? `feature/${String(q.id || 'task').toLowerCase()}`
   const prn = q.detail?.pr?.number
   if (!form.pullRequest && prn && prn !== 'Not created' && /^https?:/i.test(prn)) {
     form.pullRequest = prn
@@ -260,14 +260,20 @@ async function submitForReview() {
   setTimeout(() => (ringingBell.value = false), 900)
 
   try {
+    const questId = Number(props.quest?.id)
+    const pullRequestId = Number(props.quest?.pullRequestId ?? props.quest?.detail?.pr?.pullRequestId)
+    if (!Number.isInteger(questId) || questId <= 0 || !Number.isInteger(pullRequestId) || pullRequestId <= 0) {
+      throw new Error('当前提交缺少真实 questId 或 pullRequestId，请先从工作台创建真实 PR。')
+    }
+
     const response = await submissionApi.create({
-      questId: props.quest?.id ?? null,
-      repository: form.repository.trim(),
-      branch: form.branch.trim(),
-      pullRequest: form.pullRequest.trim(),
-      note: form.note.trim(),
-      checks: { ...checks },
-      evidence: evidence.value,
+      questId,
+      pullRequestId,
+      description: form.note.trim(),
+      checklist: Object.entries(checks)
+        .filter(([, checked]) => checked)
+        .map(([label]) => label),
+      evidenceUrls: evidence.value.map((item) => item.url).filter(Boolean),
     })
     const submittedAt = new Date()
     const newReceipt = {

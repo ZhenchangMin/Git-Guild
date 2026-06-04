@@ -24,6 +24,7 @@ import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.dto.CreateQuestRequest;
 import com.gitguild.backend.quest.dto.QuestResponses.AssignmentResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.MyAssignmentResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestDetailResponse;
 import com.gitguild.backend.quest.dto.QuestSearchCriteria;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
@@ -233,6 +234,31 @@ class QuestServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo("ASSIGNMENT_NOT_FOUND");
+    }
+
+    @Test
+    void listMyActiveAssignmentsShouldReturnQuestRepositoryIssueAndTaskBranch() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User assignee = user(3001L, UserRole.BEGINNER);
+        Quest quest = inProgressQuest(maintainer);
+        QuestAssignment assignment = new QuestAssignment(quest, assignee);
+        assignment.setAssignmentId(7001L);
+        assignment.setTaskBranch("task/quest-5001-assignment-7001-user3001");
+
+        when(userRepository.findById(3001L)).thenReturn(Optional.of(assignee));
+        when(assignmentRepository.findByAssigneeUserIdAndStatus(3001L, AssignmentStatus.ACTIVE))
+                .thenReturn(List.of(assignment));
+
+        List<MyAssignmentResponse> response = questService.listMyActiveAssignments(3001L);
+
+        assertThat(response).hasSize(1);
+        MyAssignmentResponse item = response.get(0);
+        assertThat(item.assignmentId()).isEqualTo(7001L);
+        assertThat(item.questId()).isEqualTo(5001L);
+        assertThat(item.title()).isEqualTo("实现 Issue 同步状态页面");
+        assertThat(item.taskBranch()).isEqualTo("task/quest-5001-assignment-7001-user3001");
+        assertThat(item.repository().name()).isEqualTo("git-guild");
+        assertThat(item.issue().externalIssueId()).isEqualTo("42");
     }
 
     @Test
