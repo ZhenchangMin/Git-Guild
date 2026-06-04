@@ -32,16 +32,9 @@ const errorMessage = ref('')
 const ringingBell = ref(false)
 const receipt = ref(null)
 
-// Accept the loose GitHub / Gitea / GitLab PR/MR URL shape. We intentionally
-// keep it lenient — strict origin checks belong on the backend. The keyword
-// must precede the digits with an explicit "/" (GitHub uses /pull/, Gitea
-// uses /pulls/, GitLab uses /merge_requests/).
-const PR_URL_PATTERN = /^https?:\/\/\S+\/(?:pull|pulls|merge_requests)\/\d+(?:[\/?#]\S*)?$/i
-
 const blankForm = () => ({
   repository: '',
   branch: '',
-  pullRequest: '',
   note: '',
 })
 const form = reactive(blankForm())
@@ -67,10 +60,6 @@ function quietlySeedFromQuest() {
   // Only fill empty fields; never overwrite something the user already typed.
   if (!form.repository) form.repository = q.detail?.repository?.name ?? 'git-guild / frontend'
   if (!form.branch) form.branch = q.detail?.branch ?? `feature/${String(q.id || 'task').toLowerCase()}`
-  const prn = q.detail?.pr?.number
-  if (!form.pullRequest && prn && prn !== 'Not created' && /^https?:/i.test(prn)) {
-    form.pullRequest = prn
-  }
   if (!form.note) {
     form.note = `准备提交 ${q.id} 的成果。请说明本次修改、测试结果，以及完成标准的逐项自检情况。`
   }
@@ -148,11 +137,6 @@ const errors = computed(() => {
   const e = {}
   if (!form.repository.trim()) e.repository = '请填写仓库名。'
   if (!form.branch.trim()) e.branch = '请填写分支名。'
-  if (!form.pullRequest.trim()) {
-    e.pullRequest = '请粘贴 PR 链接。'
-  } else if (!PR_URL_PATTERN.test(form.pullRequest.trim())) {
-    e.pullRequest = '链接需指向 PR / Merge Request 详情页。'
-  }
   if (form.note.trim().length < 8) e.note = '提交说明至少 8 个字。'
   if (!allChecksDone.value) e.checks = '请完成提交前核对清单。'
   return e
@@ -185,6 +169,16 @@ const dynamicReviewSteps = computed(() => {
 
 const submitterName = computed(
   () => sessionStore.user?.displayName || sessionStore.user?.username || '冒险家',
+)
+
+// 关联 PR 来自工作台真实创建的 PR（随 quest 带入），只读展示，不再让用户粘贴 URL。
+const linkedPr = computed(() => props.quest?.detail?.pr ?? null)
+const linkedPrUrl = computed(() => {
+  const url = linkedPr.value?.number
+  return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : ''
+})
+const linkedPrLabel = computed(
+  () => linkedPr.value?.externalLabel || linkedPrUrl.value || '尚未创建 PR',
 )
 
 // ── Behaviour: open / close ────────────────────────────────────────────────
@@ -221,13 +215,9 @@ function saveDraft() {
 }
 
 function openPullRequest() {
-  const url = form.pullRequest.trim()
+  const url = linkedPrUrl.value
   if (!url) {
-    showToast('还没填 PR 链接')
-    return
-  }
-  if (!PR_URL_PATTERN.test(url)) {
-    showToast('PR 链接格式不对，无法打开')
+    showToast('还没有关联 PR，请先在工作台创建真实 PR')
     return
   }
   window.open(url, '_blank', 'noopener,noreferrer')
@@ -245,7 +235,6 @@ async function submitForReview() {
     errorMessage.value =
       errors.value.repository ||
       errors.value.branch ||
-      errors.value.pullRequest ||
       errors.value.note ||
       errors.value.checks ||
       '请完成必填项后再提交。'
@@ -467,15 +456,15 @@ function formatDateTime(date) {
                 <small v-if="errors.branch" class="submission-field-error">{{ errors.branch }}</small>
               </label>
 
-              <label class="wide-field" :class="{ 'has-error': errors.pullRequest }">
-                <span>PR / MR 链接</span>
-                <input
-                  v-model.trim="form.pullRequest"
-                  placeholder="https://github.com/owner/repo/pull/123"
-                  :disabled="isLocked"
-                />
-                <small v-if="errors.pullRequest" class="submission-field-error">{{ errors.pullRequest }}</small>
-              </label>
+              <div class="wide-field submission-linked-pr">
+                <span>关联 PR</span>
+                <p v-if="linkedPrUrl" class="submission-linked-pr-value">
+                  <a :href="linkedPrUrl" target="_blank" rel="noopener noreferrer">{{ linkedPrLabel }}</a>
+                </p>
+                <p v-else class="submission-linked-pr-hint">
+                  尚未关联 PR。请先在工作台基于任务分支创建真实 PR，再回到柜台提交。
+                </p>
+              </div>
 
               <label class="wide-field" :class="{ 'has-error': errors.note }">
                 <span>提交说明</span>
@@ -629,6 +618,7 @@ function formatDateTime(date) {
             <button
               class="quiet-action"
               type="button"
+              :disabled="!linkedPrUrl"
               @click="openPullRequest"
             >查看 PR</button>
             <button
@@ -672,9 +662,9 @@ function formatDateTime(date) {
                 <div class="receipt-actions">
                   <button class="quiet-action" type="button" @click="closeSheet">关闭柜台</button>
                   <a
-                    v-if="form.pullRequest"
+                    v-if="linkedPrUrl"
                     class="primary-action"
-                    :href="form.pullRequest"
+                    :href="linkedPrUrl"
                     target="_blank"
                     rel="noopener noreferrer"
                   >前往 PR</a>
