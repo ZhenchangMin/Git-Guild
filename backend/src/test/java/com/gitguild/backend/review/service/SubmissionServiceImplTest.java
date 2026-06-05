@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
-import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.service.CodePullRequestSyncService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.notification.service.NotificationService;
@@ -23,6 +22,8 @@ import com.gitguild.backend.quest.domain.QuestCategory;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
+import com.gitguild.backend.quest.service.QuestPullRequestService;
+import com.gitguild.backend.quest.service.QuestTaskBranchService;
 import com.gitguild.backend.review.domain.Submission;
 import com.gitguild.backend.review.domain.SubmissionStatus;
 import com.gitguild.backend.review.dto.CreateSubmissionRequest;
@@ -53,7 +54,9 @@ class SubmissionServiceImplTest {
     @Mock
     private QuestAssignmentRepository assignmentRepository;
     @Mock
-    private CodePullRequestRepository pullRequestRepository;
+    private QuestTaskBranchService taskBranchService;
+    @Mock
+    private QuestPullRequestService questPullRequestService;
     @Mock
     private CodePullRequestSyncService pullRequestSyncService;
     @Mock
@@ -70,7 +73,8 @@ class SubmissionServiceImplTest {
                 reviewRecordRepository,
                 questRepository,
                 assignmentRepository,
-                pullRequestRepository,
+                taskBranchService,
+                questPullRequestService,
                 pullRequestSyncService,
                 userRepository,
                 notificationService);
@@ -91,7 +95,9 @@ class SubmissionServiceImplTest {
         when(assignmentRepository.findByQuestAndAssigneeUserIdAndStatus(quest, 3001L, AssignmentStatus.ACTIVE))
                 .thenReturn(Optional.of(assignment));
         when(submissionRepository.existsByQuestAndSubmitterUserIdAndStatusIn(any(), any(), any())).thenReturn(false);
-        when(pullRequestRepository.findById(8001L)).thenReturn(Optional.of(pullRequest));
+        when(taskBranchService.ensureTaskBranch(assignment)).thenReturn("task/quest-5001-assignment-1-submitter");
+        when(questPullRequestService.ensurePullRequestForSubmission(any(), any(), any(), any(), any()))
+                .thenReturn(pullRequest);
         when(submissionRepository.save(any(Submission.class))).thenAnswer(invocation -> {
             Submission submission = invocation.getArgument(0);
             submission.setSubmissionId(9001L);
@@ -176,27 +182,27 @@ class SubmissionServiceImplTest {
     }
 
     @Test
-    void createSubmissionShouldRejectPullRequestFromAnotherRepository() {
+    void createSubmissionShouldRejectWhenTaskBranchEmpty() {
         User maintainer = user(2001L, UserRole.MAINTAINER);
         User submitter = user(3001L, UserRole.BEGINNER);
         CodeRepository repository = repository(maintainer);
-        CodeRepository otherRepository = repository(maintainer);
-        otherRepository.setRepositoryId(1002L);
         Quest quest = quest(maintainer, repository, QuestStatus.IN_PROGRESS);
         QuestAssignment assignment = new QuestAssignment(quest, submitter);
-        CodePullRequest pullRequest = pullRequest(otherRepository);
 
         when(userRepository.findById(3001L)).thenReturn(Optional.of(submitter));
         when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
         when(assignmentRepository.findByQuestAndAssigneeUserIdAndStatus(quest, 3001L, AssignmentStatus.ACTIVE))
                 .thenReturn(Optional.of(assignment));
         when(submissionRepository.existsByQuestAndSubmitterUserIdAndStatusIn(any(), any(), any())).thenReturn(false);
-        when(pullRequestRepository.findById(8001L)).thenReturn(Optional.of(pullRequest));
+        when(taskBranchService.ensureTaskBranch(assignment)).thenReturn("task/quest-5001-assignment-1-submitter");
+        when(questPullRequestService.ensurePullRequestForSubmission(any(), any(), any(), any(), any()))
+                .thenThrow(new BusinessException("TASK_BRANCH_EMPTY", org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                        "任务分支没有可提交的改动", "head==base"));
 
         assertThatThrownBy(() -> submissionService.createSubmission(3001L, request()))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
-                .isEqualTo("PR_NOT_FOUND");
+                .isEqualTo("TASK_BRANCH_EMPTY");
 
         verify(submissionRepository, never()).save(any());
         verify(questRepository, never()).save(any());

@@ -2,7 +2,6 @@ package com.gitguild.backend.review.service;
 
 import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
-import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.service.CodePullRequestSyncService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.notification.domain.NotificationType;
@@ -13,6 +12,8 @@ import com.gitguild.backend.quest.domain.QuestAssignment;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
+import com.gitguild.backend.quest.service.QuestPullRequestService;
+import com.gitguild.backend.quest.service.QuestTaskBranchService;
 import com.gitguild.backend.review.domain.ReviewItem;
 import com.gitguild.backend.review.domain.ReviewRecord;
 import com.gitguild.backend.review.domain.Submission;
@@ -45,7 +46,8 @@ public class SubmissionServiceImpl implements SubmissionService {
     private final ReviewRecordRepository reviewRecordRepository;
     private final QuestRepository questRepository;
     private final QuestAssignmentRepository assignmentRepository;
-    private final CodePullRequestRepository pullRequestRepository;
+    private final QuestTaskBranchService taskBranchService;
+    private final QuestPullRequestService questPullRequestService;
     private final CodePullRequestSyncService pullRequestSyncService;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
@@ -55,7 +57,8 @@ public class SubmissionServiceImpl implements SubmissionService {
             ReviewRecordRepository reviewRecordRepository,
             QuestRepository questRepository,
             QuestAssignmentRepository assignmentRepository,
-            CodePullRequestRepository pullRequestRepository,
+            QuestTaskBranchService taskBranchService,
+            QuestPullRequestService questPullRequestService,
             CodePullRequestSyncService pullRequestSyncService,
             UserRepository userRepository,
             NotificationService notificationService) {
@@ -63,7 +66,8 @@ public class SubmissionServiceImpl implements SubmissionService {
         this.reviewRecordRepository = reviewRecordRepository;
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
-        this.pullRequestRepository = pullRequestRepository;
+        this.taskBranchService = taskBranchService;
+        this.questPullRequestService = questPullRequestService;
         this.pullRequestSyncService = pullRequestSyncService;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
@@ -83,18 +87,22 @@ public class SubmissionServiceImpl implements SubmissionService {
             throw new BusinessException("QUEST_NOT_ACCEPTABLE", HttpStatus.CONFLICT, "Quest is not acceptable for submission", "currentStatus=" + quest.getStatus());
         }
 
-        assignmentRepository
+        QuestAssignment assignment = assignmentRepository
                 .findByQuestAndAssigneeUserIdAndStatus(quest, submitterId, AssignmentStatus.ACTIVE)
                 .orElseThrow(() -> new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN, "Current user cannot submit this quest", "Only an active assignee can submit result"));
         if (submissionRepository.existsByQuestAndSubmitterUserIdAndStatusIn(quest, submitterId, OPEN_SUBMISSION_STATUSES)) {
             throw new BusinessException("SUBMISSION_NOT_REVIEWABLE", HttpStatus.CONFLICT, "Submission is not reviewable", "There is already a pending submission for this quest");
         }
 
-        CodePullRequest pullRequest = pullRequestRepository.findById(request.getPullRequestId())
-                .orElseThrow(() -> new BusinessException("PR_NOT_FOUND", HttpStatus.NOT_FOUND, "Pull request not found", "pullRequestId=" + request.getPullRequestId()));
-        if (!pullRequest.getRepository().getRepositoryId().equals(quest.getRepository().getRepositoryId())) {
-            throw new BusinessException("PR_NOT_FOUND", HttpStatus.NOT_FOUND, "Pull request not found", "pullRequestId does not belong to quest repository");
-        }
+        // 平台代理建 PR：以冒险家的 task branch 为 head、仓库默认分支为 base，幂等创建/复用 Gitea PR。
+        CodeRepository repository = quest.getRepository();
+        String taskBranch = taskBranchService.ensureTaskBranch(assignment);
+        CodePullRequest pullRequest = questPullRequestService.ensurePullRequestForSubmission(
+                repository,
+                taskBranch,
+                repository.getDefaultBranch(),
+                "[Quest #" + quest.getQuestId() + "] " + quest.getTitle(),
+                buildPrBody(quest, request.getDescription()));
 
         Submission saved = submissionRepository.save(new Submission(quest, submitter, pullRequest, request.getDescription()));
         quest.markInReview();
@@ -148,6 +156,19 @@ public class SubmissionServiceImpl implements SubmissionService {
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", HttpStatus.NOT_FOUND, "User not found", "userId=" + userId));
+    }
+
+    /** 组装平台代理创建 PR 的正文：成果说明 + 完成标准，标注由工作台代理创建。 */
+    private String buildPrBody(Quest quest, String description) {
+        StringBuilder body = new StringBuilder();
+        body.append("由 Git-Guild 工作台代理创建：任务《").append(quest.getTitle()).append("》成果提交。\n\n");
+        if (description != null && !description.isBlank()) {
+            body.append("成果说明：\n").append(description.trim()).append("\n\n");
+        }
+        if (quest.getCompletionCriteria() != null && !quest.getCompletionCriteria().isBlank()) {
+            body.append("完成标准：\n").append(quest.getCompletionCriteria().trim());
+        }
+        return body.toString();
     }
 
     /**

@@ -29,6 +29,10 @@ function openProfile() {
 function openReviewDesk() {
   router.push({ name: 'maintainer-review' })
 }
+
+function openPublish() {
+  router.push({ name: 'maintainer-publish' })
+}
 </script>
 
 <template>
@@ -44,6 +48,11 @@ function openReviewDesk() {
         <span>返回公会大厅</span>
       </button>
 
+      <button class="publish-entry-orb" type="button" @click="openPublish">
+        <span aria-hidden="true">＋</span>
+        <span>发布新任务</span>
+      </button>
+
       <Workbench
         show-review-desk-entry
         @open-submission="openSubmission"
@@ -53,3 +62,34 @@ function openReviewDesk() {
     </section>
   </main>
 </template>
+
+<style scoped>
+.publish-entry-orb {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.1rem;
+  border: 1px solid rgba(255, 236, 190, 0.55);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(120, 36, 38, 0.95), rgba(86, 22, 24, 0.95));
+  color: #ffe9c4;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.publish-entry-orb:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
+}
+.publish-entry-orb span[aria-hidden='true'] {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+</style>

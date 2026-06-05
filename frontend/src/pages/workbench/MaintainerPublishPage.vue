@@ -72,7 +72,7 @@ async function loadIssues(repositoryId) {
   if (!repositoryId) return
   loadingIssues.value = true
   try {
-    const payload = await repositoryApi.listIssues(repositoryId, { status: 'OPEN' })
+    const payload = await repositoryApi.issues(repositoryId, { status: 'OPEN' })
     issues.value = unwrapItems(payload)
     if (issues.value.length > 0) {
       form.value.issueId = String(issues.value[0].issueId)
@@ -154,7 +154,7 @@ async function publish() {
     const createRes = await questApi.create(payload)
     const questId = createRes?.data?.questId
     if (!questId) throw new Error('创建任务成功但未返回 questId。')
-    await questApi.submit(questId)
+    await questApi.submitForReview(questId)
     submitOk.value = { questId }
   } catch (error) {
     submitError.value = error?.message ?? '发布失败，请稍后再试。'

@@ -1,17 +1,17 @@
 package com.gitguild.backend.review.service;
 
-import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
-import com.gitguild.backend.codehost.service.CodePullRequestSyncService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Quest;
+import com.gitguild.backend.quest.domain.QuestAssignment;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
+import com.gitguild.backend.quest.service.QuestTaskBranchService;
 import com.gitguild.backend.review.dto.SubmissionDraftResponse;
-import com.gitguild.backend.review.dto.SubmissionDraftResponse.PullRequestOption;
-import com.gitguild.backend.review.dto.SubmissionDraftResponse.RepositoryBrief;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,32 +19,33 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * {@link SubmissionDraftService} 的实现，编排"提交柜台开页"的一步式数据准备。
  *
- * <p><b>隐藏的复杂度（反直觉点）：</b>PR 同步被刻意内聚在此读路径里——Adventurer 一打开提交柜台，
- * 本类即触发 {@link com.gitguild.backend.codehost.service.CodePullRequestSyncService} 把该 Quest
- * 所属仓库的 PR 懒同步落库，再回传候选列表。前端因此"开页即拿到带本地 {@code pullRequestId} 的候选 PR、
- * 选一个直接提交"，无需单独的仓库同步调用（详见《P4-018 提交草稿端点与 PR 同步空洞修复设计》决策 2）。
+ * <p><b>分支语义（平台代理 PR 后）：</b>提交时由平台依据冒险家的 task branch 自动创建/合并 PR，
+ * 因此本类不再同步/回传 PR 候选；而是确保并回传该接取记录的 task branch（{@code branch} 字段），
+ * 让冒险家清楚“把提交推到哪条分支、提交即基于它建 PR”。{@code pullRequests} 恒为空列表（字段暂留以兼容前端）。
  *
  * <p><b>业务不变量：</b>仅该 Quest 的 {@code ACTIVE} 接取记录持有者（即 Adventurer 本人）可取草稿，
  * 与 {@code SubmissionServiceImpl.createSubmission} 的成果提交归属校验口径一致。
  *
  * <p><b>边界错误模式：</b>Quest 不存在抛 {@code QUEST_NOT_FOUND}；调用者无有效接取记录抛
- * {@code ASSIGNMENT_NOT_FOUND}。返回的 {@code branch} 因接取记录无分支字段，暂回退为仓库默认分支
- * （见设计文档延期项 B）。
+ * {@code ASSIGNMENT_NOT_FOUND}。task branch 确保是 best-effort：Gitea 暂不可达时降级回传仓库默认分支，
+ * 不让开页因外部依赖而 500。
  */
 @Service
 public class SubmissionDraftServiceImpl implements SubmissionDraftService {
 
+    private static final Logger log = LoggerFactory.getLogger(SubmissionDraftServiceImpl.class);
+
     private final QuestRepository questRepository;
     private final QuestAssignmentRepository assignmentRepository;
-    private final CodePullRequestSyncService pullRequestSyncService;
+    private final QuestTaskBranchService taskBranchService;
 
     public SubmissionDraftServiceImpl(
             QuestRepository questRepository,
             QuestAssignmentRepository assignmentRepository,
-            CodePullRequestSyncService pullRequestSyncService) {
+            QuestTaskBranchService taskBranchService) {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
-        this.pullRequestSyncService = pullRequestSyncService;
+        this.taskBranchService = taskBranchService;
     }
 
     @Override
@@ -55,31 +56,31 @@ public class SubmissionDraftServiceImpl implements SubmissionDraftService {
                         "Quest not found", "questId=" + questId));
 
         // 只有 ACTIVE Assignee 能打开提交柜台（与 018 createSubmission 的归属校验口径一致）
-        assignmentRepository
+        QuestAssignment assignment = assignmentRepository
                 .findByQuestAndAssigneeUserIdAndStatus(quest, currentUserId, AssignmentStatus.ACTIVE)
                 .orElseThrow(() -> new BusinessException("ASSIGNMENT_NOT_FOUND", HttpStatus.FORBIDDEN,
                         "Current user has no active assignment for this quest",
                         "Only an active assignee can open the submission draft"));
 
         CodeRepository repository = quest.getRepository();
-        List<CodePullRequest> pullRequests = pullRequestSyncService.syncRepositoryPullRequests(repository);
+        String branch = resolveTaskBranch(assignment, repository);
 
         return new SubmissionDraftResponse(
                 quest.getQuestId(),
                 new SubmissionDraftResponse.RepositoryBrief(repository.getRepositoryId(), repository.getName(), repository.getSourceUrl()),
-                repository.getDefaultBranch(),
-                pullRequests.stream().map(this::toOption).toList(),
+                branch,
+                List.of(),
                 quest.getCompletionCriteria());
     }
 
-    private PullRequestOption toOption(CodePullRequest pr) {
-        return new PullRequestOption(
-                pr.getPullRequestId(),
-                pr.getExternalPrId(),
-                pr.getTitle(),
-                pr.getStatus(),
-                pr.getSourceBranch(),
-                pr.getTargetBranch(),
-                pr.getExternalUrl());
+    /** best-effort 确保 task branch；Gitea 暂不可达时降级为仓库默认分支，避免开页 500。 */
+    private String resolveTaskBranch(QuestAssignment assignment, CodeRepository repository) {
+        try {
+            return taskBranchService.ensureTaskBranch(assignment);
+        } catch (BusinessException ex) {
+            log.warn("提交草稿确保 task branch 失败，降级为默认分支 assignmentId={}, code={}",
+                    assignment.getAssignmentId(), ex.getCode());
+            return repository.getDefaultBranch();
+        }
     }
 }

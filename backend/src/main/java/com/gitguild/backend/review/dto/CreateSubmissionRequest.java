@@ -10,7 +10,11 @@ public class CreateSubmissionRequest {
     @NotNull(message = "questId cannot be null")
     private Long questId;
 
-    @NotNull(message = "pullRequestId cannot be null")
+    /**
+     * 已废弃：平台现在依据 task 分支自动创建/复用 PR，提交时无需再传。
+     * 字段保留为可选以兼容旧客户端，服务端忽略其值。
+     */
+    @Deprecated
     private Long pullRequestId;
 
     @NotBlank(message = "description cannot be blank")
