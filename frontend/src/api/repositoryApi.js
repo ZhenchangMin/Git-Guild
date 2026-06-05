@@ -10,6 +10,9 @@ export const repositoryApi = {
     const suffix = query.toString() ? `?${query}` : ''
     return request(`/repositories${suffix}`)
   },
+  detail(repositoryId) {
+    return request(`/repositories/${repositoryId}`)
+  },
   importRepository(payload) {
     return request('/repositories/import', { method: 'POST', body: payload })
   },

@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 
 import hallImg from '../../assets/hall.png'
 import NotificationBell from '../../components/NotificationBell.vue'
-import { questCommissions } from '../../data/questBoard'
+import { questApi } from '../../api/questApi'
 import { clearSession, hasLoginSession, sessionStore } from '../../stores/sessionStore'
 
 const router = useRouter()
@@ -12,9 +12,8 @@ const router = useRouter()
 // 仅登录且非访客时展示通知中心——访客没有可投递的关键状态变化。
 const showNotificationBell = computed(() => hasLoginSession() && sessionStore.role !== 'VISITOR')
 
-const openQuestCount = computed(
-  () => questCommissions.filter((quest) => quest.status === '可接取').length || questCommissions.length,
-)
+// 真实可接取委托数（PUBLISHED）；接口不可用时回退为 0，不再用 mock。
+const openQuestCount = ref(0)
 const hallViewport = ref(null)
 const hallTrack = ref(null)
 const hallOffset = ref(0)
@@ -138,9 +137,15 @@ function logout() {
   router.push({ name: 'login' })
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('resize', centerHall)
   nextTick(centerHall)
+  try {
+    const res = await questApi.list({ status: 'PUBLISHED', page: 1, size: 1 })
+    openQuestCount.value = res?.data?.totalItems ?? 0
+  } catch {
+    openQuestCount.value = 0
+  }
 })
 
 onUnmounted(() => {
