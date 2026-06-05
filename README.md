@@ -55,6 +55,49 @@ Project maintainers can publish quests from real engineering work, and beginners
 
 ---
 
+## Quickstart — Try the Shortest MVP Path
+
+Run the full **real-Gitea** workflow locally: a maintainer publishes a quest → an admin approves it → an adventurer accepts, clones & pushes code → submits → the maintainer approves and the PR is auto-merged.
+
+**Prerequisites:** Docker + Docker Compose, JDK 17, Node 18+.
+
+```bash
+# 1. Config
+cp .env.example .env
+
+# 2. Start infra (Gitea + MySQL + Redis)
+docker compose up -d
+
+# 3. Bootstrap Gitea: admin user + API token (written back into .env) + demo repo & issue
+bash scripts/setup-gitea.sh
+
+# 4. Backend — Terminal A (auto-loads .env)
+cd backend && bash run-dev.sh
+
+# 5. Seed the platform — Terminal B (test users + import the demo repo)
+bash scripts/seed-platform.sh
+
+# 6. Frontend — Terminal C
+cd frontend && npm install && npm run dev
+# then open http://localhost:5173
+```
+
+**Test accounts** — password `admin123` for all three:
+
+| Role | Username | What they do |
+| --- | --- | --- |
+| Guild Master (maintainer) | `guild` | Publish quests, review & merge submissions |
+| Adventurer (beginner) | `advent` | Accept a quest, clone & push, submit results |
+| Admin | `admin` | Approve quests for publication |
+
+**Walkthrough:** sign in as `guild` → open the Commission Office → **Publish Quest** (repo and issue are pre-filled) → sign in as `admin` → `/admin/review` → approve → sign in as `advent` → Quest Board → accept → workbench **Clone & Push** card (the clone URL already carries credentials, so `git push` won't prompt for a password) → make a commit and push → **Submission Counter** (a pull request is created automatically) → back as `guild` → review queue → approve (the PR is auto-merged and XP is granted).
+
+> **Reset to the clean MVP start at any time:** `bash scripts/setup-gitea.sh && bash scripts/seed-platform.sh`
+
+> **⚠️ Local demo only.** Gitea runs with a single admin account, and the workbench shows a clone URL with the admin token embedded so push is seamless. This is **not** a production auth model. `.env` (which holds the real token) is git-ignored, and `admin123` is a throwaway demo password.
+
+---
+
 ## Current Repo Shape
 
 | Layer    | Technology                             |
