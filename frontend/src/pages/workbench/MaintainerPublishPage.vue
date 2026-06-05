@@ -183,227 +183,367 @@ function unwrapItems(payload) {
 </script>
 
 <template>
-  <main class="app-shell publish-shell">
-    <section class="publish-panel">
-      <header class="publish-head">
-        <button class="quiet-action" type="button" @click="backToWorkbench">← 返回工作台</button>
-        <h1>发布任务</h1>
-        <p class="publish-sub">委托人创建任务并提交管理员审核（DRAFT → 待审核）。</p>
-      </header>
+  <main class="app-shell">
+    <section class="scene writ-scene">
+      <button class="back-orb" type="button" aria-label="返回委托人事务所" @click="backToWorkbench">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 6 9 12l6 6" />
+        </svg>
+        <span>返回事务所</span>
+      </button>
 
-      <p v-if="metaError" class="publish-banner error">{{ metaError }}</p>
-      <p v-if="loadingMeta" class="publish-banner">正在加载仓库与分类…</p>
+      <article class="writ-panel">
+        <header class="writ-head">
+          <p class="writ-eyebrow">委托书 · Commission Writ</p>
+          <h1>发布委托</h1>
+          <p class="writ-sub">委托人起草任务并提交管理员审核（DRAFT → 待审核），通过后上架悬赏板。</p>
+        </header>
 
-      <form v-else class="publish-form" @submit.prevent="publish">
-        <label class="field">
-          <span>目标仓库</span>
-          <select v-model="form.repositoryId">
-            <option v-for="r in repositories" :key="r.repositoryId" :value="String(r.repositoryId)">
-              {{ r.name }}（{{ r.defaultBranch || 'main' }}）
-            </option>
-          </select>
-          <small v-if="errors.repositoryId" class="field-error">{{ errors.repositoryId }}</small>
-          <small v-else-if="selectedRepo" class="field-hint">{{ selectedRepo.sourceUrl }}</small>
-        </label>
+        <div v-if="loadingMeta" class="writ-skeleton" aria-hidden="true">
+          <span v-for="n in 5" :key="n" class="sk sk-row"></span>
+        </div>
 
-        <fieldset class="field issue-field">
-          <span>关联 Issue</span>
-          <div class="issue-modes">
-            <label class="radio"><input v-model="form.issueMode" type="radio" value="existing" /> 选择已有</label>
-            <label class="radio"><input v-model="form.issueMode" type="radio" value="new" /> 新建 Gitea Issue</label>
+        <p v-else-if="metaError" class="writ-banner error">{{ metaError }}</p>
+
+        <div v-else-if="submitOk" class="writ-receipt">
+          <div class="wax-seal" aria-hidden="true">
+            <span class="wax-glow"></span>
+            <span class="wax-rune">委</span>
           </div>
-          <template v-if="form.issueMode === 'existing'">
-            <select v-model="form.issueId" :disabled="loadingIssues">
-              <option v-if="loadingIssues" value="">加载中…</option>
-              <option v-for="i in issues" :key="i.issueId" :value="String(i.issueId)">
-                #{{ i.externalIssueId }} · {{ i.title }}
+          <p class="writ-eyebrow">受理回执 · Filed</p>
+          <h2>委托 #{{ submitOk.questId }} 已呈交审核</h2>
+          <p class="writ-receipt-hint">
+            任务已创建并提交管理员审核。请用 admin 账号到审核台通过后，委托即上架悬赏板。
+          </p>
+          <div class="writ-receipt-actions">
+            <button class="quiet-action" type="button" @click="submitOk = null">继续发布</button>
+            <button class="primary-action" type="button" @click="backToWorkbench">返回事务所</button>
+          </div>
+        </div>
+
+        <form v-else class="writ-form" @submit.prevent="publish">
+          <label class="writ-field">
+            <span>目标仓库</span>
+            <select v-model="form.repositoryId">
+              <option v-for="r in repositories" :key="r.repositoryId" :value="String(r.repositoryId)">
+                {{ r.name }}（{{ r.defaultBranch || 'main' }}）
               </option>
             </select>
-            <small v-if="!loadingIssues && !issues.length" class="field-hint">该仓库暂无 OPEN Issue，请切换为新建。</small>
-          </template>
-          <template v-else>
-            <input v-model.trim="form.giteaIssueTitle" placeholder="Issue 标题，如：Add hello world file" />
-            <textarea v-model="form.giteaIssueBody" rows="2" placeholder="Issue 描述（可选）"></textarea>
-          </template>
-          <small v-if="errors.issue" class="field-error">{{ errors.issue }}</small>
-        </fieldset>
+            <small v-if="errors.repositoryId" class="writ-error">{{ errors.repositoryId }}</small>
+            <small v-else-if="selectedRepo" class="writ-hint">{{ selectedRepo.sourceUrl }}</small>
+          </label>
 
-        <label class="field">
-          <span>任务标题</span>
-          <input v-model.trim="form.title" placeholder="Hello World" />
-          <small v-if="errors.title" class="field-error">{{ errors.title }}</small>
-        </label>
+          <label class="writ-field">
+            <span>分类</span>
+            <select v-model="form.categoryId">
+              <option v-for="c in categories" :key="c.categoryId" :value="String(c.categoryId)">{{ c.name }}</option>
+            </select>
+            <small v-if="errors.categoryId" class="writ-error">{{ errors.categoryId }}</small>
+          </label>
 
-        <label class="field wide">
-          <span>任务描述</span>
-          <textarea v-model="form.description" rows="3"></textarea>
-          <small v-if="errors.description" class="field-error">{{ errors.description }}</small>
-        </label>
+          <fieldset class="writ-field writ-wide writ-issue">
+            <span>关联 Issue</span>
+            <div class="writ-segmented" role="tablist" aria-label="Issue 来源">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="form.issueMode === 'existing'"
+                :class="{ active: form.issueMode === 'existing' }"
+                @click="form.issueMode = 'existing'"
+              >选择已有</button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="form.issueMode === 'new'"
+                :class="{ active: form.issueMode === 'new' }"
+                @click="form.issueMode = 'new'"
+              >新建 Gitea Issue</button>
+            </div>
+            <template v-if="form.issueMode === 'existing'">
+              <select v-model="form.issueId" :disabled="loadingIssues">
+                <option v-if="loadingIssues" value="">加载中…</option>
+                <option v-for="i in issues" :key="i.issueId" :value="String(i.issueId)">
+                  #{{ i.externalIssueId }} · {{ i.title }}
+                </option>
+              </select>
+              <small v-if="!loadingIssues && !issues.length" class="writ-hint">该仓库暂无 OPEN Issue，请切换为新建。</small>
+            </template>
+            <template v-else>
+              <input v-model.trim="form.giteaIssueTitle" placeholder="Issue 标题，如：Add hello world file" />
+              <textarea v-model="form.giteaIssueBody" rows="2" placeholder="Issue 描述（可选）"></textarea>
+            </template>
+            <small v-if="errors.issue" class="writ-error">{{ errors.issue }}</small>
+          </fieldset>
 
-        <label class="field wide">
-          <span>完成标准</span>
-          <textarea v-model="form.completionCriteria" rows="2"></textarea>
-          <small v-if="errors.completionCriteria" class="field-error">{{ errors.completionCriteria }}</small>
-        </label>
+          <label class="writ-field writ-wide">
+            <span>任务标题</span>
+            <input v-model.trim="form.title" placeholder="Hello World" />
+            <small v-if="errors.title" class="writ-error">{{ errors.title }}</small>
+          </label>
 
-        <label class="field">
-          <span>分类</span>
-          <select v-model="form.categoryId">
-            <option v-for="c in categories" :key="c.categoryId" :value="String(c.categoryId)">{{ c.name }}</option>
-          </select>
-          <small v-if="errors.categoryId" class="field-error">{{ errors.categoryId }}</small>
-        </label>
+          <label class="writ-field writ-wide">
+            <span>任务描述</span>
+            <textarea v-model="form.description" rows="3"></textarea>
+            <small v-if="errors.description" class="writ-error">{{ errors.description }}</small>
+          </label>
 
-        <label class="field">
-          <span>难度</span>
-          <select v-model="form.difficulty">
-            <option v-for="d in DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
-          </select>
-        </label>
+          <label class="writ-field writ-wide">
+            <span>完成标准</span>
+            <textarea v-model="form.completionCriteria" rows="2"></textarea>
+            <small v-if="errors.completionCriteria" class="writ-error">{{ errors.completionCriteria }}</small>
+          </label>
 
-        <label class="field">
-          <span>技术栈（逗号分隔）</span>
-          <input v-model.trim="form.techStack" placeholder="Markdown, Git" />
-          <small v-if="errors.techStack" class="field-error">{{ errors.techStack }}</small>
-        </label>
+          <label class="writ-field">
+            <span>难度</span>
+            <select v-model="form.difficulty">
+              <option v-for="d in DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
+            </select>
+          </label>
 
-        <label class="field">
-          <span>预估工时（小时）</span>
-          <input v-model="form.estimatedHours" type="number" min="1" />
-          <small v-if="errors.estimatedHours" class="field-error">{{ errors.estimatedHours }}</small>
-        </label>
+          <label class="writ-field">
+            <span>技术栈（逗号分隔）</span>
+            <input v-model.trim="form.techStack" placeholder="Markdown, Git" />
+            <small v-if="errors.techStack" class="writ-error">{{ errors.techStack }}</small>
+          </label>
 
-        <label class="field">
-          <span>奖励 XP</span>
-          <input v-model="form.rewardXp" type="number" min="1" />
-          <small v-if="errors.rewardXp" class="field-error">{{ errors.rewardXp }}</small>
-        </label>
+          <label class="writ-field">
+            <span>预估工时（小时）</span>
+            <input v-model="form.estimatedHours" type="number" min="1" />
+            <small v-if="errors.estimatedHours" class="writ-error">{{ errors.estimatedHours }}</small>
+          </label>
 
-        <div class="publish-actions">
-          <button class="primary-action" type="submit" :disabled="!canSubmit">
-            {{ submitting ? '发布中…' : '发布并提交审核' }}
-          </button>
-        </div>
+          <label class="writ-field">
+            <span>奖励 XP</span>
+            <input v-model="form.rewardXp" type="number" min="1" />
+            <small v-if="errors.rewardXp" class="writ-error">{{ errors.rewardXp }}</small>
+          </label>
 
-        <p v-if="submitError" class="publish-banner error">{{ submitError }}</p>
-        <div v-if="submitOk" class="publish-banner ok">
-          任务 #{{ submitOk.questId }} 已创建并提交管理员审核。请用 admin 账号到审核台通过后上架。
-        </div>
-      </form>
+          <div class="writ-actions">
+            <button class="primary-action" type="submit" :disabled="!canSubmit">
+              {{ submitting ? '发布中…' : '发布并提交审核' }}
+            </button>
+            <p v-if="submitError" class="writ-banner error">{{ submitError }}</p>
+          </div>
+        </form>
+      </article>
     </section>
   </main>
 </template>
 
 <style scoped>
-.publish-shell {
+.writ-scene {
   display: flex;
   justify-content: center;
-  padding: 32px 16px;
-  background: #f4ecd8;
-  min-height: 100vh;
+  align-items: flex-start;
+  padding: clamp(24px, 6vh, 64px) 18px;
+  background-image: linear-gradient(rgba(8, 4, 2, 0.52), rgba(8, 4, 2, 0.52)),
+    url('../../assets/desk.png');
 }
-.publish-panel {
-  width: min(760px, 100%);
-  background: rgba(255, 250, 236, 0.92);
-  border: 1px solid rgba(98, 55, 20, 0.2);
-  border-radius: 10px;
-  padding: 24px 28px;
-  box-shadow: 0 10px 30px rgba(70, 34, 10, 0.12);
+
+.writ-panel {
+  width: min(820px, 100%);
+  padding: clamp(26px, 4vw, 46px);
+  border: 1px solid var(--paper-deep);
+  border-radius: 12px;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 18% 10%, rgba(255, 250, 232, 0.7), transparent 44%),
+    linear-gradient(168deg, #f4e3b6, #e7cd90);
+  box-shadow: 0 28px 64px rgba(8, 4, 2, 0.55), inset 0 1px 0 rgba(255, 252, 236, 0.55);
 }
-.publish-head h1 {
-  margin: 10px 0 4px;
-  color: #4a250f;
+
+.writ-eyebrow {
+  margin: 0 0 8px;
+  color: #9a5a1c;
+  font-size: 0.76rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
-.publish-sub {
-  margin: 0 0 12px;
-  color: rgba(69, 37, 15, 0.6);
-  font-size: 0.88rem;
+.writ-head {
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(122, 74, 24, 0.24);
 }
-.publish-form {
+.writ-head h1 {
+  color: var(--ink);
+  font-size: clamp(1.7rem, 3.4vw, 2.2rem);
+}
+.writ-sub {
+  margin: 8px 0 0;
+  max-width: 58ch;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.writ-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 16px;
 }
-.field {
+.writ-field {
   display: grid;
   gap: 6px;
   min-width: 0;
-  color: rgba(69, 37, 15, 0.78);
-  font-size: 0.86rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
-.field.wide,
-.issue-field {
+.writ-field.writ-wide,
+.writ-issue {
   grid-column: 1 / -1;
 }
-.field span {
-  font-weight: 600;
+.writ-field > span {
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
-.field input,
-.field select,
-.field textarea {
+.writ-field input,
+.writ-field select,
+.writ-field textarea {
   width: 100%;
-  border: 1px solid rgba(98, 55, 20, 0.26);
-  border-radius: 4px;
-  padding: 9px 10px;
-  color: #3b210f;
-  background: rgba(255, 244, 210, 0.58);
+  border: 1px solid rgba(122, 74, 24, 0.34);
+  border-radius: 5px;
+  padding: 10px 12px;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  background: rgba(255, 250, 234, 0.72);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
-.issue-modes {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 4px;
+.writ-field input::placeholder,
+.writ-field textarea::placeholder {
+  color: rgba(91, 53, 29, 0.5);
 }
-.radio {
+.writ-field input:focus,
+.writ-field select:focus,
+.writ-field textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+  background: rgba(255, 252, 240, 0.94);
+  box-shadow: 0 0 0 3px rgba(216, 154, 50, 0.22);
+}
+.writ-field textarea {
+  resize: vertical;
+}
+
+.writ-segmented {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 400;
+  width: fit-content;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(122, 74, 24, 0.3);
+  border-radius: 7px;
+  background: rgba(122, 74, 24, 0.08);
 }
-.field-error {
-  color: #a23b2c;
+.writ-segmented button {
+  border: none;
+  border-radius: 5px;
+  padding: 6px 14px;
+  color: var(--ink-soft);
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
 }
-.field-hint {
-  color: rgba(69, 37, 15, 0.5);
+.writ-segmented button.active {
+  color: #3a1f0c;
+  background: linear-gradient(180deg, #ffe6a6, #e3b362);
+  box-shadow: 0 2px 6px rgba(80, 40, 8, 0.26);
+}
+
+.writ-error {
+  color: var(--wine);
+  font-size: 0.8rem;
+}
+.writ-hint {
+  color: rgba(91, 53, 29, 0.6);
+  font-size: 0.8rem;
   word-break: break-all;
 }
-.publish-actions {
+
+.writ-actions {
   grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-top: 4px;
 }
-.primary-action {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 6px;
-  background: #7a4a18;
-  color: #fff5e0;
-  font-weight: 600;
-  cursor: pointer;
-}
-.primary-action:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.quiet-action {
-  border: none;
-  background: transparent;
-  color: #7a4a18;
-  cursor: pointer;
-  padding: 0;
-}
-.publish-banner {
-  grid-column: 1 / -1;
+.writ-banner {
   margin: 0;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border-radius: 6px;
-  background: rgba(98, 55, 20, 0.08);
-  color: rgba(69, 37, 15, 0.8);
-  font-size: 0.88rem;
+  font-size: 0.86rem;
 }
-.publish-banner.error {
-  background: rgba(162, 59, 44, 0.12);
-  color: #a23b2c;
+.writ-banner.error {
+  color: var(--wine);
+  border: 1px solid rgba(110, 42, 36, 0.3);
+  background: rgba(110, 42, 36, 0.12);
 }
-.publish-banner.ok {
-  background: rgba(38, 122, 60, 0.14);
-  color: #1f7a3c;
+
+.writ-receipt {
+  position: relative;
+  margin-top: 30px;
+  padding: 46px 28px 28px;
+  text-align: center;
+  border: 1px solid rgba(122, 74, 24, 0.3);
+  border-radius: 10px;
+  background: rgba(255, 248, 228, 0.6);
+}
+.writ-receipt h2 {
+  margin: 10px 0 6px;
+  color: var(--ink);
+}
+.writ-receipt-hint {
+  margin: 0 auto;
+  max-width: 46ch;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.writ-receipt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.writ-skeleton {
+  display: grid;
+  gap: 14px;
+  margin-top: 8px;
+}
+.sk {
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    rgba(122, 74, 24, 0.1),
+    rgba(122, 74, 24, 0.22),
+    rgba(122, 74, 24, 0.1)
+  );
+  background-size: 200% 100%;
+  animation: writ-shimmer 1.3s ease-in-out infinite;
+}
+.sk-row {
+  height: 40px;
+}
+@keyframes writ-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .writ-form {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
