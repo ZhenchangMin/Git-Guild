@@ -1,6 +1,11 @@
 spring:
   profiles:
     active: dev
+  # 本地开发：自动从仓库根 .env 载入 GITEA_TOKEN / MYSQL_* 等（optional：文件缺失则忽略）。
+  # 避免“启动时没传 GITEA_TOKEN → Gitea 写操作全部 401（代码托管平台请求失败）”这个坑。
+  # 生产用真实环境变量注入，不依赖此文件。
+  config:
+    import: optional:file:../.env[.properties]
 
 ---
 # ── 开发环境（连接本地 Docker Compose 服务）──────────────────────────────────
