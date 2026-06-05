@@ -146,7 +146,8 @@ class QuestControllerTest {
                         QuestStatus.IN_PROGRESS,
                         "ACTIVE",
                         "task/quest-5001-assignment-7001-adventurer",
-                        OffsetDateTime.parse("2026-06-02T10:30:00+08:00")));
+                        OffsetDateTime.parse("2026-06-02T10:30:00+08:00"),
+                        "http://spike-admin:test-token@localhost:3000/spike-admin/repo.git"));
 
         mockMvc.perform(post("/api/v1/quests/5001/assignments")
                         .principal(authentication(3001L, "ROLE_BEGINNER")))

@@ -96,7 +96,8 @@ public final class QuestResponses {
             QuestStatus questStatus,
             String assignmentStatus,
             String taskBranch,
-            OffsetDateTime acceptedAt) {
+            OffsetDateTime acceptedAt,
+            String cloneUrl) {
     }
 
     public record MyAssignmentResponse(

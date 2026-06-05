@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
+import com.gitguild.backend.codehost.gitea.GiteaProperties;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
@@ -93,6 +94,7 @@ public class QuestServiceImpl implements QuestService {
     private final CodePullRequestRepository pullRequestRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final GiteaProperties giteaProperties;
 
     public QuestServiceImpl(
             QuestRepository questRepository,
@@ -105,7 +107,8 @@ public class QuestServiceImpl implements QuestService {
             QuestTaskBranchService taskBranchService,
             CodePullRequestRepository pullRequestRepository,
             UserRepository userRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            GiteaProperties giteaProperties) {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.categoryRepository = categoryRepository;
@@ -117,6 +120,7 @@ public class QuestServiceImpl implements QuestService {
         this.pullRequestRepository = pullRequestRepository;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
+        this.giteaProperties = giteaProperties;
     }
 
     @Override
@@ -238,7 +242,8 @@ public class QuestServiceImpl implements QuestService {
                 quest.getStatus(),
                 assignment.getStatus().name(),
                 assignment.getTaskBranch(),
-                assignment.getAcceptedAt());
+                assignment.getAcceptedAt(),
+                buildCredentialedCloneUrl(quest));
     }
 
     @Override
@@ -516,7 +521,32 @@ public class QuestServiceImpl implements QuestService {
                 quest.getStatus(),
                 assignment.getStatus().name(),
                 taskBranch,
-                assignment.getAcceptedAt());
+                assignment.getAcceptedAt(),
+                buildCredentialedCloneUrl(quest));
+    }
+
+    /**
+     * 构造带 admin 凭据的克隆地址，供接取者本地直接 clone + push（当前为单 admin Gitea 模型）。
+     * 形如 {@code http://<admin>:<token>@host/owner/repo.git}；token 缺失时退回明文 sourceUrl。
+     */
+    private String buildCredentialedCloneUrl(Quest quest) {
+        CodeRepository repository = quest.getRepository();
+        String sourceUrl = repository != null ? repository.getSourceUrl() : null;
+        if (sourceUrl == null || sourceUrl.isBlank()) {
+            return null;
+        }
+        String token = giteaProperties.token();
+        int schemeIdx = sourceUrl.indexOf("://");
+        if (token == null || token.isBlank() || schemeIdx < 0) {
+            return sourceUrl;
+        }
+        String scheme = sourceUrl.substring(0, schemeIdx + 3);
+        String hostAndPath = sourceUrl.substring(schemeIdx + 3);
+        String user = (giteaProperties.adminUsername() == null || giteaProperties.adminUsername().isBlank())
+                ? "git"
+                : giteaProperties.adminUsername();
+        String withCreds = scheme + user + ":" + token + "@" + hostAndPath;
+        return withCreds.endsWith(".git") ? withCreds : withCreds + ".git";
     }
 
     private QuestResponses.MyAssignmentResponse toMyAssignmentResponse(QuestAssignment assignment) {

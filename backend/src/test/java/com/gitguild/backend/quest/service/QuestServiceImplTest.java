@@ -92,7 +92,8 @@ class QuestServiceImplTest {
                 taskBranchService,
                 pullRequestRepository,
                 userRepository,
-                new ObjectMapper());
+                new ObjectMapper(),
+                new com.gitguild.backend.codehost.gitea.GiteaProperties("http://localhost:3000", "test-token", "spike-admin"));
     }
 
     @Test
