@@ -1,11 +1,14 @@
 package com.gitguild.backend.codehost.gitea;
 
 import com.gitguild.backend.codehost.gitea.dto.BranchInfo;
+import com.gitguild.backend.codehost.gitea.dto.FileCommitInfo;
 import com.gitguild.backend.codehost.gitea.dto.IssueInfo;
 import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.gitea.dto.RepositoryInfo;
 import com.gitguild.backend.common.BusinessException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -24,14 +27,12 @@ import org.springframework.web.client.RestClient;
  *   <li>{@code merged} 字段为 boolean 而非可空时间戳的 Gitea 特有行为</li>
  * </ul>
  *
- * <p>使用系统级 admin token 认证，与具体 Adventurer 身份无关。
- * token 通过 {@link GiteaProperties} 从环境变量注入；token 为空时应用可启动，
- * 但所有调用将收到 401（见已知问题清单 P4-016 问题2）。
+ * <p>使用系统级 admin token 认证，读写统一。token 通过 {@link GiteaProperties}
+ * 从环境变量注入；token 为空时应用可启动，但所有调用将收到 401。
  *
- * <p><b>边界错误模式：</b>Gitea 返回 4xx 或网络不可达时，不再透传为 HTTP 500，
- * 而是经 {@link #execute} 统一转换为带业务码的 {@link BusinessException}
- * （{@code CODE_HOST_RESOURCE_NOT_FOUND} / {@code CODE_HOST_UNAVAILABLE}），
- * 兑现已知问题清单 P4-016 问题1 的修复承诺。
+ * <p><b>边界错误模式：</b>Gitea 返回 4xx 或网络不可达时，经 {@link #execute} 统一转换为
+ * 带业务码的 {@link BusinessException}（{@code CODE_HOST_RESOURCE_NOT_FOUND} /
+ * {@code CODE_HOST_UNAVAILABLE}），兑现已知问题清单 P4-016 问题1 的修复承诺。
  */
 @Component
 public class GiteaAdapterImpl implements GiteaAdapter {
@@ -94,6 +95,110 @@ public class GiteaAdapterImpl implements GiteaAdapter {
         return Arrays.stream(body).map(this::toPrInfo).toList();
     }
 
+    @Override
+    public IssueInfo createIssue(String owner, String repo, String title, String body) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("title", title);
+        if (body != null && !body.isBlank()) {
+            reqBody.put("body", body);
+        }
+        Map result = execute(() -> client.post()
+                .uri("/repos/{owner}/{repo}/issues", owner, repo)
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "repo=" + owner + "/" + repo + " create issue");
+        return toIssueInfo(result);
+    }
+
+    @Override
+    public BranchInfo createBranch(String owner, String repo, String newBranchName, String oldBranchName) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("new_branch_name", newBranchName);
+        if (oldBranchName != null && !oldBranchName.isBlank()) {
+            reqBody.put("old_branch_name", oldBranchName);
+        }
+        Map body = execute(() -> client.post()
+                .uri("/repos/{owner}/{repo}/branches", owner, repo)
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "repo=" + owner + "/" + repo + " create branch " + newBranchName);
+        return toBranchInfo(body);
+    }
+
+    @Override
+    public RepositoryInfo createRepository(String name, String description) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("name", name);
+        reqBody.put("private", false);
+        reqBody.put("default_branch", "main");
+        reqBody.put("auto_init", true);
+        if (description != null && !description.isBlank()) {
+            reqBody.put("description", description);
+        }
+        Map body = execute(() -> client.post()
+                .uri("/user/repos")
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "create repo name=" + name);
+        return toRepositoryInfo(body);
+    }
+
+    @Override
+    public FileCommitInfo createFile(
+            String owner,
+            String repo,
+            String branch,
+            String path,
+            String message,
+            String content) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("branch", branch);
+        reqBody.put("message", message);
+        reqBody.put("content", Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8)));
+        Map body = execute(() -> client.post()
+                .uri("/repos/{owner}/{repo}/contents/{path}", owner, repo, path)
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "repo=" + owner + "/" + repo + " create file " + path);
+        return toFileCommitInfo(body, branch, path);
+    }
+
+    @Override
+    public PrInfo createPullRequest(
+            String owner,
+            String repo,
+            String title,
+            String body,
+            String sourceBranch,
+            String targetBranch) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("title", title);
+        reqBody.put("head", sourceBranch);
+        reqBody.put("base", targetBranch);
+        if (body != null && !body.isBlank()) {
+            reqBody.put("body", body);
+        }
+        Map result = execute(() -> client.post()
+                .uri("/repos/{owner}/{repo}/pulls", owner, repo)
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "repo=" + owner + "/" + repo + " create pull " + sourceBranch);
+        return toPrInfo(result);
+    }
+
+    @Override
+    public PrInfo mergePullRequest(String owner, String repo, int prNumber) {
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("Do", "merge");
+        reqBody.put("delete_branch_after_merge", false);
+        execute(() -> client.post()
+                .uri("/repos/{owner}/{repo}/pulls/{index}/merge", owner, repo, prNumber)
+                .body(reqBody)
+                .retrieve()
+                .toBodilessEntity(), "repo=" + owner + "/" + repo + " merge pull #" + prNumber);
+        return getPullRequest(owner, repo, prNumber);
+    }
+
     /**
      * 统一执行 Gitea 调用并把传输层异常翻译为业务异常。
      *
@@ -113,11 +218,19 @@ public class GiteaAdapterImpl implements GiteaAdapter {
                 throw new BusinessException("CODE_HOST_RESOURCE_NOT_FOUND", HttpStatus.NOT_FOUND,
                         "代码托管资源不存在", resource);
             }
+            if (status == 409) {
+                throw new BusinessException("CODE_HOST_RESOURCE_CONFLICT", HttpStatus.CONFLICT,
+                        "代码托管资源已存在", resource);
+            }
             throw new BusinessException("CODE_HOST_UNAVAILABLE", HttpStatus.BAD_GATEWAY,
                     "代码托管平台请求失败", resource + " -> HTTP " + status);
         } catch (ResourceAccessException e) {
             throw new BusinessException("CODE_HOST_UNAVAILABLE", HttpStatus.BAD_GATEWAY,
                     "代码托管平台不可达", resource);
+        } catch (IllegalArgumentException e) {
+            // baseUrl 未配置时 RestClient 生成无 scheme 的 URI 抛此异常；视为平台不可用
+            throw new BusinessException("CODE_HOST_UNAVAILABLE", HttpStatus.BAD_GATEWAY,
+                    "代码托管平台未正确配置", resource + " -> " + e.getMessage());
         }
     }
 
@@ -135,6 +248,7 @@ public class GiteaAdapterImpl implements GiteaAdapter {
         return new IssueInfo(
                 toLong(m.get("number")),
                 (String) m.get("title"),
+                (String) m.get("body"),
                 (String) m.get("state"),
                 (String) m.get("html_url"));
     }
@@ -159,6 +273,14 @@ public class GiteaAdapterImpl implements GiteaAdapter {
                 baseBranch,
                 (String) m.get("html_url"),
                 authorLogin);
+    }
+
+    @SuppressWarnings("unchecked")
+    private FileCommitInfo toFileCommitInfo(Map m, String branch, String path) {
+        Map<String, Object> commit = (Map<String, Object>) m.get("commit");
+        String commitSha = commit != null ? (String) commit.get("sha") : null;
+        String htmlUrl = commit != null ? (String) commit.get("html_url") : null;
+        return new FileCommitInfo(commitSha, branch, path, htmlUrl);
     }
 
     @SuppressWarnings("unchecked")

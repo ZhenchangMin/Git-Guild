@@ -6,9 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
+import com.gitguild.backend.codehost.gitea.GiteaProperties;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
+import com.gitguild.backend.codehost.service.CodeIssueService;
+import com.gitguild.backend.quest.service.QuestTaskBranchService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Quest;
@@ -45,6 +48,8 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -55,6 +60,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class QuestServiceImpl implements QuestService {
+
+    private static final Logger log = LoggerFactory.getLogger(QuestServiceImpl.class);
 
     private static final List<QuestStatus> ACTIVE_ISSUE_QUEST_STATUSES = List.of(
             QuestStatus.DRAFT,
@@ -82,9 +89,12 @@ public class QuestServiceImpl implements QuestService {
     private final QuestTagRepository tagRepository;
     private final CodeRepositoryRepository codeRepositoryRepository;
     private final CodeIssueRepository issueRepository;
+    private final CodeIssueService codeIssueService;
+    private final QuestTaskBranchService taskBranchService;
     private final CodePullRequestRepository pullRequestRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    private final GiteaProperties giteaProperties;
 
     public QuestServiceImpl(
             QuestRepository questRepository,
@@ -93,18 +103,24 @@ public class QuestServiceImpl implements QuestService {
             QuestTagRepository tagRepository,
             CodeRepositoryRepository codeRepositoryRepository,
             CodeIssueRepository issueRepository,
+            CodeIssueService codeIssueService,
+            QuestTaskBranchService taskBranchService,
             CodePullRequestRepository pullRequestRepository,
             UserRepository userRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            GiteaProperties giteaProperties) {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.categoryRepository = categoryRepository;
         this.tagRepository = tagRepository;
         this.codeRepositoryRepository = codeRepositoryRepository;
         this.issueRepository = issueRepository;
+        this.codeIssueService = codeIssueService;
+        this.taskBranchService = taskBranchService;
         this.pullRequestRepository = pullRequestRepository;
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
+        this.giteaProperties = giteaProperties;
     }
 
     @Override
@@ -145,12 +161,17 @@ public class QuestServiceImpl implements QuestService {
         quest.addTags(tags);
         Quest saved = questRepository.save(quest);
 
+        CodeIssue savedIssue = saved.getIssue();
+        CodeRepository savedRepo = saved.getRepository();
         return new CreateQuestResponse(
                 saved.getQuestId(),
                 saved.getTitle(),
                 saved.getStatus(),
-                saved.getRepository().getRepositoryId(),
-                saved.getIssue().getIssueId(),
+                savedRepo.getRepositoryId(),
+                savedIssue.getIssueId(),
+                savedIssue.getExternalIssueId(),
+                savedIssue.getExternalUrl(),
+                savedRepo.getDefaultBranch(),
                 saved.getDifficulty(),
                 saved.getRewardXp(),
                 saved.getCreatedAt());
@@ -220,7 +241,9 @@ public class QuestServiceImpl implements QuestService {
                 new QuestResponses.UserBrief(assignee.getUserId(), assignee.getUsername()),
                 quest.getStatus(),
                 assignment.getStatus().name(),
-                assignment.getAcceptedAt());
+                assignment.getTaskBranch(),
+                assignment.getAcceptedAt(),
+                buildCredentialedCloneUrl(quest));
     }
 
     @Override
@@ -282,8 +305,8 @@ public class QuestServiceImpl implements QuestService {
                 quest.getDifficulty(),
                 quest.getRewardXp(),
                 techStack,
-                new RepositoryBrief(repo.getRepositoryId(), repo.getName(), repo.getSyncStatus()),
-                new QuestResponses.IssueBrief(issue.getIssueId(), issue.getExternalIssueId(), issue.getTitle(), issue.getStatus()),
+                new RepositoryBrief(repo.getRepositoryId(), repo.getName(), repo.getDefaultBranch(), repo.getSyncStatus()),
+                new QuestResponses.IssueBrief(issue.getIssueId(), issue.getExternalIssueId(), issue.getTitle(), issue.getStatus(), issue.getExternalUrl()),
                 prBrief);
     }
 
@@ -380,6 +403,7 @@ public class QuestServiceImpl implements QuestService {
                 new QuestResponses.RepositoryBrief(
                         quest.getRepository().getRepositoryId(),
                         quest.getRepository().getName(),
+                        quest.getRepository().getDefaultBranch(),
                         quest.getRepository().getSyncStatus()),
                 quest.getCreatedAt());
     }
@@ -403,8 +427,8 @@ public class QuestServiceImpl implements QuestService {
                 quest.getRewardXp(),
                 quest.getStatus(),
                 new QuestResponses.UserBrief(quest.getPublisher().getUserId(), quest.getPublisher().getUsername()),
-                new QuestResponses.RepositoryBrief(quest.getRepository().getRepositoryId(), quest.getRepository().getName(), quest.getRepository().getSyncStatus()),
-                new QuestResponses.IssueBrief(quest.getIssue().getIssueId(), quest.getIssue().getExternalIssueId(), quest.getIssue().getTitle(), quest.getIssue().getStatus()),
+                new QuestResponses.RepositoryBrief(quest.getRepository().getRepositoryId(), quest.getRepository().getName(), quest.getRepository().getDefaultBranch(), quest.getRepository().getSyncStatus()),
+                new QuestResponses.IssueBrief(quest.getIssue().getIssueId(), quest.getIssue().getExternalIssueId(), quest.getIssue().getTitle(), quest.getIssue().getStatus(), quest.getIssue().getExternalUrl()),
                 new QuestResponses.CategoryBrief(quest.getCategory().getCategoryId(), quest.getCategory().getName()),
                 tagResponses(quest),
                 assignment,
@@ -456,4 +480,100 @@ public class QuestServiceImpl implements QuestService {
         }
         return "createdAt";
     }
+
+    @Override
+    public List<QuestResponses.MyAssignmentResponse> listMyActiveAssignments(Long assigneeId) {
+        findUser(assigneeId);
+        return assignmentRepository.findByAssigneeUserIdAndStatus(assigneeId, AssignmentStatus.ACTIVE)
+                .stream()
+                .map(this::toMyAssignmentResponse)
+                .toList();
+    }
+
+    @Override
+    public AssignmentResponse ensureTaskBranch(Long questId, Long assigneeId) {
+        User assignee = findUser(assigneeId);
+        Quest quest = findQuest(questId);
+        QuestAssignment assignment = assignmentRepository
+                .findByQuestAndAssigneeUserIdAndStatus(quest, assigneeId, AssignmentStatus.ACTIVE)
+                .orElseThrow(() -> new BusinessException("ASSIGNMENT_NOT_FOUND", HttpStatus.NOT_FOUND,
+                        "未找到进行中的接取记录", "questId=" + questId + ", assigneeId=" + assigneeId));
+        String taskBranch = taskBranchService.ensureTaskBranch(assignment);
+        return toAssignmentResponse(assignment, quest, assignee, taskBranch);
+    }
+
+    private String tryEnsureTaskBranch(QuestAssignment assignment) {
+        try {
+            return taskBranchService.ensureTaskBranch(assignment);
+        } catch (BusinessException ex) {
+            log.warn("接取后创建 task branch 失败 assignmentId={}, code={}",
+                    assignment.getAssignmentId(), ex.getCode());
+            return null;
+        }
+    }
+
+    private AssignmentResponse toAssignmentResponse(
+            QuestAssignment assignment, Quest quest, User assignee, String taskBranch) {
+        return new AssignmentResponse(
+                assignment.getAssignmentId(),
+                quest.getQuestId(),
+                new QuestResponses.UserBrief(assignee.getUserId(), assignee.getUsername()),
+                quest.getStatus(),
+                assignment.getStatus().name(),
+                taskBranch,
+                assignment.getAcceptedAt(),
+                buildCredentialedCloneUrl(quest));
+    }
+
+    /**
+     * 构造带 admin 凭据的克隆地址，供接取者本地直接 clone + push（当前为单 admin Gitea 模型）。
+     * 形如 {@code http://<admin>:<token>@host/owner/repo.git}；token 缺失时退回明文 sourceUrl。
+     */
+    private String buildCredentialedCloneUrl(Quest quest) {
+        CodeRepository repository = quest.getRepository();
+        String sourceUrl = repository != null ? repository.getSourceUrl() : null;
+        if (sourceUrl == null || sourceUrl.isBlank()) {
+            return null;
+        }
+        String token = giteaProperties.token();
+        int schemeIdx = sourceUrl.indexOf("://");
+        if (token == null || token.isBlank() || schemeIdx < 0) {
+            return sourceUrl;
+        }
+        String scheme = sourceUrl.substring(0, schemeIdx + 3);
+        String hostAndPath = sourceUrl.substring(schemeIdx + 3);
+        String user = (giteaProperties.adminUsername() == null || giteaProperties.adminUsername().isBlank())
+                ? "git"
+                : giteaProperties.adminUsername();
+        String withCreds = scheme + user + ":" + token + "@" + hostAndPath;
+        return withCreds.endsWith(".git") ? withCreds : withCreds + ".git";
+    }
+
+    private QuestResponses.MyAssignmentResponse toMyAssignmentResponse(QuestAssignment assignment) {
+        Quest quest = assignment.getQuest();
+        return new QuestResponses.MyAssignmentResponse(
+                assignment.getAssignmentId(),
+                quest.getQuestId(),
+                quest.getTitle(),
+                quest.getCompletionCriteria(),
+                quest.getDifficulty(),
+                fromJson(quest.getTechStackJson()),
+                quest.getRewardXp(),
+                quest.getStatus(),
+                assignment.getStatus().name(),
+                assignment.getTaskBranch(),
+                assignment.getAcceptedAt(),
+                new QuestResponses.RepositoryBrief(
+                        quest.getRepository().getRepositoryId(),
+                        quest.getRepository().getName(),
+                        quest.getRepository().getDefaultBranch(),
+                        quest.getRepository().getSyncStatus()),
+                new QuestResponses.IssueBrief(
+                        quest.getIssue().getIssueId(),
+                        quest.getIssue().getExternalIssueId(),
+                        quest.getIssue().getTitle(),
+                        quest.getIssue().getStatus(),
+                        quest.getIssue().getExternalUrl()));
+    }
+
 }

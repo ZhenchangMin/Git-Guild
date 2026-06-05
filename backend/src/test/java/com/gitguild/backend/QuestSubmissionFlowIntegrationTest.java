@@ -1,6 +1,7 @@
 package com.gitguild.backend;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -13,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gitguild.backend.codehost.gitea.GiteaAdapter;
 import com.gitguild.backend.codehost.gitea.dto.IssueInfo;
 import com.gitguild.backend.codehost.gitea.dto.PrInfo;
+import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.growth.repository.ContributionRecordRepository;
 import com.gitguild.backend.growth.repository.GrowthProfileRepository;
 import com.gitguild.backend.growth.repository.XpTransactionRepository;
@@ -41,6 +43,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -93,7 +96,7 @@ class QuestSubmissionFlowIntegrationTest {
         long repositoryId = data(repositoryResult).get("repositoryId").asLong();
 
         when(giteaAdapter.listIssues("guild", "flow-" + suffix))
-                .thenReturn(List.of(new IssueInfo(1, "Implement integration flow", "open",
+                .thenReturn(List.of(new IssueInfo(1, "Implement integration flow", "Integration flow body", "open",
                         "http://localhost:3000/guild/flow-" + suffix + "/issues/1")));
         MvcResult issueSyncResult = mockMvc.perform(post("/api/v1/repositories/" + repositoryId + "/sync")
                         .header("Authorization", bearer(maintainer.token())))
@@ -145,29 +148,37 @@ class QuestSubmissionFlowIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.questStatus").value("IN_PROGRESS"));
 
-        when(giteaAdapter.listPulls("guild", "flow-" + suffix))
-                .thenReturn(List.of(new PrInfo(2, "Integration PR", "closed", true,
-                        "feature/integration-flow", "main",
-                        "http://localhost:3000/guild/flow-" + suffix + "/pulls/2",
-                        adventurer.username())));
         MvcResult draftResult = mockMvc.perform(get("/api/v1/quests/" + questId + "/submission-draft")
                         .header("Authorization", bearer(adventurer.token())))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pullRequests[0].status").value("MERGED"))
+                .andExpect(jsonPath("$.data.branch").exists())
+                .andExpect(jsonPath("$.data.pullRequests.length()").value(0))
                 .andReturn();
-        long pullRequestId = data(draftResult).get("pullRequests").get(0).get("pullRequestId").asLong();
+        String taskBranch = data(draftResult).get("branch").asText();
+
+        when(giteaAdapter.createPullRequest(
+                anyString(), anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(new PrInfo(2, "Integration PR", "open", false,
+                        taskBranch, "main",
+                        "http://localhost:3000/guild/flow-" + suffix + "/pulls/2",
+                        adventurer.username()));
+        when(giteaAdapter.mergePullRequest("guild", "flow-" + suffix, 2))
+                .thenReturn(new PrInfo(2, "Integration PR", "closed", true,
+                        taskBranch, "main",
+                        "http://localhost:3000/guild/flow-" + suffix + "/pulls/2",
+                        adventurer.username()));
 
         MvcResult submissionResult = mockMvc.perform(post("/api/v1/submissions")
                         .header("Authorization", bearer(adventurer.token()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
                                 "questId", questId,
-                                "pullRequestId", pullRequestId,
                                 "description", "Implemented and verified the integration flow.",
                                 "checklist", List.of("tests pass", "PR merged"),
                                 "evidenceUrls", List.of("http://localhost:3000/guild/flow-" + suffix + "/pulls/2")))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.status").value("PENDING_REVIEW"))
+                .andExpect(jsonPath("$.data.pullRequestId").exists())
                 .andReturn();
         long submissionId = data(submissionResult).get("submissionId").asLong();
 
@@ -273,24 +284,29 @@ class QuestSubmissionFlowIntegrationTest {
                         .header("Authorization", bearer(adventurer.token())))
                 .andExpect(status().isCreated());
 
-        when(giteaAdapter.listPulls("guild", publishedQuest.repoName()))
-                .thenReturn(List.of(new PrInfo(3, "Open PR", "open", false,
-                        "feature/open-pr", "main",
-                        "http://localhost:3000/guild/" + publishedQuest.repoName() + "/pulls/3",
-                        adventurer.username())));
         MvcResult draftResult = mockMvc.perform(get("/api/v1/quests/" + publishedQuest.questId() + "/submission-draft")
                         .header("Authorization", bearer(adventurer.token())))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.pullRequests[0].status").value("OPEN"))
+                .andExpect(jsonPath("$.data.branch").exists())
+                .andExpect(jsonPath("$.data.pullRequests.length()").value(0))
                 .andReturn();
-        long pullRequestId = data(draftResult).get("pullRequests").get(0).get("pullRequestId").asLong();
+        String taskBranch = data(draftResult).get("branch").asText();
+
+        when(giteaAdapter.createPullRequest(
+                anyString(), anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(new PrInfo(3, "Open PR", "open", false,
+                        taskBranch, "main",
+                        "http://localhost:3000/guild/" + publishedQuest.repoName() + "/pulls/3",
+                        adventurer.username()));
+        when(giteaAdapter.mergePullRequest("guild", publishedQuest.repoName(), 3))
+                .thenThrow(new BusinessException("CODE_HOST_RESOURCE_CONFLICT", HttpStatus.CONFLICT,
+                        "merge conflict", "test merge conflict"));
 
         MvcResult submissionResult = mockMvc.perform(post("/api/v1/submissions")
                         .header("Authorization", bearer(adventurer.token()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of(
                                 "questId", publishedQuest.questId(),
-                                "pullRequestId", pullRequestId,
                                 "description", "Work is submitted before merge."))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.status").value("PENDING_REVIEW"))
@@ -308,7 +324,7 @@ class QuestSubmissionFlowIntegrationTest {
                                         "comment", "PR must be merged first",
                                         "passed", false)))) ))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("PR_NOT_MERGED"));
+                .andExpect(jsonPath("$.code").value("PR_MERGE_CONFLICT"));
 
         assertThat(questRepository.findById(publishedQuest.questId()).orElseThrow().getStatus())
                 .isEqualTo(QuestStatus.IN_REVIEW);
@@ -334,7 +350,7 @@ class QuestSubmissionFlowIntegrationTest {
         long repositoryId = data(repositoryResult).get("repositoryId").asLong();
 
         when(giteaAdapter.listIssues("guild", repoName))
-                .thenReturn(List.of(new IssueInfo(1, "Issue " + suffix, "open",
+                .thenReturn(List.of(new IssueInfo(1, "Issue " + suffix, "Issue body " + suffix, "open",
                         "http://localhost:3000/guild/" + repoName + "/issues/1")));
         mockMvc.perform(post("/api/v1/repositories/" + repositoryId + "/sync")
                         .header("Authorization", bearer(maintainer.token())))

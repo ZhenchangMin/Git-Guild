@@ -5,7 +5,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { questApi } from '../../api/questApi'
 import submissionCounterImg from '../../assets/submission-counter-clerk-v0.png'
 import SubmissionCounter from '../../components/SubmissionCounter.vue'
-import { questDetails } from '../../data/quests'
 import { sessionStore } from '../../stores/sessionStore'
 
 const route = useRoute()
@@ -14,38 +13,14 @@ const router = useRouter()
 const quest = ref(null)
 const questLoading = ref(false)
 
-const questCatalog = {
-  'QST-0412': { title: 'Issue 同步状态页', difficulty: 'C', stack: 'Vue / Spring Boot', reward: '180 XP' },
-  'QST-0427': { title: '重构成果提交流程', difficulty: 'D', stack: 'Vue / REST API', reward: '240 XP' },
-  'QST-0431': { title: '仓库导入失败提示页', difficulty: 'C', stack: 'Vue / Gitea', reward: '160 XP' },
-  'QST-0438': { title: '新手执行清单', difficulty: 'B', stack: 'Markdown / Vue', reward: '120 XP' },
-  'QST-0440': { title: '任务筛选条件保持', difficulty: 'C', stack: 'Vue / Local State', reward: '150 XP' },
-  'QST-0444': { title: '审核反馈归档', difficulty: 'D', stack: 'Spring Boot / Vue', reward: '260 XP' },
-}
-
 function extractQuestNumericId(value) {
   const match = String(value ?? '').match(/\d+/)
   return match ? Number(match[0]) : null
 }
 
-function formatQuestKey(value) {
-  const numericId = extractQuestNumericId(value)
-  if (!numericId) return 'QST-0427'
-  return `QST-${String(numericId).padStart(4, '0')}`
-}
-
-const fallbackQuest = computed(() => {
-  const questId = formatQuestKey(route.query.questId)
-  const summary = questCatalog[questId] ?? questCatalog['QST-0427']
-  return {
-    id: questId,
-    numericId: extractQuestNumericId(questId),
-    ...summary,
-    detail: questDetails[questId] ?? questDetails['QST-0427'],
-  }
-})
-
-const activeQuest = computed(() => quest.value ?? fallbackQuest.value)
+// 只展示后端真实委托；无 questId / 加载失败时为 null，
+// SubmissionCounter 组件自身已处理“未关联任务”空态。
+const activeQuest = computed(() => quest.value)
 
 async function fetchQuest(rawQuestId) {
   const questId = extractQuestNumericId(rawQuestId)

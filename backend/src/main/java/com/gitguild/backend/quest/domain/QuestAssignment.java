@@ -37,6 +37,9 @@ public class QuestAssignment {
     @Column(nullable = false, length = 32)
     private AssignmentStatus status;
 
+    @Column(name = "task_branch", length = 256)
+    private String taskBranch;
+
     @Column(name = "accepted_at", nullable = false)
     private OffsetDateTime acceptedAt;
 
@@ -89,6 +92,14 @@ public class QuestAssignment {
 
     public OffsetDateTime getAcceptedAt() {
         return acceptedAt;
+    }
+
+    public String getTaskBranch() {
+        return taskBranch;
+    }
+
+    public void setTaskBranch(String taskBranch) {
+        this.taskBranch = taskBranch;
     }
 
     public void cancel() {

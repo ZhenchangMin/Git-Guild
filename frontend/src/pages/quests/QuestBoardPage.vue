@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import questBoardImg from '../../assets/quest board.png'
-import { questCommissions, questFilterGroups } from '../../data/questBoard'
+import { questFilterGroups } from '../../data/questBoard'
 import { sessionStore } from '../../stores/sessionStore'
 
 const router = useRouter()
@@ -335,9 +335,8 @@ async function loadRecommendedQuests() {
       await questApi.list({ page: 1, size: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
     )
     const questListItems = Array.isArray(questListData.items) ? questListData.items : []
-    const baseQuests = questListItems.length > 0
-      ? questListItems.map(normalizeQuestSummary)
-      : [...questCommissions]
+    // 只展示后端真实委托；无数据即真实空态（模板已有“空空如也”空态）。
+    const baseQuests = questListItems.map(normalizeQuestSummary)
     const recommendationPayload = await questApi
       .recommendations({
         strategy: 'tech-difficulty',
@@ -356,10 +355,10 @@ async function loadRecommendedQuests() {
       recommendationError.value = '推荐接口暂时不可用，当前按默认排序显示'
     }
   } catch {
-    questSource.value = [...questCommissions]
+    questSource.value = []
     recommendationMeta.value = null
     usingRecommendedSource.value = false
-    recommendationError.value = '推荐接口暂时不可用，当前显示默认委托清单'
+    recommendationError.value = '悬赏板加载失败，请稍后重试。'
   } finally {
     isRecommendationLoading.value = false
   }

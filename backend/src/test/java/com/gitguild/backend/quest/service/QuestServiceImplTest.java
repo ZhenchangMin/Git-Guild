@@ -14,6 +14,7 @@ import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
+import com.gitguild.backend.codehost.service.CodeIssueService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Difficulty;
@@ -30,6 +31,7 @@ import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestCategoryRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.quest.repository.QuestTagRepository;
+import com.gitguild.backend.quest.service.QuestTaskBranchService;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
@@ -66,6 +68,10 @@ class QuestServiceImplTest {
     @Mock
     private CodeIssueRepository issueRepository;
     @Mock
+    private CodeIssueService codeIssueService;
+    @Mock
+    private QuestTaskBranchService taskBranchService;
+    @Mock
     private UserRepository userRepository;
 
     @Mock
@@ -82,9 +88,12 @@ class QuestServiceImplTest {
                 tagRepository,
                 codeRepositoryRepository,
                 issueRepository,
+                codeIssueService,
+                taskBranchService,
                 pullRequestRepository,
                 userRepository,
-                new ObjectMapper());
+                new ObjectMapper(),
+                new com.gitguild.backend.codehost.gitea.GiteaProperties("http://localhost:3000", "test-token", "spike-admin"));
     }
 
     @Test

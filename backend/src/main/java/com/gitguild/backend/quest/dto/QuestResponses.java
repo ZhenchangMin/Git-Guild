@@ -14,10 +14,10 @@ public final class QuestResponses {
     public record UserBrief(Long userId, String username) {
     }
 
-    public record RepositoryBrief(Long repositoryId, String name, String syncStatus) {
+    public record RepositoryBrief(Long repositoryId, String name, String defaultBranch, String syncStatus) {
     }
 
-    public record IssueBrief(Long issueId, String externalIssueId, String title, String status) {
+    public record IssueBrief(Long issueId, String externalIssueId, String title, String status, String externalUrl) {
     }
 
     public record CategoryBrief(Long categoryId, String name) {
@@ -38,6 +38,9 @@ public final class QuestResponses {
             QuestStatus status,
             Long repositoryId,
             Long issueId,
+            String externalIssueId,
+            String externalIssueUrl,
+            String defaultBranch,
             Difficulty difficulty,
             Integer rewardXp,
             OffsetDateTime createdAt) {
@@ -92,7 +95,25 @@ public final class QuestResponses {
             UserBrief assignee,
             QuestStatus questStatus,
             String assignmentStatus,
-            OffsetDateTime acceptedAt) {
+            String taskBranch,
+            OffsetDateTime acceptedAt,
+            String cloneUrl) {
+    }
+
+    public record MyAssignmentResponse(
+            Long assignmentId,
+            Long questId,
+            String title,
+            String completionCriteria,
+            Difficulty difficulty,
+            List<String> techStack,
+            Integer rewardXp,
+            QuestStatus questStatus,
+            String assignmentStatus,
+            String taskBranch,
+            OffsetDateTime acceptedAt,
+            RepositoryBrief repository,
+            IssueBrief issue) {
     }
 
     public record AdminReviewResponse(

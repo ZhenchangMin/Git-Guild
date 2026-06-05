@@ -24,16 +24,9 @@ export const submissionFields = [
   },
   {
     id: 'branch',
-    label: '提交分支',
-    ariaLabel: '提交分支',
-    placeholder: 'feature/your-branch',
-  },
-  {
-    id: 'pull-request',
-    label: 'PR 链接',
-    ariaLabel: 'PR 链接',
-    placeholder: 'https://…/pull/123',
-    wide: true,
+    label: '任务分支（自动）',
+    ariaLabel: '任务分支',
+    placeholder: '接取后自动创建',
   },
   {
     id: 'submission-note',
@@ -48,8 +41,7 @@ export const submissionFields = [
 
 export const submissionChecks = [
   '已关联接取的委托编号',
-  'PR 链接可打开且指向正确仓库',
-  '分支名称与任务记录一致',
+  '改动已推送到任务分支',
   '完成标准逐项自检',
 ]
 
@@ -60,7 +52,7 @@ export const submissionChecks = [
 // SubmissionCounter.vue mutates these states based on the live submission
 // stage, so the values below are just the resting (draft) snapshot.
 export const submissionReviewSteps = [
-  { label: '草稿', note: '补全任务、分支与 PR 信息', state: 'active' },
+  { label: '草稿', note: '补全成果说明与提交前自检', state: 'active' },
   { label: '已提交', note: '成果已放入柜台审核队列', state: 'next' },
   { label: '审核中', note: '维护者查看差异与运行结果', state: 'next' },
   { label: '成长记录', note: '通过后写入 XP 与贡献记录', state: 'next' },

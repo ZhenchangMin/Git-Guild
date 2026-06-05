@@ -4,7 +4,10 @@ import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.gitea.GiteaAdapter;
-import com.gitguild.backend.codehost.gitea.dto.IssueInfo;
+import com.gitguild.backend.codehost.gitea.GiteaRepoCoordinates;
+import com.gitguild.backend.codehost.gitea.dto.BranchInfo;
+import com.gitguild.backend.codehost.gitea.dto.FileCommitInfo;
+import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
@@ -30,23 +33,23 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 public class CodeHostController {
 
+    private final GiteaAdapter giteaAdapter;
     private final CodeRepositoryRepository repositoryRepository;
     private final CodeIssueRepository issueRepository;
     private final CodePullRequestRepository pullRequestRepository;
     private final UserRepository userRepository;
-    private final GiteaAdapter giteaAdapter;
 
     public CodeHostController(
+            GiteaAdapter giteaAdapter,
             CodeRepositoryRepository repositoryRepository,
             CodeIssueRepository issueRepository,
             CodePullRequestRepository pullRequestRepository,
-            UserRepository userRepository,
-            GiteaAdapter giteaAdapter) {
+            UserRepository userRepository) {
+        this.giteaAdapter = giteaAdapter;
         this.repositoryRepository = repositoryRepository;
         this.issueRepository = issueRepository;
         this.pullRequestRepository = pullRequestRepository;
         this.userRepository = userRepository;
-        this.giteaAdapter = giteaAdapter;
     }
 
     @PostMapping("/repositories/import")
@@ -59,6 +62,7 @@ public class CodeHostController {
         User owner = currentUser(authentication);
         String sourceUrl = request.sourceUrl().trim();
         String hostType = request.hostType() == null || request.hostType().isBlank() ? "GITEA" : request.hostType().trim();
+        // 幂等：同一 (hostType, sourceUrl) 已接入则复用，避免重复导入产生多条仓库记录。
         CodeRepository repository = repositoryRepository
                 .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc(hostType, sourceUrl)
                 .orElseGet(() -> repositoryRepository.save(new CodeRepository(
@@ -80,6 +84,22 @@ public class CodeHostController {
         syncIssues(repository);
         repository.markSynced();
         return ApiResponse.success(RepositoryResponse.from(repositoryRepository.save(repository)));
+    }
+
+    /**
+     * 从 Gitea 拉取仓库 Issue 并 upsert 到本地（按 external_issue_id 幂等）。
+     */
+    private void syncIssues(CodeRepository repository) {
+        GiteaRepoCoordinates coords = GiteaRepoCoordinates.parse(repository.getSourceUrl());
+        for (com.gitguild.backend.codehost.gitea.dto.IssueInfo remoteIssue : giteaAdapter.listIssues(coords.owner(), coords.repo())) {
+            String externalIssueId = String.valueOf(remoteIssue.number());
+            String status = remoteIssue.state() == null ? "OPEN" : remoteIssue.state().trim().toUpperCase();
+            CodeIssue issue = issueRepository
+                    .findByRepositoryRepositoryIdAndExternalIssueId(repository.getRepositoryId(), externalIssueId)
+                    .orElseGet(() -> new CodeIssue(repository, externalIssueId, remoteIssue.title(), status));
+            issue.updateFromSync(remoteIssue.title(), status, remoteIssue.htmlUrl());
+            issueRepository.save(issue);
+        }
     }
 
     @GetMapping("/repositories/{repositoryId}/issues")
@@ -104,22 +124,44 @@ public class CodeHostController {
     public ApiResponse<BranchResponse> createBranch(
             @PathVariable Long repositoryId,
             @RequestBody BranchRequest request) {
-        findRepository(repositoryId);
+        CodeRepository repository = findRepository(repositoryId);
         if (request.branchName() == null || request.branchName().isBlank()) {
             throw validation("branchName is required");
         }
-        return ApiResponse.success("CREATED", new BranchResponse(request.branchName().trim(), request.baseBranch(), "CREATED"));
+        GiteaRepoCoordinates coords = GiteaRepoCoordinates.parse(repository.getSourceUrl());
+        String baseBranch = blankToDefault(request.baseBranch(), repository.getDefaultBranch());
+        BranchInfo branch = giteaAdapter.createBranch(coords.owner(), coords.repo(), request.branchName().trim(), baseBranch);
+        return ApiResponse.success("CREATED", new BranchResponse(branch.name(), baseBranch, "CREATED"));
     }
 
     @PostMapping("/repositories/{repositoryId}/commits")
     public ApiResponse<CommitResponse> createCommit(
             @PathVariable Long repositoryId,
             @RequestBody CommitRequest request) {
-        findRepository(repositoryId);
+        CodeRepository repository = findRepository(repositoryId);
+        if (request.branch() == null || request.branch().isBlank()) {
+            throw validation("branch is required");
+        }
         if (request.message() == null || request.message().isBlank()) {
             throw validation("message is required");
         }
-        return ApiResponse.success("CREATED", new CommitResponse("local-" + System.nanoTime(), request.branch(), request.message()));
+        GiteaRepoCoordinates coords = GiteaRepoCoordinates.parse(repository.getSourceUrl());
+        String branch = request.branch().trim();
+        String path = blankToDefault(request.path(), defaultCommitPath(repositoryId, branch));
+        String content = blankToDefault(request.content(), defaultCommitContent(repository, branch));
+        FileCommitInfo commit = giteaAdapter.createFile(
+                coords.owner(),
+                coords.repo(),
+                branch,
+                path,
+                request.message().trim(),
+                content);
+        return ApiResponse.success("CREATED", new CommitResponse(
+                commit.commitSha(),
+                commit.branch(),
+                request.message().trim(),
+                commit.path(),
+                commit.htmlUrl()));
     }
 
     @PostMapping("/repositories/{repositoryId}/pull-requests")
@@ -130,14 +172,19 @@ public class CodeHostController {
         if (request.title() == null || request.title().isBlank()) {
             throw validation("title is required");
         }
-        CodePullRequest pullRequest = pullRequestRepository.save(new CodePullRequest(
-                repository,
-                String.valueOf(System.nanoTime()),
+        if (request.sourceBranch() == null || request.sourceBranch().isBlank()) {
+            throw validation("sourceBranch is required");
+        }
+        GiteaRepoCoordinates coords = GiteaRepoCoordinates.parse(repository.getSourceUrl());
+        String targetBranch = blankToDefault(request.targetBranch(), repository.getDefaultBranch());
+        PrInfo prInfo = giteaAdapter.createPullRequest(
+                coords.owner(),
+                coords.repo(),
                 request.title().trim(),
-                blankToDefault(request.sourceBranch(), "feature/local"),
-                blankToDefault(request.targetBranch(), repository.getDefaultBranch()),
-                "OPEN",
-                repository.getSourceUrl()));
+                request.body(),
+                request.sourceBranch().trim(),
+                targetBranch);
+        CodePullRequest pullRequest = upsertPullRequest(repository, prInfo, request.title().trim(), request.sourceBranch().trim(), targetBranch);
         return ApiResponse.success("CREATED", PullRequestResponse.from(pullRequest));
     }
 
@@ -149,6 +196,26 @@ public class CodeHostController {
                 .findByPullRequestIdAndRepositoryRepositoryId(pullRequestId, repositoryId)
                 .orElseThrow(() -> notFound("PULL_REQUEST_NOT_FOUND", "Pull request 不存在"));
         return ApiResponse.success(PullRequestResponse.from(pullRequest));
+    }
+
+    @PostMapping("/repositories/{repositoryId}/pull-requests/{pullRequestId}/merge")
+    public ApiResponse<PullRequestResponse> mergePullRequest(
+            @PathVariable Long repositoryId,
+            @PathVariable Long pullRequestId) {
+        CodeRepository repository = findRepository(repositoryId);
+        CodePullRequest pullRequest = pullRequestRepository
+                .findByPullRequestIdAndRepositoryRepositoryId(pullRequestId, repositoryId)
+                .orElseThrow(() -> notFound("PULL_REQUEST_NOT_FOUND", "Pull request 不存在"));
+        GiteaRepoCoordinates coords = GiteaRepoCoordinates.parse(repository.getSourceUrl());
+        PrInfo prInfo = giteaAdapter.mergePullRequest(
+                coords.owner(),
+                coords.repo(),
+                parseExternalPrNumber(pullRequest));
+        pullRequest.setStatus(toLocalPrStatus(prInfo));
+        if (pullRequest.isMerged()) {
+            pullRequest.setMergedAt(OffsetDateTime.now());
+        }
+        return ApiResponse.success("MERGED", PullRequestResponse.from(pullRequestRepository.save(pullRequest)));
     }
 
     @PostMapping("/code-host/webhooks/{hostType}")
@@ -177,62 +244,62 @@ public class CodeHostController {
         }
     }
 
-    private void syncIssues(CodeRepository repository) {
-        OwnerRepo coords = parseOwnerRepo(repository.getSourceUrl());
-        for (IssueInfo remoteIssue : giteaAdapter.listIssues(coords.owner(), coords.repo())) {
-            String externalIssueId = String.valueOf(remoteIssue.number());
-            String status = remoteIssue.state() == null ? "OPEN" : remoteIssue.state().trim().toUpperCase();
-            CodeIssue issue = issueRepository
-                    .findByRepositoryRepositoryIdAndExternalIssueId(repository.getRepositoryId(), externalIssueId)
-                    .orElseGet(() -> new CodeIssue(repository, externalIssueId, remoteIssue.title(), status));
-            issue.updateFromSync(remoteIssue.title(), status, remoteIssue.htmlUrl());
-            issueRepository.save(issue);
-        }
-    }
-
-    private OwnerRepo parseOwnerRepo(String sourceUrl) {
-        if (sourceUrl == null || sourceUrl.isBlank()) {
-            throw new BusinessException("REPOSITORY_SOURCE_URL_INVALID", HttpStatus.UNPROCESSABLE_ENTITY,
-                    "无法从仓库地址解析出 owner/repo", "sourceUrl=" + sourceUrl);
-        }
-        String value = sourceUrl.trim();
-        int hash = value.indexOf('#');
-        if (hash >= 0) {
-            value = value.substring(0, hash);
-        }
-        int query = value.indexOf('?');
-        if (query >= 0) {
-            value = value.substring(0, query);
-        }
-        while (value.endsWith("/")) {
-            value = value.substring(0, value.length() - 1);
-        }
-        if (value.endsWith(".git")) {
-            value = value.substring(0, value.length() - 4);
-        }
-
-        String path = value;
-        int proto = value.indexOf("://");
-        if (proto >= 0) {
-            String afterProto = value.substring(proto + 3);
-            int slash = afterProto.indexOf('/');
-            path = slash >= 0 ? afterProto.substring(slash + 1) : "";
-        } else if (value.contains("@") && value.contains(":")) {
-            path = value.substring(value.indexOf(':') + 1);
-        }
-
-        String[] parts = java.util.Arrays.stream(path.split("/"))
-                .filter(part -> !part.isBlank())
-                .toArray(String[]::new);
-        if (parts.length < 2) {
-            throw new BusinessException("REPOSITORY_SOURCE_URL_INVALID", HttpStatus.UNPROCESSABLE_ENTITY,
-                    "无法从仓库地址解析出 owner/repo", "sourceUrl=" + sourceUrl);
-        }
-        return new OwnerRepo(parts[parts.length - 2], parts[parts.length - 1]);
-    }
-
     private String blankToDefault(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value.trim();
+    }
+
+    private CodePullRequest upsertPullRequest(
+            CodeRepository repository,
+            PrInfo prInfo,
+            String fallbackTitle,
+            String fallbackSourceBranch,
+            String fallbackTargetBranch) {
+        String externalPrId = String.valueOf(prInfo.number());
+        CodePullRequest pullRequest = pullRequestRepository
+                .findByRepositoryRepositoryIdAndExternalPrId(repository.getRepositoryId(), externalPrId)
+                .orElseGet(() -> new CodePullRequest(
+                        repository,
+                        externalPrId,
+                        blankToDefault(prInfo.title(), fallbackTitle),
+                        blankToDefault(prInfo.headBranch(), fallbackSourceBranch),
+                        blankToDefault(prInfo.baseBranch(), fallbackTargetBranch),
+                        toLocalPrStatus(prInfo),
+                        prInfo.htmlUrl()));
+        pullRequest.setStatus(toLocalPrStatus(prInfo));
+        if (pullRequest.isMerged()) {
+            pullRequest.setMergedAt(OffsetDateTime.now());
+        }
+        return pullRequestRepository.save(pullRequest);
+    }
+
+    private String toLocalPrStatus(PrInfo prInfo) {
+        if (prInfo.merged()) {
+            return "MERGED";
+        }
+        if ("closed".equalsIgnoreCase(prInfo.state())) {
+            return "CLOSED";
+        }
+        return "OPEN";
+    }
+
+    private int parseExternalPrNumber(CodePullRequest pullRequest) {
+        try {
+            return Integer.parseInt(pullRequest.getExternalPrId());
+        } catch (NumberFormatException ex) {
+            throw validation("externalPrId is not a Gitea pull request number: " + pullRequest.getExternalPrId());
+        }
+    }
+
+    private String defaultCommitPath(Long repositoryId, String branch) {
+        String normalizedBranch = branch.replaceAll("[^a-zA-Z0-9._-]", "-");
+        return "gitguild-proof-" + repositoryId + "-" + normalizedBranch + "-" + System.nanoTime() + ".md";
+    }
+
+    private String defaultCommitContent(CodeRepository repository, String branch) {
+        return "# Git-Guild task proof\n\n"
+                + "- Repository: " + repository.getName() + "\n"
+                + "- Branch: " + branch + "\n"
+                + "- Generated by: Git-Guild Workbench\n";
     }
 
     private void validatePage(int page, int size) {
@@ -279,13 +346,13 @@ public class CodeHostController {
     public record BranchResponse(String branchName, String baseBranch, String status) {
     }
 
-    public record CommitRequest(String branch, String message) {
+    public record CommitRequest(String branch, String message, String path, String content) {
     }
 
-    public record CommitResponse(String commitId, String branch, String message) {
+    public record CommitResponse(String commitId, String branch, String message, String path, String externalUrl) {
     }
 
-    public record PullRequestRequest(String title, String sourceBranch, String targetBranch) {
+    public record PullRequestRequest(String title, String body, String sourceBranch, String targetBranch) {
     }
 
     public record PullRequestResponse(Long pullRequestId, String externalPrId, String title, String sourceBranch, String targetBranch, String status, String externalUrl) {
@@ -302,8 +369,5 @@ public class CodeHostController {
     }
 
     public record WebhookResponse(String hostType, String status, int payloadSize, OffsetDateTime receivedAt) {
-    }
-
-    private record OwnerRepo(String owner, String repo) {
     }
 }

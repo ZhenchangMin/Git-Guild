@@ -3786,6 +3786,32 @@ h2 {
   grid-column: 1 / -1;
 }
 
+/* 关联 PR 改为只读展示（不再让冒险家粘贴 URL）：沿用 label 的网格排版，
+   值用单色文本/链接，缺失时给出引导提示。 */
+.submission-form-panel .submission-linked-pr {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: rgba(69, 37, 15, 0.76);
+  font-size: 0.86rem;
+}
+
+.submission-linked-pr-value {
+  margin: 0;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.submission-linked-pr-value a {
+  color: #7a4a18;
+}
+
+.submission-linked-pr-hint {
+  margin: 0;
+  color: rgba(69, 37, 15, 0.5);
+  line-height: 1.4;
+}
+
 .submission-form-panel input,
 .submission-form-panel textarea {
   width: 100%;

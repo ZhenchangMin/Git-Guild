@@ -96,6 +96,18 @@ public class QuestController {
                 .body(ApiResponse.success("任务接取成功", response));
     }
 
+    /**
+     * 为当前用户在该 Quest 的 active 接取记录确保 task branch（Issue #12）。
+     * 幂等：已存在则直接返回；接取时创建失败可经此端点重试。
+     */
+    @PostMapping("/{questId}/task-branch")
+    public ApiResponse<AssignmentResponse> ensureTaskBranch(
+            @PathVariable Long questId,
+            Authentication authentication) {
+        AssignmentResponse response = questService.ensureTaskBranch(questId, SecurityPrincipalUtils.currentUserId(authentication));
+        return ApiResponse.success("task branch 已就绪", response);
+    }
+
     @GetMapping("/me/assignments")
     public ApiResponse<MyAssignmentsResponse> getMyAssignments(Authentication authentication) {
         return ApiResponse.success(questService.getMyAssignments(

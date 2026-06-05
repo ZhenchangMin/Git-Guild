@@ -168,6 +168,10 @@ public class Quest {
         this.status = QuestStatus.IN_PROGRESS;
     }
 
+    /**
+     * 保留状态，不作为默认主流程节点。
+     * 供后续 Guild Master 主动锁定某个候选提交进行最终确认时使用。
+     */
     public void markInReview() {
         this.status = QuestStatus.IN_REVIEW;
     }

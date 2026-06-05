@@ -55,6 +55,9 @@ class QuestControllerTest {
                         QuestStatus.DRAFT,
                         1001L,
                         3001L,
+                        "#42",
+                        "http://localhost:3000/git-guild/issues/42",
+                        "main",
                         Difficulty.C,
                         180,
                         OffsetDateTime.parse("2026-06-02T10:00:00+08:00")));
@@ -94,7 +97,7 @@ class QuestControllerTest {
                                 QuestStatus.PUBLISHED,
                                 new CategoryBrief(2L, "Backend"),
                                 List.of(),
-                                new RepositoryBrief(1001L, "git-guild", "SYNCED"),
+                                new RepositoryBrief(1001L, "git-guild", "main", "SYNCED"),
                                 OffsetDateTime.parse("2026-06-02T10:00:00+08:00"))),
                         2,
                         8,
@@ -142,7 +145,9 @@ class QuestControllerTest {
                         new UserBrief(3001L, "adventurer"),
                         QuestStatus.IN_PROGRESS,
                         "ACTIVE",
-                        OffsetDateTime.parse("2026-06-02T10:30:00+08:00")));
+                        "task/quest-5001-assignment-7001-adventurer",
+                        OffsetDateTime.parse("2026-06-02T10:30:00+08:00"),
+                        "http://spike-admin:test-token@localhost:3000/spike-admin/repo.git"));
 
         mockMvc.perform(post("/api/v1/quests/5001/assignments")
                         .principal(authentication(3001L, "ROLE_BEGINNER")))
@@ -152,7 +157,8 @@ class QuestControllerTest {
                 .andExpect(jsonPath("$.data.questId").value(5001))
                 .andExpect(jsonPath("$.data.assignee.userId").value(3001))
                 .andExpect(jsonPath("$.data.questStatus").value("IN_PROGRESS"))
-                .andExpect(jsonPath("$.data.assignmentStatus").value("ACTIVE"));
+                .andExpect(jsonPath("$.data.assignmentStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.taskBranch").value("task/quest-5001-assignment-7001-adventurer"));
 
         verify(questService).acceptQuest(5001L, 3001L);
     }

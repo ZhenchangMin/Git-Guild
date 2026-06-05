@@ -1,6 +1,7 @@
 package com.gitguild.backend;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -14,7 +15,10 @@ import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.gitea.GiteaAdapter;
+import com.gitguild.backend.codehost.gitea.dto.BranchInfo;
+import com.gitguild.backend.codehost.gitea.dto.FileCommitInfo;
 import com.gitguild.backend.codehost.gitea.dto.IssueInfo;
+import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
@@ -200,7 +204,16 @@ class P3ApiDocumentIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.repositoryId").value(repositoryId));
         when(giteaAdapter.listIssues("p3", "repo"))
-                .thenReturn(List.of(new IssueInfo(1, "P3 synced issue", "open", "http://localhost:3000/p3/repo/issues/1")));
+                .thenReturn(List.of(new IssueInfo(1, "P3 synced issue", null, "open", "http://localhost:3000/p3/repo/issues/1")));
+        // 平台代理写操作现已接入真实 GiteaAdapter，集成测试需 stub 写方法（否则返回 null → 500）。
+        when(giteaAdapter.createBranch(any(), any(), any(), any()))
+                .thenReturn(new BranchInfo("feature/p3", "sha-p3"));
+        when(giteaAdapter.createFile(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new FileCommitInfo("sha-p3", "feature/p3", "p3.md",
+                        "http://localhost:3000/p3/repo/commit/sha-p3"));
+        when(giteaAdapter.createPullRequest(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PrInfo(7, "P3 PR", "open", false, "feature/p3", "main",
+                        "http://localhost:3000/p3/repo/pulls/7", "p3-user"));
 
         mockMvc.perform(get("/api/v1/repositories/" + repositoryId).header("Authorization", bearer(maintainerToken)))
                 .andExpect(status().isOk())

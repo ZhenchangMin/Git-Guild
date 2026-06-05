@@ -9,17 +9,17 @@ import { questApi } from '../api/questApi'
 import { growthApi } from '../api/growthApi'
 import { repositoryApi } from '../api/repositoryApi'
 import { submissionApi } from '../api/submissionApi'
-import {
-  notifications,
-  pullRequests as fallbackPullRequests,
-  recentContributions,
-  repositories as fallbackRepositories,
-  reviewFeedbacks,
-  taskGroups as fallbackTaskGroups,
-  workbenchEmails,
-  workbenchStats,
-  workbenchUser,
-} from '../data/workbench'
+import { workbenchStats, workbenchUser } from '../data/workbench'
+
+// 已清空所有 mock 业务数据：工作台只展示后端真实数据，无数据即呈现真实空态。
+// 这些空数组保留原变量名，下游 reduce/filter/find/v-for 均对空数组安全。
+const notifications = []
+const fallbackPullRequests = []
+const recentContributions = []
+const fallbackRepositories = []
+const reviewFeedbacks = []
+const fallbackTaskGroups = []
+const workbenchEmails = []
 import { sessionStore } from '../stores/sessionStore'
 import {
   loadNotifications,
@@ -288,6 +288,114 @@ const selectedTaskPullRequests = computed(() => {
   const prId = selectedTask.value.prNumber || selectedTask.value.prStatus.match(/PR #\d+/)?.[0]
   return pullRequestList.value.filter((pr) => pr.id === prId || pr.taskId === selectedTask.value.id)
 })
+
+// ── 冒险家「克隆并推送」实路径 ────────────────────────────────────────────
+// 自动取真实仓库地址（repository.sourceUrl）+ 调后端 ensureTaskBranch 拿平台自动
+// 创建的任务分支；冒险家只需 clone → 切到该分支 → 改完 push，再回提交柜台一键提交。
+const realTaskBranch = ref('')
+const branchLoading = ref(false)
+const branchError = ref('')
+const copiedHint = ref('')
+const taskRepoSourceUrl = ref('')
+const taskCloneUrlAuth = ref('') // 带 admin 凭据的克隆地址（来自 ensureTaskBranch），供命令直接 clone+push
+let copiedTimer = 0
+
+// 冒险家不是仓库 owner，GET /repositories 列表对他为空；改为按 repositoryId 取仓库详情拿 sourceUrl。
+const taskCloneUrl = computed(
+  () => taskRepoSourceUrl.value || getRepositoryUrl(selectedTaskRepository.value),
+)
+const taskRepoFolder = computed(() => {
+  const url = taskCloneUrl.value
+  if (!url) return 'repo'
+  const last = url.replace(/\/+$/, '').split('/').pop() || 'repo'
+  return last.replace(/\.git$/i, '')
+})
+const taskCloneSteps = computed(() => {
+  const cloneUrl = taskCloneUrlAuth.value || taskCloneUrl.value || '<仓库地址>'
+  const branch = realTaskBranch.value || '<任务分支>'
+  const commitMsg = `${selectedTask.value?.id || 'task'}: 完成任务`
+  return [
+    {
+      title: '克隆仓库',
+      body: '地址已内置凭据，clone 后 push 不会再要账号密码（已克隆可跳过）。',
+      command: `git clone ${cloneUrl}`,
+    },
+    {
+      title: '切到任务分支',
+      body: '平台已自动创建该分支，直接切过去即可，无需自己新建。',
+      command: `cd ${taskRepoFolder.value} && git checkout ${branch}`,
+    },
+    { title: '改完推送', body: '完成修改后提交并推送到任务分支。', command: `git add . && git commit -m "${commitMsg}" && git push` },
+  ]
+})
+
+async function ensureRealTaskBranch(questId) {
+  if (!questId) return
+  branchLoading.value = true
+  branchError.value = ''
+  try {
+    const res = await questApi.ensureTaskBranch(questId)
+    const branch = res?.data?.taskBranch || ''
+    realTaskBranch.value = branch
+    taskCloneUrlAuth.value = res?.data?.cloneUrl || ''
+    if (branch && selectedTask.value) selectedTask.value.branch = branch
+  } catch (error) {
+    realTaskBranch.value = ''
+    branchError.value = error?.message || '任务分支创建失败，请稍后重试。'
+  } finally {
+    branchLoading.value = false
+  }
+}
+
+async function fetchTaskRepoSourceUrl(repositoryId) {
+  if (!repositoryId) {
+    taskRepoSourceUrl.value = ''
+    return
+  }
+  try {
+    const res = await repositoryApi.detail(repositoryId)
+    taskRepoSourceUrl.value = res?.data?.sourceUrl || ''
+  } catch {
+    taskRepoSourceUrl.value = ''
+  }
+}
+
+// 选中任务时：取仓库地址（按 repositoryId），并对进行中 / 待修改任务自动确保任务分支。
+watch(
+  () => selectedTask.value?.questId,
+  (questId) => {
+    realTaskBranch.value = ''
+    branchError.value = ''
+    taskRepoSourceUrl.value = ''
+    taskCloneUrlAuth.value = ''
+    fetchTaskRepoSourceUrl(selectedTask.value?.repositoryId)
+    const state = selectedTask.value?.workflowState
+    if (questId && (state === 'in-progress' || state === 'changes-requested')) {
+      ensureRealTaskBranch(questId)
+    }
+  },
+  { immediate: true },
+)
+
+async function copyText(text, label = '内容') {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    // clipboard 不可用时静默；用户仍可手动选中复制
+  }
+  copiedHint.value = label
+  window.clearTimeout(copiedTimer)
+  copiedTimer = window.setTimeout(() => (copiedHint.value = ''), 1600)
+}
+
+function openTaskRepository() {
+  if (taskCloneUrl.value) window.open(taskCloneUrl.value, '_blank', 'noopener,noreferrer')
+}
+
+function goSubmissionCounter() {
+  emit('open-submission', selectedTask.value?.questId ?? selectedTask.value?.id)
+}
 const selectedTaskGitActions = computed(() => {
   const actions = selectedTask.value?.actions ?? []
   const hasGitWorkflow = actions.some((action) =>
@@ -1632,32 +1740,66 @@ function openFeedback(feedbackId, source = '审核反馈') {
             :task="selectedTask"
           />
 
-          <WorkbenchPrLinkPanel
-            v-if="linkPanelTask"
-            :task="linkPanelTask"
-            :repository="linkPanelRepository"
-            :checks="linkPanelChecks"
-            :pull-requests="selectedTaskPullRequests"
-            :counter-ready="canOpenSubmissionCounter"
-            show-repository
-            @open-pr="openPullRequestStatus"
-          />
+          <article class="detail-card wide task-clone-card">
+            <div class="clone-head">
+              <div>
+                <p class="kicker">Clone &amp; Push</p>
+                <h3>克隆并推送</h3>
+              </div>
+              <span class="status-pill" :class="{ warning: !!branchError }">
+                {{ branchLoading ? '准备分支中…' : branchError ? '分支未就绪' : realTaskBranch ? '分支已就绪' : '准备中' }}
+              </span>
+            </div>
+            <p class="clone-helper">
+              平台已自动创建任务分支，你只需克隆仓库、切到该分支、改完推送，再回提交柜台一键提交（提交时自动创建 PR，无需手动建 PR）。
+            </p>
 
-          <WorkbenchGitOperationPanel
-            :task="selectedTask"
-            :actions="selectedTaskGitActions"
-            :counter-ready="canOpenSubmissionCounter"
-            :helper="taskGitOperationHelper"
-            :tutorial-steps="taskGitTutorialSteps"
-            :source="`${selectedTask.id} ${selectedTask.title}`"
-            :is-action-ready="isGitActionReady"
-            :get-action-title="getGitActionButtonTitle"
-            @run-action="runAction"
-          />
+            <div class="clone-field-grid">
+              <div class="clone-field">
+                <span class="clone-label">仓库地址</span>
+                <code>{{ taskCloneUrl || '—' }}</code>
+                <button
+                  class="quiet-action copy-btn"
+                  type="button"
+                  :disabled="!taskCloneUrl"
+                  @click="copyText(taskCloneUrl, '仓库地址')"
+                >复制</button>
+              </div>
+              <div class="clone-field">
+                <span class="clone-label">任务分支</span>
+                <code>{{ realTaskBranch || (branchLoading ? '创建中…' : '—') }}</code>
+                <button
+                  class="quiet-action copy-btn"
+                  type="button"
+                  :disabled="!realTaskBranch"
+                  @click="copyText(realTaskBranch, '任务分支')"
+                >复制</button>
+              </div>
+            </div>
 
-          <article class="detail-card wide">
-            <h3>{{ operationResult.title }}</h3>
-            <p>{{ operationResult.body }}</p>
+            <p v-if="branchError" class="clone-error">
+              {{ branchError }}
+              <button class="clone-retry" type="button" @click="ensureRealTaskBranch(selectedTask.questId)">重试</button>
+            </p>
+
+            <ol class="clone-steps" aria-label="克隆与推送步骤">
+              <li v-for="step in taskCloneSteps" :key="step.title">
+                <div class="step-head">
+                  <strong>{{ step.title }}</strong>
+                  <button class="quiet-action copy-btn" type="button" @click="copyText(step.command, step.title)">复制命令</button>
+                </div>
+                <span>{{ step.body }}</span>
+                <code>{{ step.command }}</code>
+              </li>
+            </ol>
+
+            <div class="clone-actions">
+              <button class="quiet-action" type="button" :disabled="!taskCloneUrl" @click="openTaskRepository">
+                在 Gitea 打开仓库
+              </button>
+              <button class="primary-action" type="button" @click="goSubmissionCounter">去提交柜台</button>
+            </div>
+            <p v-if="copiedHint" class="copied-hint" role="status">{{ copiedHint }} 已复制到剪贴板</p>
           </article>
         </div>
       </section>
@@ -3457,6 +3599,134 @@ dd {
   .panel-head.inline {
     align-items: start;
     flex-direction: column;
+  }
+}
+
+/* ── 冒险家「克隆并推送」卡片 ───────────────────────────────────────── */
+.task-clone-card {
+  gap: 12px;
+  border-color: rgba(238, 184, 91, 0.42);
+  background:
+    linear-gradient(135deg, rgba(93, 49, 16, 0.6), rgba(11, 6, 3, 0.44)),
+    radial-gradient(circle at 8% 0%, rgba(255, 217, 138, 0.14), transparent 0 28%, transparent 58%);
+}
+.clone-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.clone-helper {
+  margin: 0;
+  max-width: 70ch;
+  color: rgba(255, 231, 183, 0.78);
+  line-height: 1.5;
+}
+.clone-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.clone-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(238, 184, 91, 0.22);
+  border-radius: 5px;
+  padding: 8px 10px;
+  background: rgba(7, 4, 2, 0.3);
+}
+.clone-label {
+  color: var(--gold-bright);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.clone-field code {
+  overflow-x: auto;
+  color: #ffe4ad;
+  font-size: 0.8rem;
+  font-family: 'Consolas', 'SFMono-Regular', monospace;
+  white-space: nowrap;
+}
+.copy-btn {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.74rem;
+}
+.clone-error {
+  margin: 0;
+  color: #ffd7c9;
+  font-size: 0.84rem;
+}
+.clone-retry {
+  margin-left: 6px;
+  border: none;
+  background: transparent;
+  color: var(--gold-bright);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.clone-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: clone-step;
+}
+.clone-steps li {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(240, 198, 118, 0.18);
+  border-radius: 5px;
+  padding: 10px;
+  background: rgba(7, 4, 2, 0.28);
+}
+.step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.step-head strong {
+  color: #ffe8b9;
+  line-height: 1.25;
+}
+.step-head strong::before {
+  counter-increment: clone-step;
+  content: counter(clone-step) '. ';
+  color: var(--gold-bright);
+}
+.clone-steps li span {
+  color: rgba(255, 231, 183, 0.74);
+  line-height: 1.4;
+}
+.clone-steps li code {
+  overflow-x: auto;
+  border: 1px solid rgba(238, 184, 91, 0.22);
+  border-radius: 4px;
+  padding: 7px 8px;
+  color: #ffe4ad;
+  background: rgba(12, 7, 4, 0.55);
+  font-size: 0.78rem;
+  font-family: 'Consolas', 'SFMono-Regular', monospace;
+  white-space: nowrap;
+}
+.clone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.copied-hint {
+  margin: 0;
+  color: #b6e3a0;
+  font-size: 0.8rem;
+}
+@media (max-width: 640px) {
+  .clone-field-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

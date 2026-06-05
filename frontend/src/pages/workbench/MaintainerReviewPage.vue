@@ -79,11 +79,11 @@ function buildCompletionCriteria(submission) {
         : '提交记录缺少 PR 关联。',
     },
     {
-      checkpoint: 'PR 已合并',
+      checkpoint: '通过将自动合并 PR',
       passed: prStatus === 'MERGED',
       comment: prStatus === 'MERGED'
-        ? 'PR 已合并，可以进入通过审核。'
-        : `当前 PR 状态为 ${prStatus}，审核通过会被后端保护逻辑拦截。`,
+        ? 'PR 已合并。'
+        : `当前 PR 状态为 ${prStatus}，点击“通过”将由平台自动合并该 PR；若存在冲突会被拦截并提示。`,
     },
     {
       checkpoint: '成果说明已提交',
@@ -206,7 +206,10 @@ async function submitReview(payload) {
         : payload.decision === 'REJECTED'
           ? '提交已驳回'
           : '修改请求已发送'
-    const successBody = `${currentReview.questId} 的审核结论已通过后端接口记录为 ${payload.decision}，submissionId=${submissionId}。`
+    const successBody =
+      payload.decision === 'APPROVED'
+        ? `${currentReview.questId} 已审核通过：平台已自动合并 PR，任务标记完成并发放 XP（submissionId=${submissionId}）。`
+        : `${currentReview.questId} 的审核结论已通过后端接口记录为 ${payload.decision}，submissionId=${submissionId}。`
     reviewAlert.value = {
       tone: payload.decision === 'APPROVED' ? 'success' : 'warning',
       title: successTitle,
@@ -237,10 +240,16 @@ async function submitReview(payload) {
 }
 
 function buildReviewErrorMessage(error, review) {
-  if (error?.code === 'PR_NOT_MERGED') {
+  if (error?.code === 'PR_MERGE_CONFLICT') {
     return {
-      title: 'PR 尚未合并，不能审核通过',
-      body: `${review.pullRequest} 当前状态为 ${review.prState || 'UNKNOWN'}。请先在 Gitea 合并 PR，再同步状态后重新审核；当前成果会保持待审核状态。`,
+      title: 'PR 存在冲突，自动合并失败',
+      body: `${review.pullRequest} 无法自动合并。请先在 Gitea 解决冲突后再点“通过”；当前成果会保持待审核状态，不发放 XP。`,
+    }
+  }
+  if (error?.code === 'TASK_BRANCH_EMPTY') {
+    return {
+      title: '任务分支没有改动',
+      body: '冒险家的任务分支与基线分支无差异，无法形成 PR。请退回让其推送提交后重新提交。',
     }
   }
   if (error?.code) {

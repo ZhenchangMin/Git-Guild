@@ -12,6 +12,7 @@ import QuestDetailPage from '../pages/quests/QuestDetailPage.vue'
 import RepositorySyncPage from '../pages/repositories/RepositorySyncPage.vue'
 import SubmissionCounterPage from '../pages/submissions/SubmissionCounterPage.vue'
 import AdventurerWorkbenchPage from '../pages/workbench/AdventurerWorkbenchPage.vue'
+import MaintainerPublishPage from '../pages/workbench/MaintainerPublishPage.vue'
 import MaintainerReviewPage from '../pages/workbench/MaintainerReviewPage.vue'
 import MaintainerWorkbenchPage from '../pages/workbench/MaintainerWorkbenchPage.vue'
 
@@ -56,6 +57,12 @@ export const routes = [
     path: '/maintainer',
     name: 'maintainer-workbench',
     component: MaintainerWorkbenchPage,
+    meta: { requiresAuth: true, roles: ['MAINTAINER'] },
+  },
+  {
+    path: '/maintainer/publish',
+    name: 'maintainer-publish',
+    component: MaintainerPublishPage,
     meta: { requiresAuth: true, roles: ['MAINTAINER'] },
   },
   {

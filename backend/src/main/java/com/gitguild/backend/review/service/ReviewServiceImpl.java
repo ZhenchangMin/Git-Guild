@@ -1,6 +1,5 @@
 package com.gitguild.backend.review.service;
 
-import com.gitguild.backend.codehost.service.CodePullRequestSyncService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.growth.service.GrowthService;
 import com.gitguild.backend.notification.domain.NotificationType;
@@ -9,6 +8,7 @@ import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
+import com.gitguild.backend.quest.service.QuestPullRequestService;
 import com.gitguild.backend.review.domain.ReviewDecision;
 import com.gitguild.backend.review.domain.ReviewItem;
 import com.gitguild.backend.review.domain.ReviewRecord;
@@ -37,7 +37,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final QuestRepository questRepository;
     private final QuestAssignmentRepository assignmentRepository;
     private final UserRepository userRepository;
-    private final CodePullRequestSyncService pullRequestSyncService;
+    private final QuestPullRequestService questPullRequestService;
     private final GrowthService growthService;
     private final NotificationService notificationService;
 
@@ -47,7 +47,7 @@ public class ReviewServiceImpl implements ReviewService {
             QuestRepository questRepository,
             QuestAssignmentRepository assignmentRepository,
             UserRepository userRepository,
-            CodePullRequestSyncService pullRequestSyncService,
+            QuestPullRequestService questPullRequestService,
             GrowthService growthService,
             NotificationService notificationService) {
         this.submissionRepository = submissionRepository;
@@ -55,7 +55,7 @@ public class ReviewServiceImpl implements ReviewService {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.userRepository = userRepository;
-        this.pullRequestSyncService = pullRequestSyncService;
+        this.questPullRequestService = questPullRequestService;
         this.growthService = growthService;
         this.notificationService = notificationService;
     }
@@ -72,11 +72,10 @@ public class ReviewServiceImpl implements ReviewService {
         if (!submission.isReviewable()) {
             throw new BusinessException("SUBMISSION_ALREADY_REVIEWED", HttpStatus.CONFLICT, "Submission has already been reviewed", "submissionId=" + submissionId + ", currentStatus=" + submission.getStatus());
         }
+        // 审核通过即由平台代理合并 PR；合并失败（冲突等）抛异常 → 整个事务回滚，不记审核、不完成、不发 XP。
         if (request.getDecision() == ReviewDecision.APPROVED) {
-            pullRequestSyncService.syncRepositoryPullRequests(submission.getQuest().getRepository());
-        }
-        if (request.getDecision() == ReviewDecision.APPROVED && !submission.getPullRequest().isMerged()) {
-            throw new BusinessException("PR_NOT_MERGED", HttpStatus.CONFLICT, "Pull request is not merged", "pullRequestId=" + submission.getPullRequest().getPullRequestId());
+            questPullRequestService.mergeForApproval(
+                    submission.getPullRequest(), submission.getQuest().getRepository());
         }
 
         ReviewRecord record = new ReviewRecord(submission, reviewer, request.getDecision(), request.getSummary());
