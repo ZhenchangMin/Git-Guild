@@ -13,6 +13,7 @@ const checkedPrefixes = [
 ]
 
 const checkedFiles = new Set([
+  '.gitlab-ci.yml',
   'backend/pom.xml',
   'docker-compose.yml',
   'frontend/package.json',

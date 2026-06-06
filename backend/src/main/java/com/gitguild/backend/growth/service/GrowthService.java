@@ -1,6 +1,7 @@
 package com.gitguild.backend.growth.service;
 
 import com.gitguild.backend.growth.dto.BadgeResponse;
+import com.gitguild.backend.growth.dto.ContributionResponse;
 import com.gitguild.backend.growth.dto.GrowthSummaryResponse;
 import com.gitguild.backend.growth.dto.LeaderboardResponse;
 import com.gitguild.backend.quest.domain.Quest;
@@ -35,4 +36,11 @@ public interface GrowthService {
     LeaderboardResponse getXpLeaderboard(String period, int limit);
 
     BadgeResponse getBadges(Long userId);
+
+    /**
+     * 查询用户「贡献历程」明细与贡献仓库数。无贡献时返回空列表与 0（不抛异常、不回退演示数据）。
+     *
+     * @param userId Git-Guild 用户 ID
+     */
+    ContributionResponse getContributions(Long userId);
 }

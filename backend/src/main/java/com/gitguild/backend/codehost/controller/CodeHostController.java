@@ -11,12 +11,10 @@ import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
+import com.gitguild.backend.codehost.service.RepositoryService;
 import com.gitguild.backend.common.ApiResponse;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.security.SecurityPrincipalUtils;
-import com.gitguild.backend.user.domain.User;
-import com.gitguild.backend.user.repository.UserRepository;
-import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -34,42 +32,34 @@ import org.springframework.web.bind.annotation.RestController;
 public class CodeHostController {
 
     private final GiteaAdapter giteaAdapter;
+    private final RepositoryService repositoryService;
     private final CodeRepositoryRepository repositoryRepository;
     private final CodeIssueRepository issueRepository;
     private final CodePullRequestRepository pullRequestRepository;
-    private final UserRepository userRepository;
 
     public CodeHostController(
             GiteaAdapter giteaAdapter,
+            RepositoryService repositoryService,
             CodeRepositoryRepository repositoryRepository,
             CodeIssueRepository issueRepository,
-            CodePullRequestRepository pullRequestRepository,
-            UserRepository userRepository) {
+            CodePullRequestRepository pullRequestRepository) {
         this.giteaAdapter = giteaAdapter;
+        this.repositoryService = repositoryService;
         this.repositoryRepository = repositoryRepository;
         this.issueRepository = issueRepository;
         this.pullRequestRepository = pullRequestRepository;
-        this.userRepository = userRepository;
     }
 
     @PostMapping("/repositories/import")
     public ApiResponse<RepositoryResponse> importRepository(
             @RequestBody ImportRepositoryRequest request,
             Authentication authentication) {
-        if (request.sourceUrl() == null || request.sourceUrl().isBlank()) {
-            throw validation("sourceUrl is required");
-        }
-        User owner = currentUser(authentication);
-        String sourceUrl = request.sourceUrl().trim();
-        String hostType = request.hostType() == null || request.hostType().isBlank() ? "GITEA" : request.hostType().trim();
-        // 幂等：同一 (hostType, sourceUrl) 已接入则复用，避免重复导入产生多条仓库记录。
-        CodeRepository repository = repositoryRepository
-                .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc(hostType, sourceUrl)
-                .orElseGet(() -> repositoryRepository.save(new CodeRepository(
-                        owner,
-                        request.name() == null || request.name().isBlank() ? inferName(sourceUrl) : request.name().trim(),
-                        hostType,
-                        sourceUrl)));
+        // 委派给服务层：内网地址直接登记，外网地址自动迁入平台 Gitea（带 Issue/PR）后登记。
+        CodeRepository repository = repositoryService.importRepository(
+                SecurityPrincipalUtils.currentUserId(authentication),
+                request.sourceUrl(),
+                request.name(),
+                request.hostType());
         return ApiResponse.success("CREATED", RepositoryResponse.from(repository));
     }
 
@@ -223,25 +213,9 @@ public class CodeHostController {
         return ApiResponse.success(new WebhookResponse(hostType, "ACCEPTED", payload == null ? 0 : payload.length(), OffsetDateTime.now()));
     }
 
-    private User currentUser(Authentication authentication) {
-        Long userId = SecurityPrincipalUtils.currentUserId(authentication);
-        return userRepository.findById(userId)
-                .orElseThrow(() -> notFound("USER_NOT_FOUND", "用户不存在"));
-    }
-
     private CodeRepository findRepository(Long repositoryId) {
         return repositoryRepository.findById(repositoryId)
                 .orElseThrow(() -> notFound("REPOSITORY_NOT_FOUND", "仓库不存在"));
-    }
-
-    private String inferName(String sourceUrl) {
-        try {
-            String path = URI.create(sourceUrl).getPath();
-            String name = path == null || path.isBlank() ? "repository" : path.substring(path.lastIndexOf('/') + 1);
-            return name.endsWith(".git") ? name.substring(0, name.length() - 4) : name;
-        } catch (IllegalArgumentException ex) {
-            return "repository";
-        }
     }
 
     private String blankToDefault(String value, String defaultValue) {

@@ -18,40 +18,74 @@ import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
+import com.gitguild.backend.codehost.service.RepositoryService;
+import com.gitguild.backend.security.CurrentUserPrincipal;
 import com.gitguild.backend.user.domain.User;
-import com.gitguild.backend.user.repository.UserRepository;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class CodeHostControllerTest {
 
     private GiteaAdapter giteaAdapter;
+    private RepositoryService repositoryService;
     private CodeRepositoryRepository repositoryRepository;
     private CodeIssueRepository issueRepository;
     private CodePullRequestRepository pullRequestRepository;
-    private UserRepository userRepository;
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
         giteaAdapter = org.mockito.Mockito.mock(GiteaAdapter.class);
+        repositoryService = org.mockito.Mockito.mock(RepositoryService.class);
         repositoryRepository = org.mockito.Mockito.mock(CodeRepositoryRepository.class);
         issueRepository = org.mockito.Mockito.mock(CodeIssueRepository.class);
         pullRequestRepository = org.mockito.Mockito.mock(CodePullRequestRepository.class);
-        userRepository = org.mockito.Mockito.mock(UserRepository.class);
         mockMvc = MockMvcBuilders.standaloneSetup(new CodeHostController(
                 giteaAdapter,
+                repositoryService,
                 repositoryRepository,
                 issueRepository,
-                pullRequestRepository,
-                userRepository)).build();
+                pullRequestRepository)).build();
         objectMapper = new ObjectMapper();
+    }
+
+    @Test
+    void importRepositoryShouldDelegateToServiceAndReturnPlatformRepo() throws Exception {
+        CodeRepository migrated = repository();
+        when(repositoryService.importRepository(
+                eq(42L),
+                eq("https://gitea.com/ZhenchangMin/Operating-System.git"),
+                eq("OS 课程仓库"),
+                eq("GITEA")))
+                .thenReturn(migrated);
+
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                new CurrentUserPrincipal(42L, List.of("MAINTAINER"), 1), null);
+
+        mockMvc.perform(post("/api/v1/repositories/import")
+                        .principal(auth)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sourceUrl", "https://gitea.com/ZhenchangMin/Operating-System.git",
+                                "name", "OS 课程仓库",
+                                "hostType", "GITEA"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.repositoryId").value(1001))
+                .andExpect(jsonPath("$.data.name").value("demo-repo"));
+
+        verify(repositoryService).importRepository(
+                eq(42L),
+                eq("https://gitea.com/ZhenchangMin/Operating-System.git"),
+                eq("OS 课程仓库"),
+                eq("GITEA"));
     }
 
     @Test

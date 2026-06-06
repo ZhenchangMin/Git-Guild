@@ -4,12 +4,14 @@ import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.codehost.dto.CreateRepositoryRequest;
 import com.gitguild.backend.codehost.gitea.GiteaAdapter;
 import com.gitguild.backend.codehost.gitea.GiteaProperties;
+import com.gitguild.backend.codehost.gitea.RepositorySourceUrls;
 import com.gitguild.backend.codehost.gitea.dto.RepositoryInfo;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
+import java.net.URI;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -54,6 +56,59 @@ public class RepositoryServiceImpl implements RepositoryService {
             repository.setDescription(request.getDescription());
         }
         return codeRepositoryRepository.save(repository);
+    }
+
+    private static final String DEFAULT_HOST_TYPE = "GITEA";
+
+    @Override
+    @Transactional
+    public CodeRepository importRepository(Long currentUserId, String sourceUrl, String name, String hostType) {
+        if (sourceUrl == null || sourceUrl.isBlank()) {
+            throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST,
+                    "请求参数不合法", "sourceUrl is required");
+        }
+        User owner = findUser(currentUserId);
+        String trimmedSource = sourceUrl.trim();
+        String resolvedHostType = hostType == null || hostType.isBlank()
+                ? DEFAULT_HOST_TYPE
+                : hostType.trim();
+
+        // 外部源：自动迁入平台 Gitea，再以平台副本地址登记
+        if (RepositorySourceUrls.isExternalSource(trimmedSource, giteaProperties.baseUrl())) {
+            String targetName = RepositorySourceUrls.deterministicRepoName(trimmedSource);
+            RepositoryInfo info = giteaAdapter.migrateRepository(trimmedSource, targetName, name, true);
+            return findOrCreate(resolvedHostType, info.htmlUrl(), owner, info.name(), info);
+        }
+
+        // 源已在平台自己的 Gitea 上（或平台地址未知）：直接登记，无需迁移（幂等）
+        String displayName = name == null || name.isBlank() ? inferName(trimmedSource) : name.trim();
+        return findOrCreate(resolvedHostType, trimmedSource, owner, displayName, null);
+    }
+
+    private CodeRepository findOrCreate(
+            String hostType, String sourceUrl, User owner, String name, RepositoryInfo info) {
+        return codeRepositoryRepository
+                .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc(hostType, sourceUrl)
+                .orElseGet(() -> {
+                    CodeRepository repository = new CodeRepository(owner, name, hostType, sourceUrl);
+                    if (info != null) {
+                        repository.setDefaultBranch(info.defaultBranch());
+                        repository.setExternalRepositoryId(String.valueOf(info.id()));
+                    }
+                    return codeRepositoryRepository.save(repository);
+                });
+    }
+
+    private String inferName(String sourceUrl) {
+        try {
+            String path = URI.create(sourceUrl).getPath();
+            String name = path == null || path.isBlank()
+                    ? "repository"
+                    : path.substring(path.lastIndexOf('/') + 1);
+            return name.endsWith(".git") ? name.substring(0, name.length() - 4) : name;
+        } catch (IllegalArgumentException ex) {
+            return "repository";
+        }
     }
 
     @Override
