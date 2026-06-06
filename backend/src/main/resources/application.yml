@@ -47,7 +47,10 @@ server:
 
 gitea:
   base-url: ${GITEA_BASE_URL:http://localhost:3000}
-  token: ${GITEA_TOKEN:}
+  # 默认值 = 随仓库分发的本地演示快照（seed/gitea-data.tar.gz）里 spike-admin 的 token，
+  # 所以队友无需 .env 即可直接 `mvnw spring-boot:run` 跑通演示。生产用 GITEA_TOKEN 覆盖。
+  # ⚠️ 该 token 仅对本地一次性 Gitea 有效，等同演示弱凭据，非生产凭据。
+  token: ${GITEA_TOKEN:38f08180132021c3ebe7d777c6931b664997fd89}
   admin-username: ${GITEA_ADMIN_USERNAME:spike-admin}
 
 jwt:
