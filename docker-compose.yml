@@ -1,5 +1,9 @@
 version: "3.7"
 
+# 固定 compose 项目名 → 卷名恒为 gitguild_*（与目录名无关），
+# 这样 scripts/bootstrap.sh 能可靠地把 Gitea 快照灌进 gitguild_gitea-data。
+name: gitguild
+
 services:
   mysql:
     image: mysql:8.0
@@ -13,6 +17,8 @@ services:
       - "3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
+      # 空卷首次启动时自动灌入「最短 MVP 起点」数据（3 用户 + 仓库 + Issue#1，0 quests）
+      - ./seed/mysql-seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s

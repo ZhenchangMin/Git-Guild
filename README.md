@@ -61,23 +61,18 @@ Run the full **real-Gitea** workflow locally: a maintainer publishes a quest →
 
 **Prerequisites:** Docker + Docker Compose, JDK 17, Node 18+.
 
+This repo ships a **byte-for-byte snapshot** of a ready-to-test MVP-start state under `seed/`
+(a Gitea data volume + a MySQL dump + a matching `.env`), so nothing is generated at runtime —
+everyone gets the exact same state with a Gitea token that already matches.
+
 ```bash
-# 1. Config
-cp .env.example .env
+# 1. Restore the demo snapshot (writes .env, loads the Gitea volume, starts MySQL+Redis+Gitea)
+bash scripts/bootstrap.sh
 
-# 2. Start infra (Gitea + MySQL + Redis)
-docker compose up -d
-
-# 3. Bootstrap Gitea: admin user + API token (written back into .env) + demo repo & issue
-bash scripts/setup-gitea.sh
-
-# 4. Backend — Terminal A (auto-loads .env)
+# 2. Backend — Terminal A (auto-loads .env)
 cd backend && bash run-dev.sh
 
-# 5. Seed the platform — Terminal B (test users + import the demo repo)
-bash scripts/seed-platform.sh
-
-# 6. Frontend — Terminal C
+# 3. Frontend — Terminal B
 cd frontend && npm install && npm run dev
 # then open http://localhost:5173
 ```
@@ -92,9 +87,17 @@ cd frontend && npm install && npm run dev
 
 **Walkthrough:** sign in as `guild` → open the Commission Office → **Publish Quest** (repo and issue are pre-filled) → sign in as `admin` → `/admin/review` → approve → sign in as `advent` → Quest Board → accept → workbench **Clone & Push** card (the clone URL already carries credentials, so `git push` won't prompt for a password) → make a commit and push → **Submission Counter** (a pull request is created automatically) → back as `guild` → review queue → approve (the PR is auto-merged and XP is granted).
 
-> **Reset to the clean MVP start at any time:** `bash scripts/setup-gitea.sh && bash scripts/seed-platform.sh`
+> **Reset to the clean MVP start at any time:** `docker compose down -v && bash scripts/bootstrap.sh`
+> (`down -v` drops the volumes so the snapshot is restored fresh.)
+>
+> **Rebuild from scratch instead of the snapshot** (generates a brand-new Gitea admin + token):
+> `cp .env.example .env && docker compose up -d && bash scripts/setup-gitea.sh`, then start the
+> backend and run `bash scripts/seed-platform.sh`. Use this only if you want a clean-room setup.
 
-> **⚠️ Local demo only.** Gitea runs with a single admin account, and the workbench shows a clone URL with the admin token embedded so push is seamless. This is **not** a production auth model. `.env` (which holds the real token) is git-ignored, and `admin123` is a throwaway demo password.
+> **⚠️ Local demo only.** Gitea runs with a single admin account, and both the committed snapshot
+> token (`seed/demo.env`) and the workbench clone URL embed that admin token so push is seamless.
+> The token only unlocks the throwaway `localhost:3000` Gitea each teammate runs — it is the same
+> disposable-secret category as the `admin123` demo password, **not** a production auth model.
 
 ---
 
