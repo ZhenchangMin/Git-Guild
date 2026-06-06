@@ -2,12 +2,11 @@
 #
 # 一键把「最短 MVP 演示」的真实数据快照拉起来（供队友 clone 后直接测试）。
 #
-# 与 setup-gitea.sh + seed-platform.sh 的区别：
-#   这里不是「重新生成」数据，而是直接还原本仓库随附的字节级快照——
+# 不是「运行时重新生成」数据，而是直接还原本仓库随附的字节级快照——
 #     · seed/gitea-data.tar.gz  Gitea 整卷（spike-admin / hello-world-mvp / Issue#1 / 同一个 token）
 #     · seed/mysql-seed.sql      平台库（guild/advent/admin 三用户 + 仓库 + Issue#1，0 quests）
 #     · seed/demo.env            与快照内 token 一致的环境变量
-#   所以每位队友拿到的是完全相同、token 对得上的 MVP 起点，无需任何运行时生成。
+#   所以每位队友拿到的是完全相同、token 对得上的 MVP 起点。
 #
 # 用法：  bash scripts/bootstrap.sh
 #        然后另起两个终端： (A) cd backend && bash run-dev.sh   (B) cd frontend && npm install && npm run dev

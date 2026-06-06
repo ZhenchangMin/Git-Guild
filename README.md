@@ -89,10 +89,6 @@ cd frontend && npm install && npm run dev
 
 > **Reset to the clean MVP start at any time:** `docker compose down -v && bash scripts/bootstrap.sh`
 > (`down -v` drops the volumes so the snapshot is restored fresh.)
->
-> **Rebuild from scratch instead of the snapshot** (generates a brand-new Gitea admin + token):
-> `cp .env.example .env && docker compose up -d && bash scripts/setup-gitea.sh`, then start the
-> backend and run `bash scripts/seed-platform.sh`. Use this only if you want a clean-room setup.
 
 > **⚠️ Local demo only.** Gitea runs with a single admin account, and both the committed snapshot
 > token (`seed/demo.env`) and the workbench clone URL embed that admin token so push is seamless.
