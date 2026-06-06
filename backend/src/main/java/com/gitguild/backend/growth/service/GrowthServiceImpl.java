@@ -5,6 +5,7 @@ import com.gitguild.backend.growth.domain.ContributionRecord;
 import com.gitguild.backend.growth.domain.GrowthProfile;
 import com.gitguild.backend.growth.domain.XpTransaction;
 import com.gitguild.backend.growth.dto.BadgeResponse;
+import com.gitguild.backend.growth.dto.ContributionResponse;
 import com.gitguild.backend.growth.dto.GrowthSummaryResponse;
 import com.gitguild.backend.growth.dto.LeaderboardResponse;
 import com.gitguild.backend.growth.repository.ContributionRecordRepository;
@@ -110,6 +111,34 @@ public class GrowthServiceImpl implements GrowthService {
         }
 
         return new LeaderboardResponse(normalizedPeriod, OffsetDateTime.now(), items);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ContributionResponse getContributions(Long userId) {
+        List<ContributionRecord> records =
+                contributionRecordRepository.findByUserUserIdOrderByCompletedAtDesc(userId);
+
+        List<ContributionResponse.ContributionItem> items = new ArrayList<>(records.size());
+        for (ContributionRecord record : records) {
+            Quest quest = record.getQuest();
+            items.add(new ContributionResponse.ContributionItem(
+                    record.getRecordId(),
+                    quest.getQuestId(),
+                    quest.getTitle(),
+                    record.getRepository().getName(),
+                    String.valueOf(quest.getDifficulty()),
+                    quest.getRewardXp(),
+                    record.getCompletedAt(),
+                    record.getSummary()));
+        }
+
+        long repoCount = records.stream()
+                .map(record -> record.getRepository().getRepositoryId())
+                .distinct()
+                .count();
+
+        return new ContributionResponse(items, (int) repoCount);
     }
 
     @Override

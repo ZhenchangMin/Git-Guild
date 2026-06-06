@@ -1,4 +1,4 @@
-import { request, requestMock } from './httpClient'
+import { request } from './httpClient'
 
 export const growthApi = {
   summary() {
@@ -7,7 +7,8 @@ export const growthApi = {
   badges() {
     return request('/users/me/badges')
   },
-  contributions(params) {
-    return requestMock('/users/me/contributions', { params })
+  // 真实「贡献历程」：返回 { items: [...], repoCount }，无贡献时为空列表 + 0。
+  contributions() {
+    return request('/users/me/contributions')
   },
 }

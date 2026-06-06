@@ -2,29 +2,46 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { growthApi } from '../../api/growthApi'
+import { questApi } from '../../api/questApi'
 import { userApi } from '../../api/userApi'
+import { sessionStore } from '../../stores/sessionStore'
 import profileArchiveBg from '../../assets/profile-archive-bg.png'
 import DifficultyTrendChart from '../../components/DifficultyTrendChart.vue'
-import SkillRadarChart from '../../components/SkillRadarChart.vue'
 import {
   profileIdentity as profileIdentityFallback,
   growthFallback,
   titleThresholds,
   profileStats,
-  contributionRecords,
-  skillTagPool,
   badgeShowcase,
-  milestoneEvents,
-  difficultyTrendData,
-  skillRadarPool,
 } from '../../data/profileData'
 
 const router = useRouter()
 
+// 身份卡初始值取自当前登录会话（已在内存），而非演示兜底，
+// 避免 /me 返回前闪现别人的演示身份（如 "Minera Dawn"）。
+// 缺失字段用中性空值占位，由 loadProfilePage 拿到真实资料后覆盖。
+function initialIdentity() {
+  const u = sessionStore.user
+  if (!u) return { ...profileIdentityFallback }
+  return {
+    userId: u.userId ?? u.id ?? 0,
+    name: u.displayName ?? u.username ?? u.email ?? '',
+    avatarUrl: u.avatarUrl ?? '',
+    motto: u.motto ?? '',
+    createdAt: u.createdAt ?? '',
+  }
+}
+
 // ─── growth data ────────────────────────────────────
-const profileIdentity = reactive({ ...profileIdentityFallback })
-const growth = ref({ ...growthFallback })
+const profileIdentity = reactive(initialIdentity())
+// 初始为中性空值而非演示兜底，避免真实数据到达前闪现"别人的 XP"；
+// 仅当成长接口真正失败时才在 catch 中回退到 growthFallback。
+const growth = ref({ level: 0, totalXp: 0, nextLevelXp: 0, completedQuestCount: 0 })
 const badgeCards = ref([...badgeShowcase])
+// 真实贡献数据（来自 /users/me/contributions）与衍生指标
+const contributions = ref([])
+const repoCount = ref(0)
+const pendingReviewCount = ref(0)
 const isLoading = ref(true)
 const isSavingProfile = ref(false)
 const loadError = ref('')
@@ -117,12 +134,30 @@ async function loadProfilePage() {
   } catch {
     failures.push('徽章')
     badgeCards.value = [...badgeShowcase]
-  } finally {
-    if (failures.length > 0) {
-      loadError.value = `${failures.join('、')}暂时无法读取，当前显示可用的演示兜底数据。`
-    }
-    isLoading.value = false
   }
+
+  try {
+    const data = unwrapApiData(await growthApi.contributions())
+    contributions.value = Array.isArray(data.items) ? data.items : []
+    repoCount.value = data.repoCount ?? 0
+  } catch {
+    failures.push('贡献历程')
+    contributions.value = []
+    repoCount.value = 0
+  }
+
+  // 待审核 = 当前用户处于 IN_REVIEW 的接取数（真实统计）
+  try {
+    const stats = unwrapApiData(await questApi.myAssignments()).stats ?? {}
+    pendingReviewCount.value = stats.inReview ?? 0
+  } catch {
+    pendingReviewCount.value = 0
+  }
+
+  if (failures.length > 0) {
+    loadError.value = `${failures.join('、')}暂时无法读取，请确认后端服务已启动。`
+  }
+  isLoading.value = false
 }
 
 onMounted(loadProfilePage)
@@ -195,7 +230,11 @@ async function uploadAvatar(event) {
 }
 
 // ─── license helpers ────────────────────────────────
-const licenseNo = computed(() => 'No. ' + String(profileIdentity.userId).padStart(5, '0'))
+const licenseNo = computed(() =>
+  profileIdentity.userId
+    ? 'No. ' + String(profileIdentity.userId).padStart(5, '0')
+    : 'No. —',
+)
 
 const guildTitle = computed(() => {
   const lv = growth.value.level
@@ -213,6 +252,7 @@ const levelProgress = computed(() => {
 
 const codeAge = computed(() => {
   const created = new Date(profileIdentity.createdAt)
+  if (!profileIdentity.createdAt || Number.isNaN(created.getTime())) return '—'
   const now = new Date()
   const days = Math.floor((now - created) / 86400000)
   return days + ' 天'
@@ -237,15 +277,92 @@ const STAT_CLOUD_LAYOUT = {
   pendingReview: { cloudClass: 'cloud-south', rotation: 2 },
 }
 
+// ─── derived real data ─────────────────────────────
+const hasActivity = computed(() => contributions.value.length > 0)
+
+// 四项成长指标全部来自真实接口：等级/XP/完成数取自成长摘要，仓库数与待审核取自贡献与接取统计
+const statValues = computed(() => ({
+  completedQuestCount: growth.value.completedQuestCount,
+  totalXp: growth.value.totalXp,
+  repoCount: repoCount.value,
+  pendingReview: pendingReviewCount.value,
+}))
+
+// 贡献时间线：真实贡献记录映射为卡片所需字段（无 PR / 标签字段，留空不渲染）
+const contributionList = computed(() =>
+  contributions.value.map(c => ({
+    id: c.recordId,
+    questTitle: c.questTitle,
+    repository: c.repository,
+    difficulty: c.difficulty,
+    xp: c.xp,
+    completedAt: (c.completedAt || '').slice(0, 10),
+    summary: c.summary,
+  })),
+)
+
+// 难度攀升曲线：直接由真实贡献的 完成日期 / 难度 / XP 构成
+const difficultyTrend = computed(() =>
+  contributions.value.map(c => ({
+    date: (c.completedAt || '').slice(0, 10),
+    difficulty: c.difficulty,
+    questTitle: c.questTitle,
+    xp: c.xp,
+  })),
+)
+
+// 技能标签：按真实贡献所在仓库聚合，贡献次数作为权重（无贡献则为空）
+const derivedSkillTags = computed(() => {
+  const counts = new Map()
+  for (const c of contributions.value) {
+    if (!c.repository) continue
+    counts.set(c.repository, (counts.get(c.repository) || 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+})
+
+// 成长里程碑：从真实数据派生 —— 首次贡献 + 已获得徽章，按时间排序
+const derivedMilestones = computed(() => {
+  const events = []
+  const first = [...contributions.value]
+    .filter(c => c.completedAt)
+    .sort((a, b) => String(a.completedAt).localeCompare(String(b.completedAt)))[0]
+  if (first) {
+    events.push({
+      icon: 'scroll',
+      title: '首次冒险',
+      description: `完成「${first.questTitle}」，获得 ${first.xp} XP`,
+      date: String(first.completedAt).slice(0, 10),
+    })
+  }
+  for (const badge of badgeCards.value) {
+    if (badge.earned) {
+      events.push({
+        icon: 'badge',
+        title: `徽章达成 — ${badge.name}`,
+        description: badge.hint,
+        date: badge.earnedAt || '',
+      })
+    }
+  }
+  return events.sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+})
+
 // ─── stats word-cloud ──────────────────────────────
 const statCards = computed(() => {
-  const raw = profileStats.map(s => ({
-    ...s,
-    value: s.fallbackValue ?? growth.value[s.key] ?? 0,
-  }))
-  const weighted = raw.map(s => ({ ...s, wv: s.value * s.weight }))
-  const maxWv = Math.max(...weighted.map(s => s.wv), 1)
-  return weighted.map(s => ({
+  const raw = profileStats.map(s => {
+    const numeric = statValues.value[s.key] ?? 0
+    // 全部指标均来自真实接口，加载完成前以占位符显示，避免闪现旧值
+    return {
+      ...s,
+      value: isLoading.value ? '—' : numeric,
+      wv: numeric * s.weight,
+    }
+  })
+  const maxWv = Math.max(...raw.map(s => s.wv), 1)
+  return raw.map(s => ({
     ...s,
     ...(STAT_CLOUD_LAYOUT[s.key] ?? { cloudClass: 'cloud-small', rotation: 0 }),
     fontSize: 1.05 + (s.wv / maxWv) * 2.35,
@@ -391,7 +508,7 @@ const icons = {
 
               <p class="license-title-line">
                 <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path :d="icons.star" fill="currentColor" opacity="0.7"/></svg>
-                {{ guildTitle }}
+                {{ isLoading ? '—' : guildTitle }}
               </p>
 
               <div v-if="isEditingMotto" class="motto-editor">
@@ -433,24 +550,24 @@ const icons = {
               <!-- XP progress -->
               <div class="license-xp">
                 <div class="xp-labels">
-                  <span>Lv {{ growth.level }}</span>
-                  <span>Lv {{ growth.level + 1 }}</span>
+                  <span>Lv {{ isLoading ? '—' : growth.level }}</span>
+                  <span>Lv {{ isLoading ? '—' : growth.level + 1 }}</span>
                 </div>
                 <div class="xp-bar">
-                  <i :style="{ width: levelProgress + '%' }"></i>
+                  <i :style="{ width: (isLoading ? 0 : levelProgress) + '%' }"></i>
                 </div>
-                <p class="xp-num">{{ growth.totalXp }} / {{ growth.nextLevelXp }} XP</p>
+                <p class="xp-num">{{ isLoading ? '— / —' : `${growth.totalXp} / ${growth.nextLevelXp}` }} XP</p>
               </div>
 
               <!-- stats row -->
               <div class="license-stats">
                 <div>
                   <span class="stat-label">累计 XP</span>
-                  <strong>{{ growth.totalXp }}</strong>
+                  <strong>{{ isLoading ? '—' : growth.totalXp }}</strong>
                 </div>
                 <div>
                   <span class="stat-label">已完成任务</span>
-                  <strong>{{ growth.completedQuestCount }}</strong>
+                  <strong>{{ isLoading ? '—' : growth.completedQuestCount }}</strong>
                 </div>
                 <div>
                   <span class="stat-label">Code 龄</span>
@@ -490,12 +607,13 @@ const icons = {
           <article class="glass-ledger fun-card">
             <p class="kicker">难度攀升曲线</p>
             <h2>挑战轨迹</h2>
-            <DifficultyTrendChart :data="difficultyTrendData" />
+            <DifficultyTrendChart v-if="hasActivity" :data="difficultyTrend" />
+            <p v-else class="section-empty">完成你的第一个任务后，这里会绘制你的难度攀升曲线。</p>
           </article>
           <article class="glass-ledger fun-card">
             <p class="kicker">技能雷达</p>
             <h2>能力分布</h2>
-            <SkillRadarChart :pool="skillRadarPool" />
+            <p class="section-empty">技能雷达将在平台引入技能评估模型后开放，暂不展示推测数据。</p>
           </article>
         </section>
 
@@ -503,9 +621,9 @@ const icons = {
         <section class="glass-ledger skill-section">
           <p class="kicker">技能图谱</p>
           <h2>冒险中积累的技术栈</h2>
-          <div class="skill-tags">
+          <div v-if="derivedSkillTags.length > 0" class="skill-tags">
             <span
-              v-for="tag in skillTagPool"
+              v-for="tag in derivedSkillTags"
               :key="tag.name"
               class="skill-tag"
               :class="'quality-' + tagQuality(tag.count)"
@@ -514,6 +632,7 @@ const icons = {
               <em>{{ tag.count }}</em>
             </span>
           </div>
+          <p v-else class="section-empty">完成任务后，会按贡献仓库自动积累你的技术栈标签。</p>
         </section>
 
         <!-- ═══════ §3.5 Tab 切换内容区 ═══════ -->
@@ -537,10 +656,10 @@ const icons = {
 
           <!-- Tab 1: 贡献历程 -->
           <div v-if="activeTab === 'contributions'" class="timeline">
-            <article v-for="(rec, i) in contributionRecords" :key="rec.id" class="timeline-item">
+            <article v-for="(rec, i) in contributionList" :key="rec.id" class="timeline-item">
               <div class="timeline-dot-col">
                 <span class="timeline-dot" />
-                <span v-if="i < contributionRecords.length - 1" class="timeline-line" />
+                <span v-if="i < contributionList.length - 1" class="timeline-line" />
               </div>
               <div class="timeline-card">
                 <div class="tc-head">
@@ -548,13 +667,13 @@ const icons = {
                   <span class="tc-xp">+{{ rec.xp }} XP</span>
                 </div>
                 <h3>{{ rec.questTitle }}</h3>
-                <p class="tc-repo">{{ rec.repository }} · {{ rec.pullRequest }}</p>
+                <p class="tc-repo">{{ rec.repository }}<span v-if="rec.difficulty"> · 难度 {{ rec.difficulty }}</span></p>
                 <p class="tc-summary">{{ rec.summary }}</p>
-                <div class="tc-tags">
-                  <span v-for="tag in rec.tags" :key="tag">{{ tag }}</span>
-                </div>
               </div>
             </article>
+            <p v-if="contributionList.length === 0" class="ms-empty">
+              你还没有已完成的贡献。完成第一个任务后，这里会记录你的贡献历程。
+            </p>
           </div>
 
           <!-- Tab 2: 成就徽章 -->
@@ -593,14 +712,14 @@ const icons = {
 
           <!-- Tab 3: 成长里程碑 -->
           <div v-else class="milestone-list">
-            <article v-for="(ms, i) in milestoneEvents" :key="i" class="milestone-item">
+            <article v-for="(ms, i) in derivedMilestones" :key="i" class="milestone-item">
               <div class="ms-dot-col">
                 <span class="ms-icon-wrap">
                   <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
                     <path :d="icons[ms.icon]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </span>
-                <span v-if="i < milestoneEvents.length - 1" class="ms-line" />
+                <span v-if="i < derivedMilestones.length - 1" class="ms-line" />
               </div>
               <div class="ms-content">
                 <h3>{{ ms.title }}</h3>
@@ -608,7 +727,7 @@ const icons = {
                 <span class="ms-date">{{ ms.date }}</span>
               </div>
             </article>
-            <p v-if="milestoneEvents.length === 0" class="ms-empty">
+            <p v-if="derivedMilestones.length === 0" class="ms-empty">
               完成你的第一个任务，开启冒险旅程。
             </p>
           </div>
@@ -1669,6 +1788,16 @@ const icons = {
 .action-btn:hover {
   border-color: rgba(241,183,86,0.6);
   color: #ffe2a0;
+}
+
+/* ═══════ empty states ═════════════════════════════ */
+.section-empty {
+  margin: 8px 0 0;
+  padding: 18px 4px;
+  color: rgba(255,232,190,0.5);
+  font-size: 0.86rem;
+  line-height: 1.6;
+  text-align: center;
 }
 
 /* ═══════ kicker ═══════════════════════════════════ */

@@ -18,5 +18,8 @@ public interface ContributionRecordRepository extends JpaRepository<Contribution
      */
     List<ContributionRecord> findByUserUserId(Long userId);
 
+    /** 成长档案"贡献历程"：按完成时间倒序列出某用户的全部贡献记录（P4-023）。 */
+    List<ContributionRecord> findByUserUserIdOrderByCompletedAtDesc(Long userId);
+
     Optional<ContributionRecord> findFirstByUserUserIdOrderByCompletedAtAsc(Long userId);
 }
