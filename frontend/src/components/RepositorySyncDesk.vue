@@ -105,7 +105,7 @@ async function importRepository() {
     await repositoryApi.sync(repository.repositoryId)
     await loadIssues()
   } catch (error) {
-    errorMessage.value = readableError(error, '仓库关联失败。')
+    errorMessage.value = readableError(error, '仓库迁移失败，请确认地址正确且仓库为公开。')
   } finally {
     loading.value = false
   }
@@ -228,12 +228,13 @@ function readableError(error, fallback) {
           <span>{{ lastRepository ? `已关联 ID ${lastRepository.repositoryId}` : '先登记仓库' }}</span>
         </div>
         <label>
-          Gitea 仓库 URL
+          仓库地址（GitHub / Gitea 公网均可）
           <input
             v-model="repositoryForm.sourceUrl"
             type="url"
-            placeholder="http://localhost:3000/owner/repo.git"
+            placeholder="https://gitea.com/owner/repo.git"
           />
+          <small class="field-hint">粘贴公网仓库地址，平台会自动把它迁入并接管，无需手动搬运。</small>
         </label>
         <div class="form-grid compact">
           <label>
@@ -246,7 +247,7 @@ function readableError(error, fallback) {
           </label>
         </div>
         <button class="quiet-action section-action" type="button" :disabled="loading" @click="importRepository">
-          {{ loading ? '关联中' : '导入仓库并使用' }}
+          {{ loading ? '正在迁移仓库…' : '导入仓库并使用' }}
         </button>
       </section>
 
@@ -450,6 +451,14 @@ function readableError(error, fallback) {
 .section-note {
   color: rgba(255, 231, 183, 0.62);
   font-size: 0.74rem;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255, 231, 183, 0.55);
+  font-size: 0.72rem;
+  line-height: 1.4;
 }
 
 .panel-close {

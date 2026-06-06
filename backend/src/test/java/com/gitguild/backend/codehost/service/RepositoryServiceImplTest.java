@@ -2,7 +2,12 @@ package com.gitguild.backend.codehost.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -74,6 +79,62 @@ class RepositoryServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo("FORBIDDEN");
+    }
+
+    @Test
+    void importExternalRepositoryMigratesIntoPlatformGitea() {
+        User u = mockUser(42L, UserRole.MAINTAINER);
+        when(userRepository.findById(42L)).thenReturn(Optional.of(u));
+
+        String externalUrl = "https://gitea.com/ZhenchangMin/Operating-System.git";
+        String platformUrl = "http://localhost:3000/spike-admin/ZhenchangMin-Operating-System";
+        RepositoryInfo info = new RepositoryInfo(9L, "ZhenchangMin-Operating-System",
+                "spike-admin/ZhenchangMin-Operating-System", "main", false, platformUrl);
+
+        when(giteaAdapter.migrateRepository(eq(externalUrl),
+                eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true)))
+                .thenReturn(info);
+        when(codeRepositoryRepository
+                .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc("GITEA", platformUrl))
+                .thenReturn(Optional.empty());
+        when(codeRepositoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        CodeRepository result = service().importRepository(42L, externalUrl, "OS 课程仓库", "GITEA");
+
+        // 外部源应被迁入平台，登记的是平台副本地址而非原始外网地址
+        assertThat(result.getSourceUrl()).isEqualTo(platformUrl);
+        assertThat(result.getName()).isEqualTo("ZhenchangMin-Operating-System");
+        assertThat(result.getDefaultBranch()).isEqualTo("main");
+        assertThat(result.getExternalRepositoryId()).isEqualTo("9");
+        verify(giteaAdapter).migrateRepository(eq(externalUrl),
+                eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true));
+    }
+
+    @Test
+    void importInternalRepositoryRegistersWithoutMigration() {
+        User u = mockUser(42L, UserRole.MAINTAINER);
+        when(userRepository.findById(42L)).thenReturn(Optional.of(u));
+
+        String internalUrl = "http://localhost:3000/spike-admin/demo-repo.git";
+        when(codeRepositoryRepository
+                .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc("GITEA", internalUrl))
+                .thenReturn(Optional.empty());
+        when(codeRepositoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        CodeRepository result = service().importRepository(42L, internalUrl, null, "GITEA");
+
+        // 源就在平台自己的 Gitea 上：直接登记，名称由地址推断，不触发迁移
+        assertThat(result.getSourceUrl()).isEqualTo(internalUrl);
+        assertThat(result.getName()).isEqualTo("demo-repo");
+        verify(giteaAdapter, never()).migrateRepository(anyString(), anyString(), any(), anyBoolean());
+    }
+
+    @Test
+    void importRejectsBlankSourceUrl() {
+        assertThatThrownBy(() -> service().importRepository(42L, "  ", null, "GITEA"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("VALIDATION_FAILED");
     }
 
     @Test

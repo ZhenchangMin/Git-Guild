@@ -144,6 +144,97 @@ public class GiteaAdapterImpl implements GiteaAdapter {
     }
 
     @Override
+    public RepositoryInfo migrateRepository(String cloneAddr, String repoName, String description, boolean withMetadata) {
+        String owner = resolveTokenOwner();
+        // 幂等：目标仓库已存在则直接复用，避免重复迁移与 409
+        RepositoryInfo existing = getRepositoryOrNull(owner, repoName);
+        if (existing != null) {
+            return existing;
+        }
+
+        Map<String, Object> reqBody = new java.util.HashMap<>();
+        reqBody.put("clone_addr", cloneAddr);
+        reqBody.put("repo_owner", owner);
+        reqBody.put("repo_name", repoName);
+        reqBody.put("mirror", false);
+        reqBody.put("private", false);
+        reqBody.put("service", detectService(cloneAddr));
+        reqBody.put("issues", withMetadata);
+        reqBody.put("pull_requests", withMetadata);
+        reqBody.put("labels", withMetadata);
+        reqBody.put("milestones", withMetadata);
+        if (description != null && !description.isBlank()) {
+            reqBody.put("description", description);
+        }
+        Map body = executeMigration(() -> client.post()
+                .uri("/repos/migrate")
+                .body(reqBody)
+                .retrieve()
+                .body(Map.class), "migrate " + cloneAddr + " -> " + owner + "/" + repoName);
+        return toRepositoryInfo(body);
+    }
+
+    /**
+     * 取 token 自身用户的 login，作为迁入目标 owner。结果缓存（token 在进程生命周期内不变）。
+     */
+    private volatile String cachedTokenOwner;
+
+    private String resolveTokenOwner() {
+        String cached = cachedTokenOwner;
+        if (cached != null) {
+            return cached;
+        }
+        Map body = execute(() -> client.get()
+                .uri("/user")
+                .retrieve()
+                .body(Map.class), "current token user");
+        String login = body == null ? null : (String) body.get("login");
+        if (login == null || login.isBlank()) {
+            throw new BusinessException("CODE_HOST_UNAVAILABLE", HttpStatus.BAD_GATEWAY,
+                    "无法解析平台 Gitea 账号", "GET /user returned no login");
+        }
+        cachedTokenOwner = login;
+        return login;
+    }
+
+    private RepositoryInfo getRepositoryOrNull(String owner, String repo) {
+        try {
+            return getRepository(owner, repo);
+        } catch (BusinessException e) {
+            if ("CODE_HOST_RESOURCE_NOT_FOUND".equals(e.getCode())) {
+                return null;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * 按源 host 选择 Gitea 迁移 service：可识别的源平台才能带过 Issue/PR 等元数据，
+     * 其余回退 {@code git}（仅克隆代码）。
+     */
+    private String detectService(String cloneAddr) {
+        String host = RepositorySourceUrls.host(cloneAddr);
+        if (host.contains("github")) return "github";
+        if (host.contains("gitlab")) return "gitlab";
+        if (host.contains("gitea")) return "gitea";
+        return "git";
+    }
+
+    /**
+     * 迁移调用的错误翻译：把地址非法 / 源不可达 / 私有需认证（422、5xx 等）统一翻成
+     * 用户可读的 {@code REPOSITORY_MIGRATION_FAILED}，而非含糊的网关错误。
+     */
+    private <T> T executeMigration(Supplier<T> call, String resource) {
+        try {
+            return call.get();
+        } catch (HttpClientErrorException | ResourceAccessException e) {
+            throw new BusinessException("REPOSITORY_MIGRATION_FAILED", HttpStatus.UNPROCESSABLE_ENTITY,
+                    "无法迁移该仓库：请确认地址正确且仓库为公开（私有仓库暂不支持）",
+                    resource + " -> " + e.getMessage());
+        }
+    }
+
+    @Override
     public FileCommitInfo createFile(
             String owner,
             String repo,

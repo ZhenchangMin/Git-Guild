@@ -92,6 +92,25 @@ public interface GiteaAdapter {
     RepositoryInfo createRepository(String name, String description);
 
     /**
+     * 把外部仓库迁入平台 Gitea，使委托人粘一个公网地址即可关联委托——
+     * 之后建分支 / 提 PR / 审核全部落在平台可控副本上。
+     *
+     * <p>底层调用 Gitea {@code POST /repos/migrate}，{@code mirror=false}（完整可写副本，
+     * 冒险家需 push 分支与 PR；mirror 是只读镜像，会废掉工作台写流程）。迁入目标 owner 取
+     * token 自身用户（{@code GET /user} 的 login）。
+     *
+     * <p><b>幂等：</b>目标仓库（同 {@code repoName}）已存在时直接返回其元数据，不重复迁移、
+     * 不抛 409。
+     *
+     * @param cloneAddr    源仓库克隆地址（如 {@code https://gitea.com/owner/repo.git}）
+     * @param repoName     迁入平台后的仓库名（平台内唯一，建议确定性派生）
+     * @param description  仓库描述（可选）
+     * @param withMetadata 是否一并迁入 Issue / PR / Label / Milestone（仅对可识别的源平台有效）
+     * @return 迁入后的平台仓库元数据，含 id、html_url、default_branch
+     */
+    RepositoryInfo migrateRepository(String cloneAddr, String repoName, String description, boolean withMetadata);
+
+    /**
      * 在指定分支创建一个文件提交（Issue #13）。
      *
      * <p>MVP 工作台用它把冒险家的成果说明写入 task branch，形成真实 commit。

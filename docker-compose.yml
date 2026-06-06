@@ -42,8 +42,23 @@ services:
       - USER_UID=1000
       - USER_GID=1000
       - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__database__PATH=/data/gitea/gitea.db
+      - GITEA__security__INSTALL_LOCK=true
       - GITEA__server__ROOT_URL=http://localhost:3000/
       - GITEA__webhook__ALLOWED_HOST_LIST=*
+      # 仓库迁移（git clone 外部公网仓库）走代理：以标准 http(s)_proxy 环境变量注入，
+      # Gitea 的 Go 客户端与其 spawn 的 git 子进程都会继承（比 [proxy] app.ini 段更可靠）。
+      # 默认空 = 不走代理，不影响能直连公网的环境；需要代理的机器在 .env 设
+      # GITEA_PROXY_URL=http://host.docker.internal:<port>。no_proxy 让本机自调用绕开代理。
+      - http_proxy=${GITEA_PROXY_URL:-}
+      - https_proxy=${GITEA_PROXY_URL:-}
+      - HTTP_PROXY=${GITEA_PROXY_URL:-}
+      - HTTPS_PROXY=${GITEA_PROXY_URL:-}
+      - no_proxy=localhost,127.0.0.1,::1
+      - NO_PROXY=localhost,127.0.0.1,::1
+    extra_hosts:
+      # 让容器内 git/Gitea 能用 host.docker.internal 访问宿主机本地代理
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
       - "2222:22"
