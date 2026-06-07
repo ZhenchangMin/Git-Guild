@@ -13,6 +13,10 @@ const questPage = ref(1)
 const questPageSize = 18
 const recommendationLimit = 20
 const questSource = ref([])
+const taxonomyFilterOptions = ref({
+  category: [],
+  tag: [],
+})
 const recommendationMeta = ref(null)
 const recommendationError = ref('')
 const isRecommendationLoading = ref(true)
@@ -53,6 +57,13 @@ function unwrapApiData(payload) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))]
+}
+
+function normalizeTaxonomyOptions(items) {
+  return (items ?? [])
+    .filter((item) => item?.enabled !== false)
+    .map((item) => item?.name)
+    .filter(Boolean)
 }
 
 function questLookupKeys(quest) {
@@ -153,8 +164,14 @@ const activeFilterCount = computed(() =>
 
 const visibleQuestFilterGroups = computed(() => {
   const dynamicValues = {
-    category: questSource.value.map((quest) => quest.category),
-    tag: questSource.value.flatMap((quest) => quest.tags ?? []),
+    category: [
+      ...taxonomyFilterOptions.value.category,
+      ...questSource.value.map((quest) => quest.category),
+    ],
+    tag: [
+      ...taxonomyFilterOptions.value.tag,
+      ...questSource.value.flatMap((quest) => quest.tags ?? []),
+    ],
     difficulty: questSource.value.map((quest) => quest.difficulty),
     stack: questSource.value.flatMap((quest) => quest.techStack ?? []),
     status: questSource.value.map((quest) => quest.status),
@@ -364,6 +381,26 @@ async function loadRecommendedQuests() {
   }
 }
 
+async function loadTaxonomyFilterOptions() {
+  try {
+    const [categoryPayload, tagPayload] = await Promise.all([
+      questApi.categories(),
+      questApi.tags({ size: 100 }),
+    ])
+    const categoryData = unwrapApiData(categoryPayload)
+    const tagData = unwrapApiData(tagPayload)
+    taxonomyFilterOptions.value = {
+      category: normalizeTaxonomyOptions(Array.isArray(categoryData) ? categoryData : categoryData.items),
+      tag: normalizeTaxonomyOptions(Array.isArray(tagData) ? tagData : tagData.items),
+    }
+  } catch {
+    taxonomyFilterOptions.value = {
+      category: [],
+      tag: [],
+    }
+  }
+}
+
 function openQuestDetail(questId, intent = 'view') {
   // Guests can browse but must sign in before accepting a commission — send
   // them to the gate, preserving the accept intent so the detail page picks
@@ -405,7 +442,10 @@ watch(questPageCount, (pageCount) => {
   }
 })
 
-onMounted(loadRecommendedQuests)
+onMounted(() => {
+  loadTaxonomyFilterOptions()
+  loadRecommendedQuests()
+})
 </script>
 
 <template>

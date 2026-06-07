@@ -14,7 +14,7 @@ const maintainerName = computed(
   () => sessionStore.user?.displayName || sessionStore.user?.username || '委托人',
 )
 
-// 待审计数（null = 未知/隐藏徽标）。审核队列即待批阅提交，取条目数即可。
+// 待审计数（null = 未知/隐藏徽标）。审核队列会返回全状态提交，这里只统计待批阅项。
 const pendingReviews = ref(null)
 const repos = ref([])
 const reposLoading = ref(true)
@@ -54,11 +54,15 @@ function openRepo(repo) {
   if (url) window.open(url, '_blank', 'noopener,noreferrer')
 }
 
+function isPendingReviewSubmission(item) {
+  return item?.status === 'PENDING_REVIEW'
+}
+
 onMounted(async () => {
   try {
     const res = await submissionApi.reviewQueue()
     const items = Array.isArray(res?.data) ? res.data : []
-    pendingReviews.value = items.length
+    pendingReviews.value = items.filter(isPendingReviewSubmission).length
   } catch {
     pendingReviews.value = null
   }

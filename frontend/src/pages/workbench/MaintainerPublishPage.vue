@@ -11,6 +11,7 @@ const router = useRouter()
 // ── 选项数据 ────────────────────────────────────────────────────────────────
 const repositories = ref([])
 const categories = ref([])
+const tags = ref([])
 const issues = ref([])
 const loadingMeta = ref(true)
 const loadingIssues = ref(false)
@@ -27,6 +28,7 @@ const form = ref({
   description: '在仓库中新增一个 hello world 文件，作为最短 MVP 演示任务。',
   completionCriteria: '新增 hello.md（或 hello world 文件），内容包含 "Hello, Git-Guild!"，并通过 PR 合并。',
   categoryId: '',
+  tagIds: [],
   difficulty: 'A',
   techStack: 'Markdown',
   estimatedHours: 1,
@@ -43,17 +45,21 @@ const selectedRepo = computed(
   () => repositories.value.find((r) => String(r.repositoryId) === String(form.value.repositoryId)) ?? null,
 )
 
+const tagOptions = computed(() => tags.value.filter((tag) => tag.enabled !== false))
+
 // ── 加载仓库 + 分类 ─────────────────────────────────────────────────────────
 async function loadMeta() {
   loadingMeta.value = true
   metaError.value = ''
   try {
-    const [repoPayload, catPayload] = await Promise.all([
+    const [repoPayload, catPayload, tagPayload] = await Promise.all([
       repositoryApi.list(),
       questApi.categories(),
+      questApi.tags({ size: 100 }),
     ])
     repositories.value = unwrapList(repoPayload)
     categories.value = unwrapList(catPayload)
+    tags.value = unwrapItems(tagPayload)
     if (repositories.value.length > 0) {
       form.value.repositoryId = String(repositories.value[0].repositoryId)
     }
@@ -143,7 +149,7 @@ async function publish() {
       estimatedHours: Number(form.value.estimatedHours),
       rewardXp: Number(form.value.rewardXp),
       categoryId: Number(form.value.categoryId),
-      tagIds: [],
+      tagIds: form.value.tagIds.map(Number),
     }
     if (form.value.issueMode === 'existing') {
       payload.issueId = Number(form.value.issueId)
@@ -241,6 +247,18 @@ function unwrapItems(payload) {
             </select>
             <small v-if="errors.categoryId" class="writ-error">{{ errors.categoryId }}</small>
           </label>
+
+          <fieldset class="writ-field writ-wide">
+            <span>标签</span>
+            <div v-if="tagOptions.length" class="writ-tag-options" aria-label="任务标签">
+              <label v-for="tag in tagOptions" :key="tag.tagId" class="writ-tag-option">
+                <input v-model="form.tagIds" type="checkbox" :value="String(tag.tagId)" />
+                <span class="writ-tag-dot" :style="{ background: tag.color }" aria-hidden="true"></span>
+                <span>{{ tag.name }}</span>
+              </label>
+            </div>
+            <small v-else class="writ-hint">暂无可用标签；可先在管理员平台配置中新增。</small>
+          </fieldset>
 
           <fieldset class="writ-field writ-wide writ-issue">
             <span>关联 Issue</span>
@@ -463,6 +481,50 @@ function unwrapItems(payload) {
 }
 .writ-field textarea {
   resize: vertical;
+}
+
+.writ-tag-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.writ-tag-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid rgba(98, 55, 20, 0.24);
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: #4c2a12;
+  font-size: 0.84rem;
+  background: rgba(255, 244, 210, 0.46);
+  box-shadow: inset 0 1px 5px rgba(70, 34, 10, 0.1);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.writ-tag-option:has(input:checked) {
+  border-color: rgba(169, 106, 28, 0.58);
+  background: rgba(235, 186, 94, 0.32);
+  box-shadow:
+    inset 0 1px 5px rgba(70, 34, 10, 0.1),
+    0 0 0 2px rgba(216, 154, 50, 0.14);
+}
+
+.writ-tag-option input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #b67a24;
+}
+
+.writ-tag-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(70, 34, 10, 0.18);
 }
 
 .writ-segmented {
