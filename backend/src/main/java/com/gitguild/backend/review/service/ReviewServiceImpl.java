@@ -1,5 +1,6 @@
 package com.gitguild.backend.review.service;
 
+import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.growth.service.GrowthService;
 import com.gitguild.backend.notification.domain.NotificationType;
@@ -15,6 +16,7 @@ import com.gitguild.backend.review.domain.ReviewRecord;
 import com.gitguild.backend.review.domain.Submission;
 import com.gitguild.backend.review.dto.ReviewSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses;
+import com.gitguild.backend.review.dto.SubmissionResponses.PullRequestBrief;
 import com.gitguild.backend.review.dto.SubmissionResponses.ReviewRecordResponse;
 import com.gitguild.backend.review.repository.ReviewRecordRepository;
 import com.gitguild.backend.review.repository.SubmissionRepository;
@@ -72,12 +74,8 @@ public class ReviewServiceImpl implements ReviewService {
         if (!submission.isReviewable()) {
             throw new BusinessException("SUBMISSION_ALREADY_REVIEWED", HttpStatus.CONFLICT, "Submission has already been reviewed", "submissionId=" + submissionId + ", currentStatus=" + submission.getStatus());
         }
-        // 审核通过即由平台代理合并 PR；合并失败（冲突等）抛异常 → 整个事务回滚，不记审核、不完成、不发 XP。
-        if (request.getDecision() == ReviewDecision.APPROVED) {
-            questPullRequestService.mergeForApproval(
-                    submission.getPullRequest(), submission.getQuest().getRepository());
-        }
-
+        // 「接受提交」只表示认可成果（APPROVED + 任务完成 + 发 XP），不再自动合并 PR。
+        // 是否合并由维护者另行通过 mergeSubmissionPullRequest 决定，二者解耦。
         ReviewRecord record = new ReviewRecord(submission, reviewer, request.getDecision(), request.getSummary());
         request.getItems().forEach(item -> record.addItem(new ReviewItem(
                 item.getCheckpoint(),
@@ -90,6 +88,25 @@ public class ReviewServiceImpl implements ReviewService {
         questRepository.save(submission.getQuest());
         notifyReviewOutcome(submission, request.getDecision(), request.getSummary());
         return toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public PullRequestBrief mergeSubmissionPullRequest(Long submissionId, Long reviewerId) {
+        Submission submission = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new BusinessException("SUBMISSION_NOT_FOUND", HttpStatus.NOT_FOUND, "Submission not found", "submissionId=" + submissionId));
+        User reviewer = findUser(reviewerId);
+        if (!canReview(submission, reviewer)) {
+            throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN, "Current user cannot merge this pull request", "Only quest publisher, repository maintainer or admin can merge");
+        }
+        CodePullRequest pullRequest = submission.getPullRequest();
+        if (pullRequest == null) {
+            throw new BusinessException("PR_NOT_FOUND", HttpStatus.BAD_REQUEST, "该提交没有关联的 PR，无法合并", "submissionId=" + submissionId);
+        }
+        // 复用代理合并：已合并幂等返回，冲突抛 PR_MERGE_CONFLICT(409)。与审核结论/XP 互不影响。
+        CodePullRequest merged = questPullRequestService.mergeForApproval(
+                pullRequest, submission.getQuest().getRepository());
+        return PullRequestBrief.from(merged);
     }
 
     private User findUser(Long userId) {

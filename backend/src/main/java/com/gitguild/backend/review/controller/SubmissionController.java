@@ -4,6 +4,7 @@ import com.gitguild.backend.common.ApiResponse;
 import com.gitguild.backend.review.dto.CreateSubmissionRequest;
 import com.gitguild.backend.review.dto.ReviewSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.PullRequestBrief;
 import com.gitguild.backend.review.dto.SubmissionResponses.ReviewRecordResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionDetailResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
@@ -71,5 +72,15 @@ public class SubmissionController {
                 request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Submission review completed", response));
+    }
+
+    @PostMapping("/{submissionId}/merge")
+    public ApiResponse<PullRequestBrief> mergeSubmissionPullRequest(
+            @PathVariable Long submissionId,
+            Authentication authentication) {
+        PullRequestBrief response = reviewService.mergeSubmissionPullRequest(
+                submissionId,
+                SecurityPrincipalUtils.currentUserId(authentication));
+        return ApiResponse.success("MERGED", response);
     }
 }

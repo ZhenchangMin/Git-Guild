@@ -18,6 +18,7 @@ const reviewAlertRef = ref(null)
 const loadError = ref('')
 const isLoadingReviews = ref(false)
 const isSubmittingReview = ref(false)
+const isMerging = ref(false)
 const isActionPanelCollapsed = ref(false)
 
 const selectedReview = computed(
@@ -79,11 +80,11 @@ function buildCompletionCriteria(submission) {
         : '提交记录缺少 PR 关联。',
     },
     {
-      checkpoint: '通过将自动合并 PR',
+      checkpoint: 'PR 合并状态',
       passed: prStatus === 'MERGED',
       comment: prStatus === 'MERGED'
         ? 'PR 已合并。'
-        : `当前 PR 状态为 ${prStatus}，点击“通过”将由平台自动合并该 PR；若存在冲突会被拦截并提示。`,
+        : `当前 PR 状态为 ${prStatus}。“接受提交”只完成任务并发放 XP，不会自动合并；如需合并请用「合并 PR」按钮（或在 Gitea 手动合并）。`,
     },
     {
       checkpoint: '成果说明已提交',
@@ -208,7 +209,7 @@ async function submitReview(payload) {
           : '修改请求已发送'
     const successBody =
       payload.decision === 'APPROVED'
-        ? `${currentReview.questId} 已审核通过：平台已自动合并 PR，任务标记完成并发放 XP（submissionId=${submissionId}）。`
+        ? `${currentReview.questId} 已接受：任务标记完成并发放 XP（submissionId=${submissionId}）。PR 未自动合并，如需合并请点「合并 PR」。`
         : `${currentReview.questId} 的审核结论已通过后端接口记录为 ${payload.decision}，submissionId=${submissionId}。`
     reviewAlert.value = {
       tone: payload.decision === 'APPROVED' ? 'success' : 'warning',
@@ -239,13 +240,38 @@ async function submitReview(payload) {
   }
 }
 
-function buildReviewErrorMessage(error, review) {
-  if (error?.code === 'PR_MERGE_CONFLICT') {
-    return {
-      title: 'PR 存在冲突，自动合并失败',
-      body: `${review.pullRequest} 无法自动合并。请先在 Gitea 解决冲突后再点“通过”；当前成果会保持待审核状态，不发放 XP。`,
+async function mergeSelectedPullRequest() {
+  if (!selectedReview.value) return
+  const review = selectedReview.value
+  const submissionId = review.submissionId
+  isMerging.value = true
+  reviewAlert.value = null
+  try {
+    await reviewApi.mergePullRequest(submissionId)
+    // 本地即时反映合并结果，再以队列刷新对齐后端。
+    reviews.value = reviews.value.map((item) =>
+      item.id === review.id ? { ...item, prState: 'MERGED' } : item,
+    )
+    await loadReviewQueue()
+    reviewAlert.value = {
+      tone: 'success',
+      title: 'PR 已合并',
+      body: `${review.pullRequest} 已合并到目标分支（submissionId=${submissionId}）。`,
     }
+  } catch (error) {
+    const body =
+      error?.code === 'PR_MERGE_CONFLICT'
+        ? `${review.pullRequest} 存在冲突，无法自动合并。请先在 Gitea 解决冲突后再试。`
+        : `${error?.code ? `${error.code}：` : ''}${error?.message || '合并失败，请稍后再试。'}`
+    reviewAlert.value = { tone: 'error', title: 'PR 合并失败', body }
+    await nextTick()
+    reviewAlertRef.value?.focus()
+  } finally {
+    isMerging.value = false
   }
+}
+
+function buildReviewErrorMessage(error, review) {
   if (error?.code === 'TASK_BRANCH_EMPTY') {
     return {
       title: '任务分支没有改动',
@@ -368,7 +394,11 @@ onMounted(loadReviewQueue)
               'actions-collapsed': canReviewSelectedSubmission && isActionPanelCollapsed,
             }"
           >
-            <MaintainerReviewDetail :review="selectedReview" />
+            <MaintainerReviewDetail
+              :review="selectedReview"
+              :merging="isMerging"
+              @merge-pr="mergeSelectedPullRequest"
+            />
             <button
               v-if="canReviewSelectedSubmission"
               class="action-panel-toggle"

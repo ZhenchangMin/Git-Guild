@@ -1,6 +1,7 @@
 package com.gitguild.backend.common;
 
 import java.util.stream.Collectors;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -42,6 +43,13 @@ public class GlobalExceptionHandler {
     })
     public ApiResponse<Void> handleRequestParameterError(Exception ex) {
         return ApiResponse.error("VALIDATION_FAILED", "请求参数不合法", ex.getMessage());
+    }
+
+    // 唯一约束等数据库完整性冲突的兜底（如并发下绕过预检的同名插入）→ 409。
+    @ResponseStatus(HttpStatus.CONFLICT)
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ApiResponse<Void> handleDataIntegrity(DataIntegrityViolationException ex) {
+        return ApiResponse.error("ALREADY_EXISTS", "数据已存在或违反唯一约束");
     }
 
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)

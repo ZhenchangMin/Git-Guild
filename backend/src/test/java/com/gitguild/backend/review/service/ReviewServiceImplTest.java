@@ -87,7 +87,6 @@ class ReviewServiceImplTest {
 
         when(submissionRepository.findById(9001L)).thenReturn(Optional.of(submission));
         when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
-        when(questPullRequestService.mergeForApproval(any(), any())).thenReturn(submission.getPullRequest());
         when(assignmentRepository.findByQuestAndAssigneeUserIdAndStatus(quest, 3001L, AssignmentStatus.ACTIVE))
                 .thenReturn(Optional.of(assignment));
         when(reviewRecordRepository.save(any(ReviewRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -103,13 +102,14 @@ class ReviewServiceImplTest {
         assertThat(assignment.getStatus()).isEqualTo(AssignmentStatus.COMPLETED);
         verify(assignmentRepository).save(assignment);
         verify(growthService).grantQuestCompletion(submitter, quest);
-        verify(questPullRequestService).mergeForApproval(submission.getPullRequest(), repository);
+        // 「接受提交」与合并解耦：审核通过不再触发合并。
+        verify(questPullRequestService, never()).mergeForApproval(any(), any());
         verify(submissionRepository).save(submission);
         verify(questRepository).save(quest);
     }
 
     @Test
-    void reviewSubmissionShouldRejectApprovalWhenMergeConflicts() {
+    void mergeSubmissionPullRequestShouldMergeWhenAuthorized() {
         User maintainer = user(2001L, UserRole.MAINTAINER);
         User submitter = user(3001L, UserRole.BEGINNER);
         CodeRepository repository = repository(maintainer);
@@ -118,22 +118,50 @@ class ReviewServiceImplTest {
 
         when(submissionRepository.findById(9001L)).thenReturn(Optional.of(submission));
         when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
+        when(questPullRequestService.mergeForApproval(submission.getPullRequest(), repository))
+                .thenReturn(pullRequest(repository, "MERGED"));
+
+        var brief = reviewService.mergeSubmissionPullRequest(9001L, 2001L);
+
+        assertThat(brief.status()).isEqualTo("MERGED");
+        verify(questPullRequestService).mergeForApproval(submission.getPullRequest(), repository);
+    }
+
+    @Test
+    void mergeSubmissionPullRequestShouldPropagateMergeConflict() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User submitter = user(3001L, UserRole.BEGINNER);
+        CodeRepository repository = repository(maintainer);
+        Submission submission = submission(quest(maintainer, repository), submitter, pullRequest(repository, "OPEN"));
+
+        when(submissionRepository.findById(9001L)).thenReturn(Optional.of(submission));
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
         when(questPullRequestService.mergeForApproval(any(), any()))
                 .thenThrow(new BusinessException("PR_MERGE_CONFLICT", org.springframework.http.HttpStatus.CONFLICT,
                         "PR 存在冲突，无法自动合并", "pullRequestId=8001"));
 
-        assertThatThrownBy(() -> reviewService.reviewSubmission(9001L, 2001L, request(ReviewDecision.APPROVED)))
+        assertThatThrownBy(() -> reviewService.mergeSubmissionPullRequest(9001L, 2001L))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo("PR_MERGE_CONFLICT");
+    }
 
-        // 合并失败 → 不记审核、不完成、不发 XP（外层事务会回滚）
-        verify(reviewRecordRepository, never()).save(any());
-        verify(submissionRepository, never()).save(any());
-        verify(questRepository, never()).save(any());
-        verify(growthService, never()).grantQuestCompletion(any(), any());
-        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.PENDING_REVIEW);
-        assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_PROGRESS);
+    @Test
+    void mergeSubmissionPullRequestShouldRejectUnauthorizedReviewer() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User beginner = user(3002L, UserRole.BEGINNER);
+        User submitter = user(3001L, UserRole.BEGINNER);
+        CodeRepository repository = repository(maintainer);
+        Submission submission = submission(quest(maintainer, repository), submitter, pullRequest(repository, "OPEN"));
+
+        when(submissionRepository.findById(9001L)).thenReturn(Optional.of(submission));
+        when(userRepository.findById(3002L)).thenReturn(Optional.of(beginner));
+
+        assertThatThrownBy(() -> reviewService.mergeSubmissionPullRequest(9001L, 3002L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("FORBIDDEN");
+        verify(questPullRequestService, never()).mergeForApproval(any(), any());
     }
 
     @Test

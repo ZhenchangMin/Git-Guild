@@ -133,8 +133,18 @@ public class QuestServiceImpl implements QuestService {
 
         CodeRepository repository = codeRepositoryRepository.findById(request.getRepositoryId())
                 .orElseThrow(() -> new BusinessException("REPOSITORY_NOT_FOUND", HttpStatus.NOT_FOUND, "仓库不存在", "repositoryId=" + request.getRepositoryId()));
-        CodeIssue issue = issueRepository.findByIssueIdAndRepositoryRepositoryId(request.getIssueId(), request.getRepositoryId())
-                .orElseThrow(() -> new BusinessException("ISSUE_NOT_FOUND", HttpStatus.NOT_FOUND, "Issue 不存在", "issueId=" + request.getIssueId()));
+        // Issue 来源二选一：优先「新建 Gitea Issue」路径，否则关联已有本地 Issue。
+        CodeIssue issue;
+        String newIssueTitle = request.getGiteaIssueTitle();
+        if (newIssueTitle != null && !newIssueTitle.isBlank()) {
+            issue = codeIssueService.createFromGitea(repository, newIssueTitle.trim(), request.getGiteaIssueBody());
+        } else if (request.getIssueId() != null) {
+            issue = issueRepository.findByIssueIdAndRepositoryRepositoryId(request.getIssueId(), request.getRepositoryId())
+                    .orElseThrow(() -> new BusinessException("ISSUE_NOT_FOUND", HttpStatus.NOT_FOUND, "Issue 不存在", "issueId=" + request.getIssueId()));
+        } else {
+            throw new BusinessException(
+                    "VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "请求参数不合法", "issueId 与 giteaIssueTitle 必须二选一");
+        }
         if (!issue.canCreateQuest() || questRepository.existsByIssueAndStatusIn(issue, ACTIVE_ISSUE_QUEST_STATUSES)) {
             throw new BusinessException("ISSUE_NOT_AVAILABLE", HttpStatus.CONFLICT, "该 Issue 当前不可发布为任务", "Issue 已关闭或已关联未完成任务");
         }
@@ -205,6 +215,14 @@ public class QuestServiceImpl implements QuestService {
                 size,
                 questPage.getTotalElements(),
                 questPage.getTotalPages());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<QuestSummaryResponse> listMyPublishedQuests(Long publisherId) {
+        return questRepository.findByPublisherUserIdOrderByCreatedAtDesc(publisherId).stream()
+                .map(this::toSummary)
+                .toList();
     }
 
     @Override
