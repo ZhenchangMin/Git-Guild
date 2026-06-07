@@ -3506,7 +3506,11 @@ h2 {
 
 .submission-mode {
   display: block;
+  min-height: 100svh;
   padding: 0;
+  background-color: #070302;
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
 .workbench-mode {
@@ -3542,8 +3546,12 @@ h2 {
 
 .submission-counter-workspace {
   position: absolute;
-  inset: 0;
+  left: 50%;
+  top: 50%;
   z-index: 1;
+  width: max(100vw, calc(100svh * 1672 / 941));
+  height: max(100svh, calc(100vw * 941 / 1672));
+  transform: translate(-50%, -50%);
 }
 
 .submission-counter-workspace.active .submission-paper-hotspot {
@@ -3554,10 +3562,10 @@ h2 {
 .submission-paper-hotspot {
   position: absolute;
   left: 50%;
-  top: 74%;
+  top: 81.5%;
   z-index: 2;
-  width: min(360px, 24vw);
-  height: min(270px, 30svh);
+  width: 22%;
+  height: 26.5%;
   border: 0;
   border-radius: 6px;
   padding: 0;
@@ -5116,9 +5124,9 @@ h2 {
   }
 
   .submission-paper-hotspot {
-    top: 76%;
-    width: min(300px, 34vw);
-    height: min(230px, 26svh);
+    top: 81.5%;
+    width: 22%;
+    height: 26.5%;
   }
 
   .submission-modal-sheet {
