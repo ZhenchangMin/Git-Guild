@@ -38,23 +38,33 @@ export const adminApi = {
     return requestMock(`/admin/exceptions/${exceptionId}/resolve`, { method: 'POST', body: payload })
   },
 
-  // ── 平台配置：分类与标签（M2）──────────────────────
+  // ── 平台配置：分类与标签（M2，已接真实后端）────────
   listCategories(params) {
-    return requestMock('/quest-categories', { params })
+    return request(`/quest-categories${toQuery(params)}`)
   },
   createCategory(payload) {
-    return requestMock('/quest-categories', { method: 'POST', body: payload })
+    return request('/quest-categories', { method: 'POST', body: payload })
   },
   updateCategory(categoryId, payload) {
-    return requestMock(`/quest-categories/${categoryId}`, { method: 'PATCH', body: payload })
+    return request(`/quest-categories/${categoryId}`, { method: 'PATCH', body: payload })
   },
   listTags(params) {
-    return requestMock('/quest-tags', { params })
+    return request(`/quest-tags${toQuery(params)}`)
   },
   createTag(payload) {
-    return requestMock('/quest-tags', { method: 'POST', body: payload })
+    return request('/quest-tags', { method: 'POST', body: payload })
   },
   updateTag(tagId, payload) {
-    return requestMock(`/quest-tags/${tagId}`, { method: 'PATCH', body: payload })
+    return request(`/quest-tags/${tagId}`, { method: 'PATCH', body: payload })
   },
+}
+
+function toQuery(params) {
+  const query = new URLSearchParams()
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return
+    query.set(key, String(value))
+  })
+  const s = query.toString()
+  return s ? `?${s}` : ''
 }

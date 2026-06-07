@@ -216,7 +216,7 @@ CREATE TABLE `quest_categories` (
 
 LOCK TABLES `quest_categories` WRITE;
 /*!40000 ALTER TABLE `quest_categories` DISABLE KEYS */;
-INSERT INTO `quest_categories` VALUES (1,'2026-06-04 06:11:55.000000','æœ¬åœ° Gitea MVP æ¼”ç¤ºåˆ†ç±»',_binary '','MVP','2026-06-04 06:11:55.000000');
+INSERT INTO `quest_categories` VALUES (1,'2026-06-04 06:11:55.000000','本地 Gitea 最短 MVP 演示分类',_binary '','MVP','2026-06-04 06:11:55.000000');
 /*!40000 ALTER TABLE `quest_categories` ENABLE KEYS */;
 UNLOCK TABLES;
 DROP TABLE IF EXISTS `quest_tag_relations`;
@@ -248,7 +248,7 @@ CREATE TABLE `quest_tags` (
   `updated_at` datetime(6) NOT NULL,
   PRIMARY KEY (`tag_id`),
   UNIQUE KEY `UK6xshqv9b292my62lbj74vpynf` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 LOCK TABLES `quest_tags` WRITE;
@@ -408,7 +408,7 @@ CREATE TABLE `users` (
   PRIMARY KEY (`user_id`),
   UNIQUE KEY `UK6dotkott2kjsp8vw4d0m25fb7` (`email`),
   UNIQUE KEY `UKr43af9ap4edm43mmtq01oddj6` (`username`)
-) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 LOCK TABLES `users` WRITE;

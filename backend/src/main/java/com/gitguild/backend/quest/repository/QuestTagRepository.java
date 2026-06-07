@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface QuestTagRepository extends JpaRepository<QuestTag, Long> {
 
     List<QuestTag> findByTagIdIn(Collection<Long> tagIds);
+
+    boolean existsByNameIgnoreCase(String name);
 }

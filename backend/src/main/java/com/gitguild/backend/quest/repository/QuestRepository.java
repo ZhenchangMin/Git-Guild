@@ -9,10 +9,18 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
 
 public interface QuestRepository extends JpaRepository<Quest, Long>, JpaSpecificationExecutor<Quest> {
 
     boolean existsByIssueAndStatusIn(CodeIssue issue, Collection<QuestStatus> statuses);
+
+    /** 引用该分类的 Quest 数量（用于管理台分类「引用数」展示）。 */
+    long countByCategory_CategoryId(Long categoryId);
+
+    /** 引用该标签的 Quest 数量（经 quest_tag_relations 关联表统计）。 */
+    @Query("select count(q) from Quest q join q.tags t where t.tagId = :tagId")
+    long countByTagId(Long tagId);
 
     Page<Quest> findByStatus(QuestStatus status, Pageable pageable);
 

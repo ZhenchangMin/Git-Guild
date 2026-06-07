@@ -1,11 +1,11 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { adminApi } from '../../api/adminApi'
-import { questCategories, questDifficulties, questTags, tagPalette } from '../../data/adminTaxonomy'
+import { questDifficulties, tagPalette } from '../../data/adminTaxonomy'
 
-const categories = ref(questCategories.map((item) => ({ ...item })))
-const tags = ref(questTags.map((item) => ({ ...item })))
+const categories = ref([])
+const tags = ref([])
 const difficulties = questDifficulties
 
 const newCategory = ref({ name: '', description: '' })
@@ -14,6 +14,7 @@ const newTag = ref({ name: '', color: tagPalette[0] })
 const customColor = ref('#c84b8f')
 const categoryNotice = ref(null)
 const tagNotice = ref(null)
+const loading = ref(true)
 
 // 当前选色不在预设色板中时，视为使用了自定义颜色。
 const usingCustomColor = computed(() => !tagPalette.includes(newTag.value.color))
@@ -22,9 +23,6 @@ function pickCustomColor(event) {
   customColor.value = event.target.value
   newTag.value.color = event.target.value
 }
-
-let categorySeq = Math.max(0, ...categories.value.map((c) => c.categoryId))
-let tagSeq = Math.max(0, ...tags.value.map((t) => t.tagId))
 
 const enabledCategoryCount = computed(() => categories.value.filter((c) => c.enabled).length)
 const enabledTagCount = computed(() => tags.value.filter((t) => t.enabled).length)
@@ -35,33 +33,54 @@ function notice(target, tone, text) {
   else tagNotice.value = value
 }
 
+// 管理台需要看到「停用」项以便重新启用，故 includeDisabled=true；分类要真实引用数。
+onMounted(loadTaxonomy)
+
+async function loadTaxonomy() {
+  loading.value = true
+  try {
+    const [catRes, tagRes] = await Promise.all([
+      adminApi.listCategories({ withQuestCount: true, includeDisabled: true, sortBy: 'name' }),
+      adminApi.listTags({ includeDisabled: true, size: 100 }),
+    ])
+    categories.value = (catRes?.data ?? []).map((c) => ({ ...c }))
+    tags.value = (tagRes?.data?.items ?? []).map((t) => ({ ...t }))
+  } catch (error) {
+    const text = error?.message ?? '加载分类/标签失败，请确认后端已启动并以管理员登录。'
+    notice('category', 'danger', text)
+    notice('tag', 'danger', text)
+  } finally {
+    loading.value = false
+  }
+}
+
 async function addCategory() {
   const name = newCategory.value.name.trim()
   if (name.length < 1 || name.length > 32) {
     notice('category', 'danger', '分类名称长度需为 1-32 个字符。')
     return
   }
-  if (categories.value.some((c) => c.name === name)) {
-    notice('category', 'danger', `同名分类已存在：${name}`)
-    return
+  try {
+    const res = await adminApi.createCategory({ name, description: newCategory.value.description.trim() })
+    const created = res?.data ?? {}
+    categories.value = [...categories.value, { questCount: 0, ...created }]
+    newCategory.value = { name: '', description: '' }
+    notice('category', 'approved', `任务分类已创建：${created.name ?? name}`)
+  } catch (error) {
+    notice('category', 'danger', error?.message ?? '创建分类失败。')
   }
-  const payload = { name, description: newCategory.value.description.trim(), enabled: true }
-  await adminApi.createCategory(payload)
-  categorySeq += 1
-  categories.value = [...categories.value, { categoryId: categorySeq, questCount: 0, ...payload }]
-  newCategory.value = { name: '', description: '' }
-  notice('category', 'approved', `任务分类已创建：${name}`)
 }
 
 async function toggleCategory(category) {
-  // 业务规则：被任务引用的分类不能禁用。
-  if (category.enabled && category.questCount > 0) {
-    notice('category', 'danger', `「${category.name}」被 ${category.questCount} 个任务引用，无法禁用。`)
-    return
+  // 停用仅表示「不再供新任务选用」，已有引用照常保留，因此不拦截。
+  const next = !category.enabled
+  try {
+    const res = await adminApi.updateCategory(category.categoryId, { enabled: next })
+    Object.assign(category, res?.data ?? { enabled: next })
+    notice('category', next ? 'approved' : 'return', `「${category.name}」已${next ? '启用' : '停用'}。`)
+  } catch (error) {
+    notice('category', 'danger', error?.message ?? '更新分类失败。')
   }
-  await adminApi.updateCategory(category.categoryId, { enabled: !category.enabled })
-  category.enabled = !category.enabled
-  notice('category', category.enabled ? 'approved' : 'return', `「${category.name}」已${category.enabled ? '启用' : '停用'}。`)
 }
 
 async function addTag() {
@@ -70,26 +89,26 @@ async function addTag() {
     notice('tag', 'danger', '标签名称不能为空。')
     return
   }
-  if (tags.value.some((t) => t.name === name)) {
-    notice('tag', 'danger', `同名标签已存在：${name}`)
-    return
+  try {
+    const res = await adminApi.createTag({ name, color: newTag.value.color })
+    const created = res?.data ?? {}
+    tags.value = [...tags.value, { questCount: 0, ...created }]
+    newTag.value = { name: '', color: tagPalette[0] }
+    notice('tag', 'approved', `任务标签已创建：${created.name ?? name}`)
+  } catch (error) {
+    notice('tag', 'danger', error?.message ?? '创建标签失败。')
   }
-  const payload = { name, color: newTag.value.color, enabled: true }
-  await adminApi.createTag(payload)
-  tagSeq += 1
-  tags.value = [...tags.value, { tagId: tagSeq, questCount: 0, ...payload }]
-  newTag.value = { name: '', color: tagPalette[0] }
-  notice('tag', 'approved', `任务标签已创建：${name}`)
 }
 
 async function toggleTag(tag) {
-  if (tag.enabled && tag.questCount > 0) {
-    notice('tag', 'danger', `「${tag.name}」被 ${tag.questCount} 个任务引用，无法禁用。`)
-    return
+  const next = !tag.enabled
+  try {
+    const res = await adminApi.updateTag(tag.tagId, { enabled: next })
+    Object.assign(tag, res?.data ?? { enabled: next })
+    notice('tag', next ? 'approved' : 'return', `「${tag.name}」已${next ? '启用' : '停用'}。`)
+  } catch (error) {
+    notice('tag', 'danger', error?.message ?? '更新标签失败。')
   }
-  await adminApi.updateTag(tag.tagId, { enabled: !tag.enabled })
-  tag.enabled = !tag.enabled
-  notice('tag', tag.enabled ? 'approved' : 'return', `「${tag.name}」已${tag.enabled ? '启用' : '停用'}。`)
 }
 </script>
 
@@ -102,7 +121,7 @@ async function toggleTag(tag) {
           <p class="kicker">Categories</p>
           <h1>任务分类</h1>
         </div>
-        <span>{{ enabledCategoryCount }} / {{ categories.length }} 启用</span>
+        <span>{{ loading ? '加载中…' : `${enabledCategoryCount} / ${categories.length} 启用` }}</span>
       </div>
 
       <form class="admin-tax-add" @submit.prevent="addCategory">
@@ -139,7 +158,7 @@ async function toggleTag(tag) {
           <p class="kicker">Tags</p>
           <h1>任务标签</h1>
         </div>
-        <span>{{ enabledTagCount }} / {{ tags.length }} 启用</span>
+        <span>{{ loading ? '加载中…' : `${enabledTagCount} / ${tags.length} 启用` }}</span>
       </div>
 
       <form class="admin-tax-add admin-tax-add-tag" @submit.prevent="addTag">
