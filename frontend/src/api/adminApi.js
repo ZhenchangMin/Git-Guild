@@ -1,5 +1,15 @@
 import { request, requestMock } from './httpClient'
 
+function withQuery(endpoint, params = {}) {
+  const query = new URLSearchParams()
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return
+    query.set(key, String(value))
+  })
+  const suffix = query.toString()
+  return suffix ? `${endpoint}?${suffix}` : endpoint
+}
+
 // 管理员控制台接口层。路径对齐 docs/P4/临时文档/P4-005 前后端接口契约清单.md
 // 与 docs/P3/API规范/（管理员审核 / 任务分类）。任务审核已接真实后端，其他管理员模块仍保留 mock。
 
@@ -40,21 +50,21 @@ export const adminApi = {
 
   // ── 平台配置：分类与标签（M2）──────────────────────
   listCategories(params) {
-    return requestMock('/quest-categories', { params })
+    return request(withQuery('/quest-categories', params))
   },
   createCategory(payload) {
-    return requestMock('/quest-categories', { method: 'POST', body: payload })
+    return request('/quest-categories', { method: 'POST', body: payload })
   },
   updateCategory(categoryId, payload) {
-    return requestMock(`/quest-categories/${categoryId}`, { method: 'PATCH', body: payload })
+    return request(`/quest-categories/${categoryId}`, { method: 'PATCH', body: payload })
   },
   listTags(params) {
-    return requestMock('/quest-tags', { params })
+    return request(withQuery('/quest-tags', params))
   },
   createTag(payload) {
-    return requestMock('/quest-tags', { method: 'POST', body: payload })
+    return request('/quest-tags', { method: 'POST', body: payload })
   },
   updateTag(tagId, payload) {
-    return requestMock(`/quest-tags/${tagId}`, { method: 'PATCH', body: payload })
+    return request(`/quest-tags/${tagId}`, { method: 'PATCH', body: payload })
   },
 }

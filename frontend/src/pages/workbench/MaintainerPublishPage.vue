@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
+import parchmentFormImg from '../../assets/submission-form-parchment-v0-clean.png'
 
 const router = useRouter()
 
@@ -192,7 +193,7 @@ function unwrapItems(payload) {
         <span>返回事务所</span>
       </button>
 
-      <article class="writ-panel">
+      <article class="writ-panel" :style="{ '--writ-sheet-image': `url(${parchmentFormImg})` }">
         <header class="writ-head">
           <p class="writ-eyebrow">委托书 · Commission Writ</p>
           <h1>发布委托</h1>
@@ -341,15 +342,47 @@ function unwrapItems(payload) {
 }
 
 .writ-panel {
-  width: min(820px, 100%);
-  padding: clamp(26px, 4vw, 46px);
-  border: 1px solid var(--paper-deep);
-  border-radius: 12px;
+  --writ-pad-x: clamp(76px, 14%, 152px);
+  --writ-pad-y: clamp(88px, 12%, 140px);
+
+  position: relative;
+  box-sizing: border-box;
+  width: min(1086px, calc(100vw - 36px));
+  aspect-ratio: 1086 / 1448;
+  padding: var(--writ-pad-y) var(--writ-pad-x);
   color: var(--ink);
-  background:
-    radial-gradient(circle at 18% 10%, rgba(255, 250, 232, 0.7), transparent 44%),
-    linear-gradient(168deg, #f4e3b6, #e7cd90);
-  box-shadow: 0 28px 64px rgba(8, 4, 2, 0.55), inset 0 1px 0 rgba(255, 252, 236, 0.55);
+  isolation: isolate;
+}
+
+.writ-panel::before {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  content: '';
+  pointer-events: none;
+  background-image: var(--writ-sheet-image);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  filter:
+    drop-shadow(0 0 1px rgba(0, 0, 0, 0.86))
+    drop-shadow(0 0 4px rgba(0, 0, 0, 0.64))
+    drop-shadow(0 12px 28px rgba(0, 0, 0, 0.5))
+    drop-shadow(0 30px 58px rgba(0, 0, 0, 0.58));
+}
+
+.writ-panel::after {
+  position: absolute;
+  inset: 6.5% 8%;
+  z-index: -1;
+  content: '';
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 68% 58% at 50% 50%,
+    rgba(243, 231, 202, 0.86) 0%,
+    rgba(243, 231, 202, 0.58) 48%,
+    rgba(243, 231, 202, 0) 82%
+  );
 }
 
 .writ-eyebrow {
@@ -404,13 +437,14 @@ function unwrapItems(payload) {
 .writ-field select,
 .writ-field textarea {
   width: 100%;
-  border: 1px solid rgba(122, 74, 24, 0.34);
-  border-radius: 5px;
-  padding: 10px 12px;
-  color: var(--ink);
+  border: 1px solid rgba(98, 55, 20, 0.26);
+  border-radius: 4px;
+  padding: 9px 10px;
+  color: #3b210f;
   font-family: var(--font-body);
   font-size: 0.92rem;
-  background: rgba(255, 250, 234, 0.72);
+  background: rgba(255, 244, 210, 0.56);
+  box-shadow: inset 0 1px 6px rgba(70, 34, 10, 0.12);
   transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 .writ-field input::placeholder,
@@ -422,8 +456,10 @@ function unwrapItems(payload) {
 .writ-field textarea:focus {
   outline: none;
   border-color: var(--gold);
-  background: rgba(255, 252, 240, 0.94);
-  box-shadow: 0 0 0 3px rgba(216, 154, 50, 0.22);
+  background: rgba(255, 244, 210, 0.72);
+  box-shadow:
+    inset 0 1px 6px rgba(70, 34, 10, 0.1),
+    0 0 0 2px rgba(216, 154, 50, 0.18);
 }
 .writ-field textarea {
   resize: vertical;
@@ -542,6 +578,11 @@ function unwrapItems(payload) {
 }
 
 @media (max-width: 640px) {
+  .writ-panel {
+    --writ-pad-x: clamp(40px, 12vw, 76px);
+    --writ-pad-y: clamp(54px, 14vw, 88px);
+  }
+
   .writ-form {
     grid-template-columns: 1fr;
   }

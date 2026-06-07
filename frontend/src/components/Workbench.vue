@@ -42,6 +42,7 @@ defineProps({
 const liveUser = ref({
   ...workbenchUser,
   name: sessionStore.user?.displayName || sessionStore.user?.username || workbenchUser.name,
+  avatarUrl: sessionStore.user?.avatarUrl || '',
   // 成长数值初始为 null，避免真实数据到达前闪现演示用户（Minerva Dawn / 720 XP）的等级与 XP
   level: null,
   xpCurrent: null,
@@ -68,6 +69,7 @@ async function fetchWorkbenchData() {
       liveUser.value = {
         ...workbenchUser,
         name: sessionStore.user?.displayName || sessionStore.user?.username || '冒险家',
+        avatarUrl: sessionStore.user?.avatarUrl || '',
         level: g.level ?? 1,
         xpCurrent: g.totalXp ?? 0,
         xpTarget: g.nextLevelXp ?? 1000,
@@ -247,8 +249,14 @@ const unreadMailCount = computed(() => mailboxMessages.value.filter((email) => e
 
 // 当 fetched user 数据还为空时，回退到 session user
 const effectiveUserName = computed(() =>
-  liveUser.value.name || sessionStore.user?.displayName || sessionStore.user?.username || '冒险家',
+  sessionStore.user?.displayName || sessionStore.user?.username || liveUser.value.name || '冒险家',
 )
+const effectiveAvatarUrl = computed(() => sessionStore.user?.avatarUrl || liveUser.value.avatarUrl || '')
+const effectiveAvatarInitial = computed(() => effectiveUserName.value.trim().charAt(0).toUpperCase() || '冒')
+const avatarLoadFailed = ref(false)
+watch(effectiveAvatarUrl, () => {
+  avatarLoadFailed.value = false
+})
 const effectiveLevel = computed(() => liveUser.value.level || 1)
 const effectiveXpCurrent = computed(() => liveUser.value.xpCurrent || 0)
 const effectiveXpTarget = computed(() => liveUser.value.xpTarget || 1000)
@@ -1292,7 +1300,15 @@ function openFeedback(feedbackId, source = '审核反馈') {
         <p class="kicker">工作台</p>
         <h1>工作台</h1>
         <div class="user-identity">
-          <span class="user-avatar" aria-hidden="true">{{ effectiveUserName.slice(0, 1) }}</span>
+          <span class="user-avatar" :class="{ 'has-img': effectiveAvatarUrl && !avatarLoadFailed }" aria-hidden="true">
+            <img
+              v-if="effectiveAvatarUrl && !avatarLoadFailed"
+              :src="effectiveAvatarUrl"
+              alt=""
+              @error="avatarLoadFailed = true"
+            />
+            <span v-else>{{ effectiveAvatarInitial }}</span>
+          </span>
           <div>
             <strong>{{ effectiveUserName }}</strong>
             <span>{{ activeRoleLabel }}</span>
@@ -2001,6 +2017,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
   height: 46px;
   border: 1px solid rgba(238, 184, 91, 0.6);
   border-radius: 50%;
+  overflow: hidden;
   color: #ffe2a0;
   font-family: var(--font-display);
   font-size: 1.3rem;
@@ -2008,6 +2025,20 @@ function openFeedback(feedbackId, source = '审核反馈') {
     radial-gradient(circle at 38% 28%, rgba(255, 232, 176, 0.3), transparent 0 26%, transparent 50%),
     linear-gradient(145deg, #173154, #0d1a2e 48%, #44220e);
   box-shadow: inset 0 0 0 2px rgba(255, 225, 160, 0.18), 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+.user-avatar.has-img {
+  background: rgba(34, 18, 8, 0.5);
+}
+
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-avatar span {
+  line-height: 1;
 }
 
 .user-identity strong {

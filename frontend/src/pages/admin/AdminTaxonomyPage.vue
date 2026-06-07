@@ -1,11 +1,11 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { adminApi } from '../../api/adminApi'
-import { questCategories, questDifficulties, questTags, tagPalette } from '../../data/adminTaxonomy'
+import { questDifficulties, tagPalette } from '../../data/adminTaxonomy'
 
-const categories = ref(questCategories.map((item) => ({ ...item })))
-const tags = ref(questTags.map((item) => ({ ...item })))
+const categories = ref([])
+const tags = ref([])
 const difficulties = questDifficulties
 
 const newCategory = ref({ name: '', description: '' })
@@ -23,11 +23,52 @@ function pickCustomColor(event) {
   newTag.value.color = event.target.value
 }
 
-let categorySeq = Math.max(0, ...categories.value.map((c) => c.categoryId))
-let tagSeq = Math.max(0, ...tags.value.map((t) => t.tagId))
-
 const enabledCategoryCount = computed(() => categories.value.filter((c) => c.enabled).length)
 const enabledTagCount = computed(() => tags.value.filter((t) => t.enabled).length)
+
+onMounted(() => {
+  loadTaxonomy()
+})
+
+async function loadTaxonomy() {
+  try {
+    const [categoryResponse, tagResponse] = await Promise.all([
+      adminApi.listCategories({ withQuestCount: true, includeDisabled: true }),
+      adminApi.listTags({ page: 1, size: 100, includeDisabled: true }),
+    ])
+    categories.value = (categoryResponse?.data ?? []).map(normalizeCategory)
+    tags.value = (tagResponse?.data?.items ?? tagResponse?.data ?? []).map(normalizeTag)
+  } catch (error) {
+    notice('category', 'danger', readableError(error, '分类读取失败。'))
+    notice('tag', 'danger', readableError(error, '标签读取失败。'))
+  }
+}
+
+function normalizeCategory(category) {
+  return {
+    categoryId: category.categoryId,
+    name: category.name ?? '',
+    description: category.description ?? '',
+    enabled: category.enabled !== false,
+    questCount: category.questCount ?? 0,
+  }
+}
+
+function normalizeTag(tag) {
+  return {
+    tagId: tag.tagId,
+    name: tag.name ?? '',
+    color: tag.color ?? tagPalette[0],
+    enabled: tag.enabled !== false,
+    questCount: tag.questCount ?? 0,
+  }
+}
+
+function readableError(error, fallback) {
+  if (error?.details) return `${fallback} ${error.details}`
+  if (error?.message) return `${fallback} ${error.message}`
+  return fallback
+}
 
 function notice(target, tone, text) {
   const value = { tone, text }
@@ -46,9 +87,8 @@ async function addCategory() {
     return
   }
   const payload = { name, description: newCategory.value.description.trim(), enabled: true }
-  await adminApi.createCategory(payload)
-  categorySeq += 1
-  categories.value = [...categories.value, { categoryId: categorySeq, questCount: 0, ...payload }]
+  const response = await adminApi.createCategory(payload)
+  categories.value = [...categories.value, normalizeCategory({ ...payload, ...(response?.data ?? {}) })]
   newCategory.value = { name: '', description: '' }
   notice('category', 'approved', `任务分类已创建：${name}`)
 }
@@ -59,8 +99,13 @@ async function toggleCategory(category) {
     notice('category', 'danger', `「${category.name}」被 ${category.questCount} 个任务引用，无法禁用。`)
     return
   }
-  await adminApi.updateCategory(category.categoryId, { enabled: !category.enabled })
-  category.enabled = !category.enabled
+  const nextEnabled = !category.enabled
+  const response = await adminApi.updateCategory(category.categoryId, {
+    name: category.name,
+    description: category.description,
+    enabled: nextEnabled,
+  })
+  Object.assign(category, normalizeCategory({ ...category, enabled: nextEnabled, ...(response?.data ?? {}) }))
   notice('category', category.enabled ? 'approved' : 'return', `「${category.name}」已${category.enabled ? '启用' : '停用'}。`)
 }
 
@@ -75,9 +120,8 @@ async function addTag() {
     return
   }
   const payload = { name, color: newTag.value.color, enabled: true }
-  await adminApi.createTag(payload)
-  tagSeq += 1
-  tags.value = [...tags.value, { tagId: tagSeq, questCount: 0, ...payload }]
+  const response = await adminApi.createTag(payload)
+  tags.value = [...tags.value, normalizeTag({ ...payload, ...(response?.data ?? {}) })]
   newTag.value = { name: '', color: tagPalette[0] }
   notice('tag', 'approved', `任务标签已创建：${name}`)
 }
@@ -87,8 +131,13 @@ async function toggleTag(tag) {
     notice('tag', 'danger', `「${tag.name}」被 ${tag.questCount} 个任务引用，无法禁用。`)
     return
   }
-  await adminApi.updateTag(tag.tagId, { enabled: !tag.enabled })
-  tag.enabled = !tag.enabled
+  const nextEnabled = !tag.enabled
+  const response = await adminApi.updateTag(tag.tagId, {
+    name: tag.name,
+    color: tag.color,
+    enabled: nextEnabled,
+  })
+  Object.assign(tag, normalizeTag({ ...tag, enabled: nextEnabled, ...(response?.data ?? {}) }))
   notice('tag', tag.enabled ? 'approved' : 'return', `「${tag.name}」已${tag.enabled ? '启用' : '停用'}。`)
 }
 </script>

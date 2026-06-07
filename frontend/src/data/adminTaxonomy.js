@@ -45,10 +45,10 @@ export const questTags = [
 
 // 难度选项（固定枚举，仅展示口径）。
 export const questDifficulties = [
-  { code: 'A', label: '入门', hint: '熟悉流程即可完成，适合首次贡献。' },
-  { code: 'B', label: '初级', hint: '需要少量定位与改动。' },
-  { code: 'C', label: '中级', hint: '涉及多文件或一定设计取舍。' },
-  { code: 'D', label: '进阶', hint: '需要跨模块理解与较强工程能力。' },
+  { code: 'A', label: '进阶', hint: '需要跨模块理解与较强工程能力。' },
+  { code: 'B', label: '中级', hint: '涉及多文件或一定设计取舍。' },
+  { code: 'C', label: '初级', hint: '需要少量定位与改动。' },
+  { code: 'D', label: '入门', hint: '熟悉流程即可完成，适合首次贡献。' },
 ]
 
 // 标签预设色板：在公会羊皮纸 + 暗底主题下都能保持可读的中高饱和度色，

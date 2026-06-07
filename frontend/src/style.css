@@ -13,6 +13,10 @@
   --glass: rgba(22, 12, 7, 0.66);
   --glass-light: rgba(80, 43, 18, 0.38);
   --line: rgba(238, 184, 91, 0.64);
+  --scrollbar-track: rgba(18, 9, 4, 0.62);
+  --scrollbar-thumb: rgba(216, 154, 50, 0.82);
+  --scrollbar-thumb-hover: rgba(242, 192, 111, 0.96);
+  --scrollbar-thumb-border: rgba(18, 9, 4, 0.72);
   --radius: 6px;
   --font-display: Georgia, 'Times New Roman', serif;
   --font-body: 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
@@ -30,6 +34,58 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(7, 4, 2, 0.52), rgba(42, 24, 10, 0.5)),
+    var(--scrollbar-track);
+  box-shadow: inset 0 0 0 1px rgba(238, 184, 91, 0.12);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scrollbar-thumb-border);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, var(--scrollbar-thumb-hover), var(--scrollbar-thumb)),
+    var(--scrollbar-thumb);
+  background-clip: padding-box;
+  box-shadow: inset 0 1px 0 rgba(255, 235, 180, 0.34), 0 0 10px rgba(216, 154, 50, 0.18);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background:
+    linear-gradient(180deg, #ffe1a3, var(--scrollbar-thumb-hover)),
+    var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+.parchment-panel,
+.submission-modal-sheet,
+.submission-sheet-body,
+.submission-form-panel,
+.submission-check-panel,
+.submission-evidence-panel,
+.submission-receipt-card,
+.identity-info,
+.profile-editor,
+.evidence-draft {
+  --scrollbar-track: rgba(126, 72, 25, 0.16);
+  --scrollbar-thumb: rgba(139, 83, 27, 0.58);
+  --scrollbar-thumb-hover: rgba(195, 127, 42, 0.78);
+  --scrollbar-thumb-border: rgba(255, 241, 206, 0.72);
 }
 
 html,
@@ -1176,7 +1232,7 @@ h2 {
   box-shadow: 0 0 0 7px rgba(242, 139, 99, 0.12), 0 0 24px rgba(242, 139, 99, 0.3);
 }
 
-/* Admin console — enlarged, always-labeled logout action (only on AdminReviewPage) */
+/* Admin console — enlarged, always-labeled logout action shared by all admin pages. */
 .logout-orb-admin {
   width: auto;
   min-width: 0;
@@ -1227,6 +1283,10 @@ h2 {
 .logout-orb-admin:focus-visible span {
   transform: none;
   color: #ffe1d3;
+}
+
+.admin-review-route > .session-action-stack {
+  display: none;
 }
 
 .help-orb {
@@ -2997,8 +3057,6 @@ h2 {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 6px;
-  scrollbar-color: rgba(238, 184, 91, 0.68) rgba(12, 7, 4, 0.36);
-  scrollbar-width: thin;
 }
 
 .commission-panel::-webkit-scrollbar {
@@ -3007,13 +3065,14 @@ h2 {
 
 .commission-panel::-webkit-scrollbar-track {
   border-radius: 999px;
-  background: rgba(12, 7, 4, 0.36);
+  background: var(--scrollbar-track);
 }
 
 .commission-panel::-webkit-scrollbar-thumb {
-  border: 2px solid rgba(12, 7, 4, 0.36);
+  border: 2px solid var(--scrollbar-thumb-border);
   border-radius: 999px;
-  background: rgba(238, 184, 91, 0.72);
+  background: linear-gradient(180deg, var(--scrollbar-thumb-hover), var(--scrollbar-thumb));
+  background-clip: padding-box;
 }
 
 .commission-panel-head {
@@ -3724,8 +3783,6 @@ h2 {
      overflows the available track, the body shows its own thin scrollbar
      rather than letting content collide with the footer. */
   overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(116, 68, 26, 0.48) transparent;
 }
 
 /* ── Strip every inner "card" from the four content sections ───────────
