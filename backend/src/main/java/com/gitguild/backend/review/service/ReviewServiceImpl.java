@@ -14,6 +14,7 @@ import com.gitguild.backend.review.domain.ReviewDecision;
 import com.gitguild.backend.review.domain.ReviewItem;
 import com.gitguild.backend.review.domain.ReviewRecord;
 import com.gitguild.backend.review.domain.Submission;
+import com.gitguild.backend.review.domain.SubmissionStatus;
 import com.gitguild.backend.review.dto.ReviewSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses;
 import com.gitguild.backend.review.dto.SubmissionResponses.PullRequestBrief;
@@ -104,9 +105,19 @@ public class ReviewServiceImpl implements ReviewService {
             throw new BusinessException("PR_NOT_FOUND", HttpStatus.BAD_REQUEST, "该提交没有关联的 PR，无法合并", "submissionId=" + submissionId);
         }
         // 复用代理合并：已合并幂等返回，冲突抛 PR_MERGE_CONFLICT(409)。与审核结论/XP 互不影响。
+        if (!canMergePullRequest(submission)) {
+            throw new BusinessException("SUBMISSION_NOT_MERGEABLE", HttpStatus.CONFLICT,
+                    "Only pending or approved submissions can merge pull requests",
+                    "submissionId=" + submissionId + ", currentStatus=" + submission.getStatus());
+        }
         CodePullRequest merged = questPullRequestService.mergeForApproval(
                 pullRequest, submission.getQuest().getRepository());
         return PullRequestBrief.from(merged);
+    }
+
+    private boolean canMergePullRequest(Submission submission) {
+        return submission.getStatus() == SubmissionStatus.PENDING_REVIEW
+                || submission.getStatus() == SubmissionStatus.APPROVED;
     }
 
     private User findUser(Long userId) {

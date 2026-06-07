@@ -42,12 +42,17 @@ defineProps({
 const liveUser = ref({
   ...workbenchUser,
   name: sessionStore.user?.displayName || sessionStore.user?.username || workbenchUser.name,
+  // 成长数值初始为 null，避免真实数据到达前闪现演示用户（Minerva Dawn / 720 XP）的等级与 XP
+  level: null,
+  xpCurrent: null,
+  xpTarget: null,
+  completedQuests: null,
 })
 const liveAssignments = ref([])       // MyAssignmentItem[]
 const liveRepositories = ref([])      // Repo[]
 const livePullRequests = ref([])      // PR[]
 const liveStats = ref(workbenchStats.map((stat) => ({ ...stat })))
-const liveLoading = ref(false)
+const liveLoading = ref(true) // 起始即加载态：成长数据由 onMounted 拉取，首帧先显示占位符而非演示值
 
 async function fetchWorkbenchData() {
   liveLoading.value = true
@@ -248,6 +253,11 @@ const effectiveLevel = computed(() => liveUser.value.level || 1)
 const effectiveXpCurrent = computed(() => liveUser.value.xpCurrent || 0)
 const effectiveXpTarget = computed(() => liveUser.value.xpTarget || 1000)
 const effectiveCompletedQuests = computed(() => liveUser.value.completedQuests || 0)
+// 成长数据加载完成前以占位符渲染等级 / XP，避免出现"别人的 XP"再跳变
+const levelText = computed(() => (liveLoading.value ? '—' : effectiveLevel.value))
+const xpText = computed(() =>
+  liveLoading.value ? '— / —' : `${effectiveXpCurrent.value} / ${effectiveXpTarget.value}`,
+)
 const effectiveRole = computed(() =>
   sessionStore.role === 'MAINTAINER' ? '委托人' : (liveUser.value.role || sessionStore.user?.role || '冒险家'),
 )
@@ -589,6 +599,7 @@ const selectedFeedbackFlowContext = computed(() => {
   }
 })
 const xpProgress = computed(() => `${Math.round((effectiveXpCurrent.value / Math.max(effectiveXpTarget.value, 1)) * 100)}%`)
+const xpBarWidth = computed(() => (liveLoading.value ? '0%' : xpProgress.value))
 const activeRoleLabel = computed(() => effectiveRole.value)
 
 function selectTask(task) {
@@ -1304,15 +1315,15 @@ function openFeedback(feedbackId, source = '审核反馈') {
       <div class="workbench-level">
         <div class="level-head">
           <div>
-            <strong>Level {{ effectiveLevel }}</strong>
-            <span>{{ effectiveXpCurrent }} / {{ effectiveXpTarget }} XP</span>
+            <strong>Level {{ levelText }}</strong>
+            <span>{{ xpText }} XP</span>
           </div>
           <button class="quiet-action detail-link" type="button" @click="openIdCard">
             查看详细信息
           </button>
         </div>
         <div class="xp-track" aria-label="XP 进度">
-          <span :style="{ width: xpProgress }"></span>
+          <span :style="{ width: xpBarWidth }"></span>
         </div>
       </div>
 
@@ -1879,18 +1890,18 @@ function openFeedback(feedbackId, source = '审核反馈') {
             <p class="kicker">Growth Detail</p>
             <h2>成长详细信息</h2>
           </div>
-          <span class="status-pill">Level {{ effectiveLevel }}</span>
+          <span class="status-pill">Level {{ levelText }}</span>
         </div>
 
         <div class="growth-detail-grid">
           <article class="growth-hero-card">
             <div>
               <span>当前等级</span>
-              <strong>Level {{ effectiveLevel }}</strong>
-              <p>{{ effectiveXpCurrent }} / {{ effectiveXpTarget }} XP</p>
+              <strong>Level {{ levelText }}</strong>
+              <p>{{ xpText }} XP</p>
             </div>
             <div class="xp-track large">
-              <span :style="{ width: xpProgress }"></span>
+              <span :style="{ width: xpBarWidth }"></span>
             </div>
           </article>
 

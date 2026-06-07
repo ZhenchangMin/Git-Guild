@@ -19,6 +19,21 @@ public interface RepositoryService {
     CodeRepository createRepository(Long currentUserId, CreateRepositoryRequest request);
 
     /**
+     * 关联（接入）一个仓库源地址。
+     *
+     * <p>若源地址就在平台自己的 Gitea 上，直接登记（幂等）；否则自动调 Gitea migrate 把外部仓库
+     * 迁入平台，再以平台副本地址登记——使委托人只需粘一个公网地址即可关联委托，下游建分支 / 提 PR /
+     * 审核全部落在平台可控副本上。
+     *
+     * @param currentUserId Git-Guild 调用者用户 ID（将成为仓库的业务 owner）
+     * @param sourceUrl     源仓库地址（必填）
+     * @param name          仓库展示名（可选，留空则从地址推断）
+     * @param hostType      托管类型（可选，默认 GITEA）
+     * @return 已持久化的本地仓库实体（外部源时其 sourceUrl 为平台副本地址）
+     */
+    CodeRepository importRepository(Long currentUserId, String sourceUrl, String name, String hostType);
+
+    /**
      * 列出当前用户有权限的仓库。
      *
      * @param currentUserId Git-Guild 用户 ID
