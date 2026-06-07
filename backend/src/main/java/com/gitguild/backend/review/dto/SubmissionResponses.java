@@ -1,5 +1,6 @@
 package com.gitguild.backend.review.dto;
 
+import com.gitguild.backend.codehost.domain.CodePullRequest;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.review.domain.ReviewDecision;
 import com.gitguild.backend.review.domain.SubmissionStatus;
@@ -25,6 +26,17 @@ public final class SubmissionResponses {
             String targetBranch,
             String status,
             String externalUrl) {
+
+        public static PullRequestBrief from(CodePullRequest pr) {
+            return new PullRequestBrief(
+                    pr.getPullRequestId(),
+                    pr.getExternalPrId(),
+                    pr.getTitle(),
+                    pr.getSourceBranch(),
+                    pr.getTargetBranch(),
+                    pr.getStatus(),
+                    pr.getExternalUrl());
+        }
     }
 
     public record RepositoryBrief(
