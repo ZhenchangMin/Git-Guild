@@ -81,7 +81,7 @@ class SubmissionServiceImplTest {
     }
 
     @Test
-    void createSubmissionShouldCreatePendingSubmissionAndKeepQuestInProgress() {
+    void createSubmissionShouldCreatePendingSubmissionAndMarkQuestInReview() {
         User maintainer = user(2001L, UserRole.MAINTAINER);
         User submitter = user(3001L, UserRole.BEGINNER);
         CodeRepository repository = repository(maintainer);
@@ -110,6 +110,38 @@ class SubmissionServiceImplTest {
         assertThat(response.status()).isEqualTo(SubmissionStatus.PENDING_REVIEW);
         assertThat(quest.getStatus()).isEqualTo(QuestStatus.IN_REVIEW);
         verify(questRepository).save(quest);
+    }
+
+    @Test
+    void createSubmissionShouldAllowActiveAssignmentAfterQuestCompleted() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User submitter = user(3001L, UserRole.BEGINNER);
+        CodeRepository repository = repository(maintainer);
+        Quest quest = quest(maintainer, repository, QuestStatus.COMPLETED);
+        QuestAssignment assignment = new QuestAssignment(quest, submitter);
+        CodePullRequest pullRequest = pullRequest(repository);
+        CreateSubmissionRequest request = request();
+
+        when(userRepository.findById(3001L)).thenReturn(Optional.of(submitter));
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+        when(assignmentRepository.findByQuestAndAssigneeUserIdAndStatus(quest, 3001L, AssignmentStatus.ACTIVE))
+                .thenReturn(Optional.of(assignment));
+        when(submissionRepository.existsByQuestAndSubmitterUserIdAndStatusIn(any(), any(), any())).thenReturn(false);
+        when(taskBranchService.ensureTaskBranch(assignment)).thenReturn("task/quest-5001-assignment-2-submitter");
+        when(questPullRequestService.ensurePullRequestForSubmission(any(), any(), any(), any(), any()))
+                .thenReturn(pullRequest);
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(invocation -> {
+            Submission submission = invocation.getArgument(0);
+            submission.setSubmissionId(9002L);
+            return submission;
+        });
+
+        CreateSubmissionResponse response = submissionService.createSubmission(3001L, request);
+
+        assertThat(response.submissionId()).isEqualTo(9002L);
+        assertThat(response.status()).isEqualTo(SubmissionStatus.PENDING_REVIEW);
+        assertThat(quest.getStatus()).isEqualTo(QuestStatus.COMPLETED);
+        verify(questRepository, never()).save(quest);
     }
 
     @Test

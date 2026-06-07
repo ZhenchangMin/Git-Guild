@@ -83,7 +83,9 @@ public class SubmissionServiceImpl implements SubmissionService {
 
         Quest quest = questRepository.findById(request.getQuestId())
                 .orElseThrow(() -> new BusinessException("QUEST_NOT_FOUND", HttpStatus.NOT_FOUND, "Quest not found", "questId=" + request.getQuestId()));
-        if (quest.getStatus() != QuestStatus.IN_PROGRESS && quest.getStatus() != QuestStatus.IN_REVIEW) {
+        if (quest.getStatus() != QuestStatus.IN_PROGRESS
+                && quest.getStatus() != QuestStatus.IN_REVIEW
+                && quest.getStatus() != QuestStatus.COMPLETED) {
             throw new BusinessException("QUEST_NOT_ACCEPTABLE", HttpStatus.CONFLICT, "Quest is not acceptable for submission", "currentStatus=" + quest.getStatus());
         }
 
@@ -105,8 +107,10 @@ public class SubmissionServiceImpl implements SubmissionService {
                 buildPrBody(quest, request.getDescription()));
 
         Submission saved = submissionRepository.save(new Submission(quest, submitter, pullRequest, request.getDescription()));
-        quest.markInReview();
-        questRepository.save(quest);
+        if (quest.getStatus() != QuestStatus.COMPLETED) {
+            quest.markInReview();
+            questRepository.save(quest);
+        }
 
         notifySubmissionReceived(quest, submitter, saved.getSubmissionId());
 
