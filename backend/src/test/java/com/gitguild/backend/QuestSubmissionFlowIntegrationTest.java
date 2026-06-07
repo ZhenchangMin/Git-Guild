@@ -274,7 +274,7 @@ class QuestSubmissionFlowIntegrationTest {
     }
 
     @Test
-    void approvalShouldBeRejectedWhenPullRequestIsNotMerged() throws Exception {
+    void approvedSubmissionShouldAllowSeparatePullRequestMergeAttempt() throws Exception {
         String suffix = uniqueSuffix();
         AuthUser maintainer = registerAndLogin("open-maint-" + suffix, UserRole.MAINTAINER);
         AuthUser adventurer = registerAndLogin("open-adv-" + suffix, UserRole.BEGINNER);
@@ -323,16 +323,22 @@ class QuestSubmissionFlowIntegrationTest {
                                         "checkpoint", "PR merged",
                                         "comment", "PR must be merged first",
                                         "passed", false)))) ))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.submissionStatus").value("APPROVED"))
+                .andExpect(jsonPath("$.data.questStatus").value("COMPLETED"));
+
+        mockMvc.perform(post("/api/v1/submissions/" + submissionId + "/merge")
+                        .header("Authorization", bearer(maintainer.token())))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PR_MERGE_CONFLICT"));
 
         assertThat(questRepository.findById(publishedQuest.questId()).orElseThrow().getStatus())
-                .isEqualTo(QuestStatus.IN_REVIEW);
+                .isEqualTo(QuestStatus.COMPLETED);
         assertThat(submissionRepository.findById(submissionId).orElseThrow().getStatus())
-                .isEqualTo(SubmissionStatus.PENDING_REVIEW);
-        assertThat(growthProfileRepository.findByUserUserId(adventurer.userId())).isEmpty();
+                .isEqualTo(SubmissionStatus.APPROVED);
+        assertThat(growthProfileRepository.findByUserUserId(adventurer.userId())).isPresent();
         assertThat(contributionRecordRepository.existsByUserUserIdAndQuestQuestId(adventurer.userId(), publishedQuest.questId()))
-                .isFalse();
+                .isTrue();
     }
 
     private PublishedQuest createPublishedQuest(String suffix, AuthUser maintainer) throws Exception {
