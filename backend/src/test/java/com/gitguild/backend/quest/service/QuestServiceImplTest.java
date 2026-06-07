@@ -126,6 +126,56 @@ class QuestServiceImplTest {
     }
 
     @Test
+    void createQuestShouldCreateGiteaIssueWhenTitleProvided() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        CodeRepository repository = repository(maintainer);
+        CodeIssue createdIssue = issue(repository, "OPEN");
+        QuestCategory category = category();
+
+        CreateQuestRequest request = createQuestRequest();
+        // 新建 Issue 模式：无 issueId，仅给 giteaIssueTitle。
+        request.setIssueId(null);
+        request.setGiteaIssueTitle("新建 Issue 标题");
+        request.setGiteaIssueBody("Issue 正文");
+
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
+        when(codeRepositoryRepository.findById(1001L)).thenReturn(Optional.of(repository));
+        when(codeIssueService.createFromGitea(repository, "新建 Issue 标题", "Issue 正文"))
+                .thenReturn(createdIssue);
+        when(questRepository.existsByIssueAndStatusIn(any(), any())).thenReturn(false);
+        when(categoryRepository.findById(2L)).thenReturn(Optional.of(category));
+        when(questRepository.save(any(Quest.class))).thenAnswer(invocation -> {
+            Quest quest = invocation.getArgument(0);
+            quest.setQuestId(5002L);
+            return quest;
+        });
+
+        CreateQuestResponse response = questService.createQuest(2001L, request);
+
+        assertThat(response.questId()).isEqualTo(5002L);
+        // 走的是 Gitea 新建路径，不应再去按 issueId 查本地 Issue。
+        verify(codeIssueService).createFromGitea(repository, "新建 Issue 标题", "Issue 正文");
+        verify(issueRepository, never()).findByIssueIdAndRepositoryRepositoryId(any(), any());
+    }
+
+    @Test
+    void createQuestShouldRejectWhenNeitherIssueIdNorGiteaTitleProvided() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        CodeRepository repository = repository(maintainer);
+        CreateQuestRequest request = createQuestRequest();
+        request.setIssueId(null);
+        request.setGiteaIssueTitle(null);
+
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
+        when(codeRepositoryRepository.findById(1001L)).thenReturn(Optional.of(repository));
+
+        assertThatThrownBy(() -> questService.createQuest(2001L, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("VALIDATION_FAILED");
+    }
+
+    @Test
     void createQuestShouldRejectBeginnerPublisher() {
         when(userRepository.findById(3001L)).thenReturn(Optional.of(user(3001L, UserRole.BEGINNER)));
 

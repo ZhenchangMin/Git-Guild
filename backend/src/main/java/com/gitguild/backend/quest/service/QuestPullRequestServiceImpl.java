@@ -77,12 +77,27 @@ public class QuestPullRequestServiceImpl implements QuestPullRequestService {
             return pullRequest;
         }
         GiteaRepoCoordinates coords = GiteaRepoCoordinates.parse(repository.getSourceUrl());
+        int prNumber = parseExternalPrNumber(pullRequest);
         try {
-            PrInfo prInfo = giteaAdapter.mergePullRequest(
-                    coords.owner(), coords.repo(), parseExternalPrNumber(pullRequest));
-            pullRequest.setStatus(toLocalPrStatus(prInfo));
-            if (pullRequest.isMerged()) {
-                pullRequest.setMergedAt(OffsetDateTime.now());
+            PrInfo current = giteaAdapter.getPullRequest(coords.owner(), coords.repo(), prNumber);
+            if (current != null) {
+                applyPullRequestSnapshot(pullRequest, current);
+                if (pullRequest.isMerged()) {
+                    return pullRequestRepository.save(pullRequest);
+                }
+                if ("CLOSED".equals(pullRequest.getStatus())) {
+                    throw new BusinessException("PR_NOT_MERGEABLE", HttpStatus.CONFLICT,
+                            "PR is closed and cannot be merged",
+                            "pullRequestId=" + pullRequest.getPullRequestId());
+                }
+            }
+
+            PrInfo prInfo = giteaAdapter.mergePullRequest(coords.owner(), coords.repo(), prNumber);
+            applyPullRequestSnapshot(pullRequest, prInfo);
+            if (!pullRequest.isMerged()) {
+                throw new BusinessException("PR_MERGE_NOT_COMPLETED", HttpStatus.CONFLICT,
+                        "Gitea did not report the PR as merged",
+                        "pullRequestId=" + pullRequest.getPullRequestId() + ", status=" + pullRequest.getStatus());
             }
             return pullRequestRepository.save(pullRequest);
         } catch (BusinessException ex) {
@@ -92,6 +107,13 @@ public class QuestPullRequestServiceImpl implements QuestPullRequestService {
                         "pullRequestId=" + pullRequest.getPullRequestId());
             }
             throw ex;
+        }
+    }
+
+    private void applyPullRequestSnapshot(CodePullRequest pullRequest, PrInfo prInfo) {
+        pullRequest.setStatus(toLocalPrStatus(prInfo));
+        if (pullRequest.isMerged()) {
+            pullRequest.setMergedAt(OffsetDateTime.now());
         }
     }
 

@@ -135,6 +135,60 @@ class P3ApiDocumentIntegrationTest {
     }
 
     @Test
+    void adminTaxonomyManagementSupportsDisabledVisibilityAndDuplicates() throws Exception {
+        User admin = saveUser("p3-admin-tax2", UserRole.ADMIN);
+        String adminToken = token(admin);
+
+        // 创建分类：响应应回带 description（之前 CategoryResponse 漏了该字段）。
+        MvcResult created = mockMvc.perform(post("/api/v1/quest-categories")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("name", "可停用分类", "description", "中文说明"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.description").value("中文说明"))
+                .andReturn();
+        long categoryId = data(created).get("categoryId").asLong();
+
+        // 重名分类 → 409 ALREADY_EXISTS（预检命中）。
+        mockMvc.perform(post("/api/v1/quest-categories")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("name", "可停用分类"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ALREADY_EXISTS"));
+
+        // 停用该分类（不被引用拦截）。
+        mockMvc.perform(patch("/api/v1/quest-categories/" + categoryId)
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("enabled", false))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enabled").value(false));
+
+        // 默认列表（仅启用）看不到它；includeDisabled=true 才能看到（供重新启用）。
+        mockMvc.perform(get("/api/v1/quest-categories"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.name == '可停用分类')]").isEmpty());
+        mockMvc.perform(get("/api/v1/quest-categories").param("includeDisabled", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.name == '可停用分类')]").isNotEmpty());
+
+        // 标签：创建带真实 questCount=0；重名 → 409。
+        mockMvc.perform(post("/api/v1/quest-tags")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("name", "新手友好", "color", "#43613a"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.questCount").value(0));
+        mockMvc.perform(post("/api/v1/quest-tags")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("name", "新手友好", "color", "#000000"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ALREADY_EXISTS"));
+    }
+
+    @Test
     void taxonomyCodeHostAndGuideDocumentEndpointsWork() throws Exception {
         User admin = saveUser("p3-admin-tax", UserRole.ADMIN);
         User maintainer = saveUser("p3-maint-tax", UserRole.MAINTAINER);

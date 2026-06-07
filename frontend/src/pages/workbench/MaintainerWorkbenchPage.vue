@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import deskImg from '../../assets/desk.png'
+import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
 import { submissionApi } from '../../api/submissionApi'
 import { sessionStore } from '../../stores/sessionStore'
@@ -17,6 +18,24 @@ const maintainerName = computed(
 const pendingReviews = ref(null)
 const repos = ref([])
 const reposLoading = ref(true)
+
+// 我发布的委托（含所有状态，让维护者看到 DRAFT/待审核 等"未上架"的委托）。
+const myQuests = ref([])
+const myQuestsLoading = ref(true)
+
+const QUEST_STATUS = {
+  DRAFT: { label: '草稿', tone: 'draft' },
+  PENDING_ADMIN_REVIEW: { label: '待管理员审核', tone: 'pending' },
+  PUBLISHED: { label: '已上架', tone: 'published' },
+  IN_PROGRESS: { label: '进行中', tone: 'active' },
+  IN_REVIEW: { label: '审核中', tone: 'pending' },
+  COMPLETED: { label: '已完成', tone: 'done' },
+  REJECTED: { label: '已驳回', tone: 'rejected' },
+  CLOSED: { label: '已关闭', tone: 'rejected' },
+}
+function questStatus(status) {
+  return QUEST_STATUS[status] ?? { label: status || '未知', tone: 'draft' }
+}
 
 function goHall() {
   router.push({ name: 'hall' })
@@ -52,6 +71,15 @@ onMounted(async () => {
     repos.value = []
   } finally {
     reposLoading.value = false
+  }
+
+  try {
+    const res = await questApi.myPublished()
+    myQuests.value = Array.isArray(res?.data) ? res.data : []
+  } catch {
+    myQuests.value = []
+  } finally {
+    myQuestsLoading.value = false
   }
 })
 </script>
@@ -95,6 +123,36 @@ onMounted(async () => {
             <span class="office-portal-arrow" aria-hidden="true">→</span>
           </button>
         </div>
+
+        <section class="office-myquests" aria-label="我发布的委托">
+          <header class="office-repos-head">
+            <p class="kicker">我发布的委托 · My Commissions</p>
+            <button class="quiet-action office-sync-btn" type="button" @click="goPublish">发布新委托</button>
+          </header>
+
+          <ul v-if="myQuestsLoading" class="office-repo-list" aria-hidden="true">
+            <li v-for="n in 2" :key="n" class="office-repo-row is-skeleton">
+              <span class="sk sk-name"></span>
+              <span class="sk sk-meta"></span>
+            </li>
+          </ul>
+
+          <p v-else-if="!myQuests.length" class="office-repos-empty">
+            还没有发布过委托。点
+            <button class="office-link" type="button" @click="goPublish">发布委托</button>
+            起草第一个任务。
+          </p>
+
+          <ul v-else class="office-quest-list">
+            <li v-for="q in myQuests" :key="q.questId" class="office-quest-row">
+              <span class="office-quest-title">{{ q.title }}</span>
+              <span class="office-quest-repo">{{ q.repository?.name || '—' }}</span>
+              <span class="office-quest-badge" :class="questStatus(q.status).tone">
+                {{ questStatus(q.status).label }}
+              </span>
+            </li>
+          </ul>
+        </section>
 
         <section class="office-repos" aria-label="受托仓库">
           <header class="office-repos-head">
@@ -259,6 +317,82 @@ onMounted(async () => {
 .office-portal:hover .office-portal-arrow,
 .office-portal:focus-visible .office-portal-arrow {
   transform: translateX(3px);
+}
+
+/* ── 我发布的委托 ───────────────────────────────────────── */
+.office-myquests {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(238, 184, 91, 0.22);
+}
+.office-quest-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.office-quest-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(238, 184, 91, 0.24);
+  border-radius: 8px;
+  background: rgba(20, 11, 6, 0.42);
+}
+.office-quest-title {
+  font-family: var(--font-display);
+  font-size: 1.02rem;
+  color: #ffe9c4;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.office-quest-repo {
+  color: rgba(255, 230, 190, 0.55);
+  font-size: 0.82rem;
+}
+.office-quest-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.office-quest-badge.draft {
+  color: #d9c7a6;
+  background: rgba(120, 100, 70, 0.28);
+  border-color: rgba(200, 170, 120, 0.3);
+}
+.office-quest-badge.pending {
+  color: #ffd98a;
+  background: rgba(150, 100, 20, 0.3);
+  border-color: rgba(240, 184, 104, 0.4);
+}
+.office-quest-badge.published {
+  color: #b7d6ff;
+  background: rgba(40, 80, 140, 0.3);
+  border-color: rgba(120, 170, 240, 0.4);
+}
+.office-quest-badge.active {
+  color: #cfe6ad;
+  background: rgba(60, 110, 40, 0.3);
+  border-color: rgba(169, 208, 123, 0.4);
+}
+.office-quest-badge.done {
+  color: #a9d07b;
+  background: rgba(43, 74, 28, 0.45);
+  border-color: rgba(169, 208, 123, 0.45);
+}
+.office-quest-badge.rejected {
+  color: #f0a890;
+  background: rgba(110, 42, 36, 0.3);
+  border-color: rgba(220, 130, 110, 0.4);
 }
 
 /* ── 受托仓库 ───────────────────────────────────────────── */

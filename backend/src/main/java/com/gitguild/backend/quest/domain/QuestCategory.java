@@ -62,6 +62,10 @@ public class QuestCategory {
         return name;
     }
 
+    public String getDescription() {
+        return description;
+    }
+
     public boolean isEnabled() {
         return enabled;
     }

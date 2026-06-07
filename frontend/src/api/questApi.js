@@ -48,4 +48,8 @@ export const questApi = {
   submissionDraft(questId) {
     return request(`/quests/${questId}/submission-draft`)
   },
+  // 当前维护者发布的全部委托（含 DRAFT/待审核 等所有状态）。
+  myPublished() {
+    return request('/quests/me/published')
+  },
 }

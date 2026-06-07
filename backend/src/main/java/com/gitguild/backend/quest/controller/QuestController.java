@@ -10,6 +10,7 @@ import com.gitguild.backend.quest.dto.QuestResponses.AssignmentResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestDetailResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestPageResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.QuestSummaryResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.SubmitQuestResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.MyAssignmentsResponse;
 import com.gitguild.backend.quest.dto.QuestSearchCriteria;
@@ -111,6 +112,12 @@ public class QuestController {
     @GetMapping("/me/assignments")
     public ApiResponse<MyAssignmentsResponse> getMyAssignments(Authentication authentication) {
         return ApiResponse.success(questService.getMyAssignments(
+                SecurityPrincipalUtils.currentUserId(authentication)));
+    }
+
+    @GetMapping("/me/published")
+    public ApiResponse<List<QuestSummaryResponse>> getMyPublishedQuests(Authentication authentication) {
+        return ApiResponse.success(questService.listMyPublishedQuests(
                 SecurityPrincipalUtils.currentUserId(authentication)));
     }
 

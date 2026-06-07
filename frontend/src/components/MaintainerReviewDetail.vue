@@ -4,7 +4,12 @@ defineProps({
     type: Object,
     required: true,
   },
+  merging: {
+    type: Boolean,
+    default: false,
+  },
 })
+defineEmits(['merge-pr'])
 </script>
 
 <template>
@@ -69,6 +74,16 @@ defineProps({
             <dd>{{ review.latestCommit }}</dd>
           </div>
         </dl>
+        <div class="pr-merge-row">
+          <span v-if="review.prState === 'MERGED'" class="pr-merged-badge">已合并</span>
+          <template v-else-if="review.prState === 'OPEN'">
+            <button class="pr-merge-btn" type="button" :disabled="merging" @click="$emit('merge-pr')">
+              {{ merging ? '合并中…' : '合并 PR' }}
+            </button>
+            <small>接受提交不会自动合并；是否合并由你决定。</small>
+          </template>
+          <small v-else>无可合并的 PR。</small>
+        </div>
       </article>
 
       <article class="detail-card criteria-card">
@@ -190,6 +205,51 @@ defineProps({
 
 .pr-card {
   grid-area: pr;
+}
+
+.pr-merge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pr-merge-row small {
+  color: rgba(255, 231, 183, 0.58);
+  font-size: 0.78rem;
+}
+
+.pr-merge-btn {
+  border: 1px solid rgba(169, 208, 123, 0.6);
+  border-radius: 8px;
+  padding: 8px 16px;
+  color: #18260c;
+  background: linear-gradient(180deg, #c4e29a, #8fbf62);
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+}
+
+.pr-merge-btn:hover:not(:disabled),
+.pr-merge-btn:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3);
+}
+
+.pr-merge-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.pr-merged-badge {
+  border: 1px solid rgba(169, 208, 123, 0.5);
+  border-radius: 999px;
+  padding: 5px 12px;
+  color: #cfe6ad;
+  background: rgba(43, 74, 28, 0.5);
+  font-weight: 700;
+  font-size: 0.82rem;
 }
 
 .criteria-card {
