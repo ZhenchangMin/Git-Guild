@@ -149,7 +149,11 @@ function goBack() {
 }
 
 function openWorkbench() {
-  router.push({ name: sessionStore.role === 'MAINTAINER' ? 'maintainer-workbench' : 'adventurer-workbench' })
+  router.push({
+    name: sessionStore.role === 'ADVENTURER' || sessionStore.role === 'MAINTAINER'
+      ? 'adventurer-workbench'
+      : 'hall',
+  })
 }
 
 function openSubmission(questId = activeQuest.value?.questId ?? activeQuest.value?.id) {

@@ -51,7 +51,7 @@ export const routes = [
     path: '/workbench',
     name: 'adventurer-workbench',
     component: AdventurerWorkbenchPage,
-    meta: { requiresAuth: true, roles: ['ADVENTURER'] },
+    meta: { requiresAuth: true, roles: ['ADVENTURER', 'MAINTAINER'] },
   },
   {
     path: '/maintainer',

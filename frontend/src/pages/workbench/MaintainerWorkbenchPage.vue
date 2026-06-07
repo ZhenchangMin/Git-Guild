@@ -46,6 +46,9 @@ function goPublish() {
 function goReviews() {
   router.push({ name: 'maintainer-review' })
 }
+function goAdventureWorkbench() {
+  router.push({ name: 'adventurer-workbench' })
+}
 function goRepoSync() {
   router.push({ name: 'repository-sync' })
 }
@@ -123,6 +126,15 @@ onMounted(async () => {
             <span class="office-portal-body">
               <strong>审核台</strong>
               <small>{{ pendingReviews ? `${pendingReviews} 份成果待批阅` : '批阅冒险家呈交的成果' }}</small>
+            </span>
+            <span class="office-portal-arrow" aria-hidden="true">→</span>
+          </button>
+
+          <button class="office-portal office-portal-adventure" type="button" @click="goAdventureWorkbench">
+            <span class="office-portal-glyph" aria-hidden="true">◆</span>
+            <span class="office-portal-body">
+              <strong>完成委托</strong>
+              <small>进入冒险家工作台，查看已接取任务、提交成果并追踪成长档案。</small>
             </span>
             <span class="office-portal-arrow" aria-hidden="true">→</span>
           </button>
@@ -266,6 +278,9 @@ onMounted(async () => {
 }
 .office-portal:active {
   transform: translateY(0) scale(0.99);
+}
+.office-portal-adventure {
+  grid-column: 1 / -1;
 }
 .office-portal-glyph {
   position: relative;
