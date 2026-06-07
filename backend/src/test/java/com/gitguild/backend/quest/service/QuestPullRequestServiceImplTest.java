@@ -147,6 +147,23 @@ class QuestPullRequestServiceImplTest {
     }
 
     @Test
+    void mergeShouldTranslate405ToNotMergeable() {
+        CodeRepository repository = repository();
+        CodePullRequest pr = pullRequest(repository, "OPEN");
+        // Gitea 对空/不可合并 PR 在合并端点返回 405 → execute() 归入 CODE_HOST_UNAVAILABLE。
+        when(giteaAdapter.mergePullRequest("spike-admin", "hello", 7))
+                .thenThrow(new BusinessException("CODE_HOST_UNAVAILABLE", HttpStatus.BAD_GATEWAY,
+                        "代码托管平台请求失败", "repo=spike-admin/hello merge pull #7 -> HTTP 405"));
+
+        assertThatThrownBy(() -> service.mergeForApproval(pr, repository))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("PR_NOT_MERGEABLE");
+        assertThat(pr.getStatus()).isEqualTo("OPEN");
+        verify(pullRequestRepository, never()).save(any());
+    }
+
+    @Test
     void mergeShouldShortCircuitWhenAlreadyMerged() {
         CodeRepository repository = repository();
         CodePullRequest pr = pullRequest(repository, "MERGED");

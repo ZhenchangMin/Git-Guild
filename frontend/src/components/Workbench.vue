@@ -325,7 +325,11 @@ const taskCloneSteps = computed(() => {
       body: '平台已自动创建该分支，直接切过去即可，无需自己新建。',
       command: `cd ${taskRepoFolder.value} && git checkout ${branch}`,
     },
-    { title: '改完推送', body: '完成修改后提交并推送到任务分支。', command: `git add . && git commit -m "${commitMsg}" && git push` },
+    {
+      title: '改完推送',
+      body: '提交后用显式目标推送，确保改动进入任务分支（而不是误推到 main）。',
+      command: `git add . && git commit -m "${commitMsg}" && git push origin HEAD:${branch}`,
+    },
   ]
 })
 

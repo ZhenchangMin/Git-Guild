@@ -91,6 +91,15 @@ public class QuestPullRequestServiceImpl implements QuestPullRequestService {
                         "PR 存在冲突，无法自动合并，请先在 Gitea 解决冲突后再通过",
                         "pullRequestId=" + pullRequest.getPullRequestId());
             }
+            // Gitea 对“无差异/空 PR”等不可合并的 PR 在合并端点返回 405（被 execute() 归入
+            // CODE_HOST_UNAVAILABLE，details 以 -> HTTP 405 结尾）。给出可操作的明确提示。
+            if ("CODE_HOST_UNAVAILABLE".equals(ex.getCode())
+                    && ex.getDetails() != null && ex.getDetails().contains("HTTP 405")) {
+                throw new BusinessException("PR_NOT_MERGEABLE", HttpStatus.UNPROCESSABLE_ENTITY,
+                        "PR 当前不可合并：任务分支与目标分支无差异（冒险家的提交可能未推送到任务分支，"
+                                + "或已直接进入目标分支），请确认改动已推送到任务分支后再试",
+                        "pullRequestId=" + pullRequest.getPullRequestId());
+            }
             throw ex;
         }
     }
