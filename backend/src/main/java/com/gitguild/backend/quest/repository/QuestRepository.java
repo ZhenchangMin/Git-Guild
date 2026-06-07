@@ -28,4 +28,7 @@ public interface QuestRepository extends JpaRepository<Quest, Long>, JpaSpecific
      * 查询处于指定状态集合的 Quest，用于推荐算法候选集构建（PUBLISHED + IN_PROGRESS）。
      */
     List<Quest> findByStatusIn(Collection<QuestStatus> statuses);
+
+    /** 当前维护者发布的全部 Quest（含所有状态），供「我发布的委托」视图按创建时间倒序展示。 */
+    List<Quest> findByPublisherUserIdOrderByCreatedAtDesc(Long publisherId);
 }

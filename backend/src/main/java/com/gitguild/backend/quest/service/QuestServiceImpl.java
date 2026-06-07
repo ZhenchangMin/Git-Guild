@@ -219,6 +219,14 @@ public class QuestServiceImpl implements QuestService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<QuestSummaryResponse> listMyPublishedQuests(Long publisherId) {
+        return questRepository.findByPublisherUserIdOrderByCreatedAtDesc(publisherId).stream()
+                .map(this::toSummary)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public QuestDetailResponse getQuestDetail(Long questId, Long currentUserId) {
         Quest quest = findQuest(questId);
         if (!isPublicDetailVisible(quest) && !canViewRestrictedQuest(quest, currentUserId)) {
