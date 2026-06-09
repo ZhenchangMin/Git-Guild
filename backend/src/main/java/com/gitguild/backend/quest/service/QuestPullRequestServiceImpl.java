@@ -7,7 +7,6 @@ import com.gitguild.backend.codehost.gitea.GiteaRepoCoordinates;
 import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.common.BusinessException;
-import java.time.OffsetDateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -16,8 +15,8 @@ import org.springframework.stereotype.Service;
 /**
  * {@link QuestPullRequestService} 的实现。
  *
- * <p>建/合 PR 的 upsert 逻辑与 {@code CodeHostController} 保持一致（同一套
- * {@code upsertPullRequest}/{@code toLocalPrStatus}）。本类<b>不</b>标注
+ * <p>状态映射与合并时间戳统一委托给 {@link CodePullRequest#applyGiteaStatus}（{@code status}
+ * 字段的所有者），不再各自维护 {@code toLocalPrStatus}。本类<b>不</b>标注
  * {@code @Transactional}，原因见接口与 {@link QuestTaskBranchServiceImpl} 注释。
  */
 @Service
@@ -120,10 +119,7 @@ public class QuestPullRequestServiceImpl implements QuestPullRequestService {
     }
 
     private void applyPullRequestSnapshot(CodePullRequest pullRequest, PrInfo prInfo) {
-        pullRequest.setStatus(toLocalPrStatus(prInfo));
-        if (pullRequest.isMerged()) {
-            pullRequest.setMergedAt(OffsetDateTime.now());
-        }
+        pullRequest.applyGiteaStatus(prInfo.merged(), prInfo.state());
     }
 
     private PrInfo findOpenPullRequest(GiteaRepoCoordinates coords, String headBranch, String baseBranch) {
@@ -149,23 +145,10 @@ public class QuestPullRequestServiceImpl implements QuestPullRequestService {
                         blankToDefault(prInfo.title(), fallbackTitle),
                         blankToDefault(prInfo.headBranch(), fallbackSourceBranch),
                         blankToDefault(prInfo.baseBranch(), fallbackTargetBranch),
-                        toLocalPrStatus(prInfo),
+                        CodePullRequest.statusFromGitea(prInfo.merged(), prInfo.state()),
                         prInfo.htmlUrl()));
-        pullRequest.setStatus(toLocalPrStatus(prInfo));
-        if (pullRequest.isMerged()) {
-            pullRequest.setMergedAt(OffsetDateTime.now());
-        }
+        pullRequest.applyGiteaStatus(prInfo.merged(), prInfo.state());
         return pullRequestRepository.save(pullRequest);
-    }
-
-    private String toLocalPrStatus(PrInfo prInfo) {
-        if (prInfo.merged()) {
-            return "MERGED";
-        }
-        if ("closed".equalsIgnoreCase(prInfo.state())) {
-            return "CLOSED";
-        }
-        return "OPEN";
     }
 
     private int parseExternalPrNumber(CodePullRequest pullRequest) {
