@@ -16,8 +16,12 @@ Thumbs.db
 
 # --------------- Secrets ---------------
 .env
+deploy/.env.prod
 *.pem
 *.key
+
+# --------------- Prod deploy runtime ---------------
+/uploads/
 
 # --------------- Backend (Maven / Spring Boot) ---------------
 backend/target/

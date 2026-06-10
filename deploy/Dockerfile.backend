@@ -1,0 +1,19 @@
+# GitGuild 后端生产镜像（多阶段：Maven 构建 → JRE 运行）
+# 构建上下文 = 仓库根目录（compose 里 context: .）
+
+# ── 构建阶段 ──────────────────────────────────────────────────────────────────
+FROM maven:3.9-eclipse-temurin-17 AS build
+WORKDIR /build
+# 直接整目录拷入后打包。可靠优先（依赖按需下载），代价是源码改动会重新拉依赖。
+# 如需加速：在服务器配置 ~/.m2/settings.xml 国内镜像，或挂载 m2 缓存。
+COPY backend/ .
+RUN mvn -B -DskipTests clean package
+
+# ── 运行阶段 ──────────────────────────────────────────────────────────────────
+FROM eclipse-temurin:17-jre
+WORKDIR /app
+COPY --from=build /build/target/*.jar app.jar
+# 上传文件落在工作目录下的 uploads/（见 WebMvcConfig / UserController），挂卷持久化。
+RUN mkdir -p /app/uploads
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
