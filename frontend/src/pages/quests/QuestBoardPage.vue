@@ -193,15 +193,12 @@ const recommendationStatusText = computed(() => {
   return usingRecommendedSource.value ? '由推荐算法实时计算' : '当前显示默认委托清单'
 })
 
-const emptyTitle = computed(() => {
-  if (isRecommendationLoading.value) return '正在计算推荐委托'
-  return '没有符合条件的委托'
-})
+// 加载态由模板的 commission-loading 分支单独处理，空态只在“加载完成且无结果”时出现。
+const emptyTitle = computed(() => '没有符合条件的委托')
 
-const emptyDescription = computed(() => {
-  if (isRecommendationLoading.value) return '推荐算法会根据技术栈、难度和成长阶段生成默认列表。'
-  return '调整搜索词或清空部分筛选条件，悬赏板会立即刷新。'
-})
+const emptyDescription = computed(
+  () => '调整搜索词或清空部分筛选条件，悬赏板会立即刷新。',
+)
 
 const rankedQuestCommissions = computed(() => {
   const selected = selectedQuestFilters.value
@@ -348,20 +345,22 @@ async function loadRecommendedQuests() {
   recommendationError.value = ''
 
   try {
-    const questListData = unwrapApiData(
-      await questApi.list({ page: 1, size: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
-    )
+    // 两个接口互不依赖，并行请求以缩短首屏等待（recommendations 失败降级为默认排序）。
+    const [questListPayload, recommendationPayload] = await Promise.all([
+      questApi.list({ page: 1, size: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
+      questApi
+        .recommendations({
+          strategy: 'tech-difficulty',
+          beginnerFriendly: true,
+          excludeAccepted: false,
+          limit: recommendationLimit,
+        })
+        .catch(() => null),
+    ])
+    const questListData = unwrapApiData(questListPayload)
     const questListItems = Array.isArray(questListData.items) ? questListData.items : []
     // 只展示后端真实委托；无数据即真实空态（模板已有“空空如也”空态）。
     const baseQuests = questListItems.map(normalizeQuestSummary)
-    const recommendationPayload = await questApi
-      .recommendations({
-        strategy: 'tech-difficulty',
-        beginnerFriendly: true,
-        excludeAccepted: false,
-        limit: recommendationLimit,
-      })
-      .catch(() => null)
     const recommendationData = unwrapApiData(recommendationPayload)
     const recommendedItems = Array.isArray(recommendationData.items) ? recommendationData.items : []
 
@@ -522,7 +521,13 @@ onMounted(() => {
               <span>{{ recommendationStatusText }}</span>
             </div>
 
-            <div v-if="pagedQuestCommissions.length > 0" class="commission-grid">
+            <div v-if="isRecommendationLoading" class="commission-loading" aria-busy="true">
+              <span class="commission-spinner" aria-hidden="true"></span>
+              <p class="kicker">正在计算推荐委托</p>
+              <p>推荐算法正在根据你的技术栈、难度偏好和成长阶段排序，请稍候。</p>
+            </div>
+
+            <div v-else-if="pagedQuestCommissions.length > 0" class="commission-grid">
               <article
                 v-for="quest in pagedQuestCommissions"
                 :key="quest.routeId ?? quest.id"
