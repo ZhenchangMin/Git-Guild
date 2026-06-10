@@ -1,5 +1,9 @@
 version: "3.7"
 
+# 跨平台、跨 compose 版本：不使用 v2 专属特性（顶层 name: / depends_on 条件），
+# 因此 `docker compose up -d`（Docker Desktop 的 v2）与老的 `docker-compose up -d`（v1）都能用。
+# 数据「还原」全部内置在容器里 —— WSL / PowerShell / macOS 都只跑这一条命令，无需任何 shell 脚本。
+
 services:
   mysql:
     image: mysql:8.0
@@ -13,6 +17,9 @@ services:
       - "3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
+      # 空卷首次启动时自动灌入「最短 MVP 起点」（3 用户 + 仓库 + Issue#1，0 quests）。
+      # MySQL 官方镜像只在数据目录为空时执行 initdb 脚本，故幂等。
+      - ./seed/mysql-seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
@@ -42,13 +49,34 @@ services:
       - USER_UID=1000
       - USER_GID=1000
       - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__database__PATH=/data/gitea/gitea.db
+      - GITEA__security__INSTALL_LOCK=true
       - GITEA__server__ROOT_URL=http://localhost:3000/
       - GITEA__webhook__ALLOWED_HOST_LIST=*
+      # 仓库迁移（git clone 外部公网仓库）走代理：以标准 http(s)_proxy 环境变量注入，
+      # Gitea 的 Go 客户端与其 spawn 的 git 子进程都会继承（比 [proxy] app.ini 段更可靠）。
+      # 默认空 = 不走代理，不影响能直连公网的环境；需要代理的机器在 .env 设
+      # GITEA_PROXY_URL=http://host.docker.internal:<port>。no_proxy 让本机自调用绕开代理。
+      - http_proxy=${GITEA_PROXY_URL:-}
+      - https_proxy=${GITEA_PROXY_URL:-}
+      - HTTP_PROXY=${GITEA_PROXY_URL:-}
+      - HTTPS_PROXY=${GITEA_PROXY_URL:-}
+      - no_proxy=localhost,127.0.0.1,::1
+      - NO_PROXY=localhost,127.0.0.1,::1
+    extra_hosts:
+      # 让容器内 git/Gitea 能用 host.docker.internal 访问宿主机本地代理
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
       - "2222:22"
     volumes:
       - gitea-data:/data
+      - ./seed:/seed:ro
+    # 自播种：卷为空（无 gitea.db）时，先把随仓库分发的快照解进 /data，再走 Gitea 正常启动。
+    # 幂等（已有数据则跳过），且不依赖任何 compose 编排条件 —— v1/v2 通用。
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'if [ ! -f /data/gitea/gitea.db ]; then echo "[seed] 还原 Gitea 快照（spike-admin / hello-world-mvp / Issue#1）..."; tar xzf /seed/gitea-data.tar.gz -C /data && chown -R 1000:1000 /data && echo "[seed] 完成"; fi; exec /usr/bin/entrypoint /bin/s6-svscan /etc/s6'
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthz"]
       interval: 15s
