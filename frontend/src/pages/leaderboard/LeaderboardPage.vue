@@ -1,7 +1,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 
-import leaderboardImg from '../../assets/leader board wall.png'
+import leaderboardImg from '../../assets/leader board wall.webp'
 
 const router = useRouter()
 

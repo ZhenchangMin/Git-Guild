@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { authApi } from '../../api'
-import doorImg from '../../assets/door.png'
+import doorImg from '../../assets/door.webp'
 import { setSession } from '../../stores/sessionStore'
 
 const ENTRY_ANIMATION_MS = 980
@@ -23,6 +23,19 @@ const accountInput = ref(null)
 const showPassword = ref(false)
 let entryTimer = 0
 let holdTimer = 0
+
+// 预加载大门背景图：图就绪前整个入口场景保持透明，就绪后按钮与背景一起淡入，
+// 消除"按钮先冒出来、背景图随后才慢慢铺上"的割裂感。
+const bgReady = ref(false)
+const doorPreloader = new Image()
+doorPreloader.onload = () => {
+  bgReady.value = true
+}
+doorPreloader.onerror = () => {
+  // 加载失败也放行，避免页面永久停在空白。
+  bgReady.value = true
+}
+doorPreloader.src = doorImg
 
 const form = reactive({
   username: '',
@@ -214,7 +227,7 @@ onBeforeUnmount(() => {
   <main class="app-shell guild-login-shell">
     <section
       class="guild-gate-scene"
-      :class="{ 'is-awake': isGateOpen, 'is-entering': isEntering }"
+      :class="{ 'is-awake': isGateOpen, 'is-entering': isEntering, 'is-ready': bgReady }"
       aria-label="Git Guild 公会入口"
     >
       <div class="guild-gate-art" :style="{ backgroundImage: `url(${doorImg})` }" aria-hidden="true"></div>
@@ -368,3 +381,17 @@ onBeforeUnmount(() => {
     </section>
   </main>
 </template>
+
+<style scoped>
+/* 大门背景图就绪前，整个入口场景保持透明（露出 .guild-login-shell 的深色底），
+   就绪后按钮与背景一起淡入，避免割裂感。只加 opacity/transition，不覆盖
+   .guild-gate-art 自身的 transform/filter 过渡（开门动画仍正常）。 */
+.guild-gate-scene {
+  opacity: 0;
+  transition: opacity 560ms ease;
+}
+
+.guild-gate-scene.is-ready {
+  opacity: 1;
+}
+</style>
