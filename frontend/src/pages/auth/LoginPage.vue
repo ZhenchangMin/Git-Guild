@@ -4,11 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { authApi } from '../../api'
 import doorImg from '../../assets/door.png'
+import hallImg from '../../assets/hall.png'
 import { setSession } from '../../stores/sessionStore'
 
 const ENTRY_ANIMATION_MS = 980
 // 注册成功后，先让"账号已创建"的提示停留一会，用户看清后再进入开门动画。
 const REGISTER_SUCCESS_HOLD_MS = 1600
+const HALL_ENTRY_FROM_GATE_KEY = 'gitguild.hallEntryFromGate'
 const REMEMBER_PASSWORD_PREF_KEY = 'gitguild.rememberPassword'
 const SAVED_LOGIN_ACCOUNT_KEY = 'gitguild.savedLoginAccount'
 
@@ -29,6 +31,7 @@ const showConfirmPassword = ref(false)
 const rememberPassword = ref(false)
 let entryTimer = 0
 let holdTimer = 0
+let hallPreloadImage = null
 
 const form = reactive({
   username: '',
@@ -141,10 +144,38 @@ function switchMode(nextMode) {
 function beginEntryAnimation(targetRoute) {
   isEntering.value = true
   isGateOpen.value = true
+  rememberHallEntrySource(targetRoute)
+  preloadHallImage(targetRoute)
   window.clearTimeout(entryTimer)
   entryTimer = window.setTimeout(() => {
     router.push(targetRoute)
   }, ENTRY_ANIMATION_MS)
+}
+
+function isHallRoute(targetRoute) {
+  return (
+    targetRoute?.name === 'hall' ||
+    (typeof targetRoute === 'string' && targetRoute.startsWith('/hall'))
+  )
+}
+
+function rememberHallEntrySource(targetRoute) {
+  if (!isHallRoute(targetRoute)) return
+
+  try {
+    window.sessionStorage.setItem(HALL_ENTRY_FROM_GATE_KEY, 'true')
+  } catch {
+    // 过门厅淡出只是视觉增强；存储不可用时不影响登录跳转。
+  }
+}
+
+function preloadHallImage(targetRoute) {
+  const shouldPreloadHall = isHallRoute(targetRoute)
+
+  if (!shouldPreloadHall || hallPreloadImage) return
+  hallPreloadImage = new Image()
+  hallPreloadImage.decoding = 'async'
+  hallPreloadImage.src = hallImg
 }
 
 // 注册成功后短暂停留，让用户看清"账号已创建"提示，再继续登录与开门动画。
