@@ -12,6 +12,7 @@ const questSearch = ref('')
 const questPage = ref(1)
 const questPageSize = 18
 const recommendationLimit = 20
+const loadingSkeletonCards = Array.from({ length: 6 }, (_, index) => index)
 const questSource = ref([])
 const taxonomyFilterOptions = ref({
   category: [],
@@ -162,6 +163,8 @@ const activeFilterCount = computed(() =>
   Object.values(selectedQuestFilters.value).reduce((total, list) => total + list.length, 0),
 )
 
+const hasQuestSearch = computed(() => questSearch.value.trim().length > 0)
+
 const visibleQuestFilterGroups = computed(() => {
   const dynamicValues = {
     category: [
@@ -193,13 +196,11 @@ const recommendationStatusText = computed(() => {
   return usingRecommendedSource.value ? '由推荐算法实时计算' : '当前显示默认委托清单'
 })
 
-const emptyTitle = computed(() => {
-  if (isRecommendationLoading.value) return '正在计算推荐委托'
-  return '没有符合条件的委托'
-})
-
 const emptyDescription = computed(() => {
   if (isRecommendationLoading.value) return '推荐算法会根据技术栈、难度和成长阶段生成默认列表。'
+  if (hasQuestSearch.value && activeFilterCount.value > 0) return '可以先清除搜索词，或减少左侧筛选条件后再查看结果。'
+  if (hasQuestSearch.value) return `当前搜索“${questSearch.value.trim()}”没有命中任务标题、技术栈或验收标准。`
+  if (activeFilterCount.value > 0) return '当前筛选组合过窄，可以移除部分条件或清空筛选。'
   return '调整搜索词或清空部分筛选条件，悬赏板会立即刷新。'
 })
 
@@ -522,7 +523,23 @@ onMounted(() => {
               <span>{{ recommendationStatusText }}</span>
             </div>
 
-            <div v-if="pagedQuestCommissions.length > 0" class="commission-grid">
+            <div v-if="isRecommendationLoading" class="commission-grid loading" aria-label="正在加载委托">
+              <article
+                v-for="item in loadingSkeletonCards"
+                :key="item"
+                class="commission-card commission-skeleton-card"
+                aria-hidden="true"
+              >
+                <span class="skeleton-line short"></span>
+                <span class="skeleton-line title"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-block"></span>
+                <span class="skeleton-tags"></span>
+              </article>
+            </div>
+
+            <div v-else-if="pagedQuestCommissions.length > 0" class="commission-grid">
               <article
                 v-for="quest in pagedQuestCommissions"
                 :key="quest.routeId ?? quest.id"
@@ -570,9 +587,8 @@ onMounted(() => {
 
             <div v-else class="commission-empty">
               <p class="kicker">空空如也</p>
-              <h2>{{ emptyTitle }}</h2>
               <p>{{ emptyDescription }}</p>
-              <button class="quiet-action" type="button" @click="clearQuestFilters">清空筛选</button>
+              <button v-if="activeFilterCount > 0" class="quiet-action" type="button" @click="clearQuestFilters">清空筛选</button>
             </div>
 
             <nav v-if="questPageCount > 1" class="quest-pagination" aria-label="委托分页">
