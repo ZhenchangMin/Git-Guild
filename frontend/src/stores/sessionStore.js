@@ -19,21 +19,33 @@ export const sessionStore = reactive({
   user: savedSession.user ?? null,
 })
 
+function persistSession() {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      token: sessionStore.token,
+      refreshToken: sessionStore.refreshToken,
+      role: sessionStore.role,
+      user: sessionStore.user,
+    }),
+  )
+}
+
 export function setSession({ token = '', refreshToken = '', role = 'VISITOR', user = null } = {}) {
   sessionStore.token = token
   sessionStore.refreshToken = refreshToken
   sessionStore.role = role
   sessionStore.user = user
 
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      token,
-      refreshToken,
-      role,
-      user,
-    }),
-  )
+  persistSession()
+}
+
+export function updateSessionUser(patch = {}) {
+  sessionStore.user = {
+    ...(sessionStore.user ?? {}),
+    ...patch,
+  }
+  persistSession()
 }
 
 export function clearSession() {

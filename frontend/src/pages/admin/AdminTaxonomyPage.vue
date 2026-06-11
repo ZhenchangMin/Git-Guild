@@ -43,15 +43,41 @@ async function loadTaxonomy() {
       adminApi.listCategories({ withQuestCount: true, includeDisabled: true, sortBy: 'name' }),
       adminApi.listTags({ includeDisabled: true, size: 100 }),
     ])
-    categories.value = (catRes?.data ?? []).map((c) => ({ ...c }))
-    tags.value = (tagRes?.data?.items ?? []).map((t) => ({ ...t }))
+    categories.value = (catRes?.data ?? []).map(normalizeCategory)
+    tags.value = (tagRes?.data?.items ?? tagRes?.data ?? []).map(normalizeTag)
   } catch (error) {
-    const text = error?.message ?? '加载分类/标签失败，请确认后端已启动并以管理员登录。'
+    const text = readableError(error, '加载分类/标签失败，请确认后端已启动并以管理员登录。')
     notice('category', 'danger', text)
     notice('tag', 'danger', text)
   } finally {
     loading.value = false
   }
+}
+
+function normalizeCategory(category) {
+  return {
+    categoryId: category.categoryId,
+    name: category.name ?? '',
+    description: category.description ?? '',
+    enabled: category.enabled !== false,
+    questCount: category.questCount ?? 0,
+  }
+}
+
+function normalizeTag(tag) {
+  return {
+    tagId: tag.tagId,
+    name: tag.name ?? '',
+    color: tag.color ?? tagPalette[0],
+    enabled: tag.enabled !== false,
+    questCount: tag.questCount ?? 0,
+  }
+}
+
+function readableError(error, fallback) {
+  if (error?.details) return `${fallback} ${error.details}`
+  if (error?.message) return `${fallback} ${error.message}`
+  return fallback
 }
 
 async function addCategory() {
@@ -60,26 +86,40 @@ async function addCategory() {
     notice('category', 'danger', '分类名称长度需为 1-32 个字符。')
     return
   }
+  if (categories.value.some((c) => c.name === name)) {
+    notice('category', 'danger', `同名分类已存在：${name}`)
+    return
+  }
   try {
-    const res = await adminApi.createCategory({ name, description: newCategory.value.description.trim() })
+    const payload = { name, description: newCategory.value.description.trim(), enabled: true }
+    const res = await adminApi.createCategory(payload)
     const created = res?.data ?? {}
-    categories.value = [...categories.value, { questCount: 0, ...created }]
+    categories.value = [...categories.value, normalizeCategory({ ...payload, questCount: 0, ...created })]
     newCategory.value = { name: '', description: '' }
     notice('category', 'approved', `任务分类已创建：${created.name ?? name}`)
   } catch (error) {
-    notice('category', 'danger', error?.message ?? '创建分类失败。')
+    notice('category', 'danger', readableError(error, '创建分类失败。'))
   }
 }
 
 async function toggleCategory(category) {
-  // 停用仅表示「不再供新任务选用」，已有引用照常保留，因此不拦截。
-  const next = !category.enabled
+  // 被任务引用的分类不能停用，避免已有委托展示成不可解释的配置状态。
+  if (category.enabled && category.questCount > 0) {
+    notice('category', 'danger', `「${category.name}」被 ${category.questCount} 个任务引用，无法禁用。`)
+    return
+  }
+  const nextEnabled = !category.enabled
   try {
-    const res = await adminApi.updateCategory(category.categoryId, { enabled: next })
-    Object.assign(category, res?.data ?? { enabled: next })
-    notice('category', next ? 'approved' : 'return', `「${category.name}」已${next ? '启用' : '停用'}。`)
+    const payload = {
+      name: category.name,
+      description: category.description,
+      enabled: nextEnabled,
+    }
+    const res = await adminApi.updateCategory(category.categoryId, payload)
+    Object.assign(category, normalizeCategory({ ...category, ...payload, ...(res?.data ?? {}) }))
+    notice('category', category.enabled ? 'approved' : 'return', `「${category.name}」已${category.enabled ? '启用' : '停用'}。`)
   } catch (error) {
-    notice('category', 'danger', error?.message ?? '更新分类失败。')
+    notice('category', 'danger', readableError(error, '更新分类失败。'))
   }
 }
 
@@ -89,25 +129,39 @@ async function addTag() {
     notice('tag', 'danger', '标签名称不能为空。')
     return
   }
+  if (tags.value.some((t) => t.name === name)) {
+    notice('tag', 'danger', `同名标签已存在：${name}`)
+    return
+  }
   try {
-    const res = await adminApi.createTag({ name, color: newTag.value.color })
+    const payload = { name, color: newTag.value.color, enabled: true }
+    const res = await adminApi.createTag(payload)
     const created = res?.data ?? {}
-    tags.value = [...tags.value, { questCount: 0, ...created }]
+    tags.value = [...tags.value, normalizeTag({ ...payload, questCount: 0, ...created })]
     newTag.value = { name: '', color: tagPalette[0] }
     notice('tag', 'approved', `任务标签已创建：${created.name ?? name}`)
   } catch (error) {
-    notice('tag', 'danger', error?.message ?? '创建标签失败。')
+    notice('tag', 'danger', readableError(error, '创建标签失败。'))
   }
 }
 
 async function toggleTag(tag) {
-  const next = !tag.enabled
+  if (tag.enabled && tag.questCount > 0) {
+    notice('tag', 'danger', `「${tag.name}」被 ${tag.questCount} 个任务引用，无法禁用。`)
+    return
+  }
+  const nextEnabled = !tag.enabled
   try {
-    const res = await adminApi.updateTag(tag.tagId, { enabled: next })
-    Object.assign(tag, res?.data ?? { enabled: next })
-    notice('tag', next ? 'approved' : 'return', `「${tag.name}」已${next ? '启用' : '停用'}。`)
+    const payload = {
+      name: tag.name,
+      color: tag.color,
+      enabled: nextEnabled,
+    }
+    const res = await adminApi.updateTag(tag.tagId, payload)
+    Object.assign(tag, normalizeTag({ ...tag, ...payload, ...(res?.data ?? {}) }))
+    notice('tag', tag.enabled ? 'approved' : 'return', `「${tag.name}」已${tag.enabled ? '启用' : '停用'}。`)
   } catch (error) {
-    notice('tag', 'danger', error?.message ?? '更新标签失败。')
+    notice('tag', 'danger', readableError(error, '更新标签失败。'))
   }
 }
 </script>

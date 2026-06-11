@@ -4,12 +4,14 @@ import { useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
+import parchmentFormImg from '../../assets/submission-form-parchment-v0-clean.png'
 
 const router = useRouter()
 
 // ── 选项数据 ────────────────────────────────────────────────────────────────
 const repositories = ref([])
 const categories = ref([])
+const tags = ref([])
 const issues = ref([])
 const loadingMeta = ref(true)
 const loadingIssues = ref(false)
@@ -26,6 +28,7 @@ const form = ref({
   description: '在仓库中新增一个 hello world 文件，作为最短 MVP 演示任务。',
   completionCriteria: '新增 hello.md（或 hello world 文件），内容包含 "Hello, Git-Guild!"，并通过 PR 合并。',
   categoryId: '',
+  tagIds: [],
   difficulty: 'A',
   techStack: 'Markdown',
   estimatedHours: 1,
@@ -42,17 +45,21 @@ const selectedRepo = computed(
   () => repositories.value.find((r) => String(r.repositoryId) === String(form.value.repositoryId)) ?? null,
 )
 
+const tagOptions = computed(() => tags.value.filter((tag) => tag.enabled !== false))
+
 // ── 加载仓库 + 分类 ─────────────────────────────────────────────────────────
 async function loadMeta() {
   loadingMeta.value = true
   metaError.value = ''
   try {
-    const [repoPayload, catPayload] = await Promise.all([
+    const [repoPayload, catPayload, tagPayload] = await Promise.all([
       repositoryApi.list(),
       questApi.categories(),
+      questApi.tags({ size: 100 }),
     ])
     repositories.value = unwrapList(repoPayload)
     categories.value = unwrapList(catPayload)
+    tags.value = unwrapItems(tagPayload)
     if (repositories.value.length > 0) {
       form.value.repositoryId = String(repositories.value[0].repositoryId)
     }
@@ -142,7 +149,7 @@ async function publish() {
       estimatedHours: Number(form.value.estimatedHours),
       rewardXp: Number(form.value.rewardXp),
       categoryId: Number(form.value.categoryId),
-      tagIds: [],
+      tagIds: form.value.tagIds.map(Number),
     }
     if (form.value.issueMode === 'existing') {
       payload.issueId = Number(form.value.issueId)
@@ -192,7 +199,7 @@ function unwrapItems(payload) {
         <span>返回事务所</span>
       </button>
 
-      <article class="writ-panel">
+      <article class="writ-panel" :style="{ '--writ-sheet-image': `url(${parchmentFormImg})` }">
         <header class="writ-head">
           <p class="writ-eyebrow">委托书 · Commission Writ</p>
           <h1>发布委托</h1>
@@ -240,6 +247,18 @@ function unwrapItems(payload) {
             </select>
             <small v-if="errors.categoryId" class="writ-error">{{ errors.categoryId }}</small>
           </label>
+
+          <fieldset class="writ-field writ-wide">
+            <span>标签</span>
+            <div v-if="tagOptions.length" class="writ-tag-options" aria-label="任务标签">
+              <label v-for="tag in tagOptions" :key="tag.tagId" class="writ-tag-option">
+                <input v-model="form.tagIds" type="checkbox" :value="String(tag.tagId)" />
+                <span class="writ-tag-dot" :style="{ background: tag.color }" aria-hidden="true"></span>
+                <span>{{ tag.name }}</span>
+              </label>
+            </div>
+            <small v-else class="writ-hint">暂无可用标签；可先在管理员平台配置中新增。</small>
+          </fieldset>
 
           <fieldset class="writ-field writ-wide writ-issue">
             <span>关联 Issue</span>
@@ -341,15 +360,47 @@ function unwrapItems(payload) {
 }
 
 .writ-panel {
-  width: min(820px, 100%);
-  padding: clamp(26px, 4vw, 46px);
-  border: 1px solid var(--paper-deep);
-  border-radius: 12px;
+  --writ-pad-x: clamp(76px, 14%, 152px);
+  --writ-pad-y: clamp(88px, 12%, 140px);
+
+  position: relative;
+  box-sizing: border-box;
+  width: min(1086px, calc(100vw - 36px));
+  aspect-ratio: 1086 / 1448;
+  padding: var(--writ-pad-y) var(--writ-pad-x);
   color: var(--ink);
-  background:
-    radial-gradient(circle at 18% 10%, rgba(255, 250, 232, 0.7), transparent 44%),
-    linear-gradient(168deg, #f4e3b6, #e7cd90);
-  box-shadow: 0 28px 64px rgba(8, 4, 2, 0.55), inset 0 1px 0 rgba(255, 252, 236, 0.55);
+  isolation: isolate;
+}
+
+.writ-panel::before {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  content: '';
+  pointer-events: none;
+  background-image: var(--writ-sheet-image);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  filter:
+    drop-shadow(0 0 1px rgba(0, 0, 0, 0.86))
+    drop-shadow(0 0 4px rgba(0, 0, 0, 0.64))
+    drop-shadow(0 12px 28px rgba(0, 0, 0, 0.5))
+    drop-shadow(0 30px 58px rgba(0, 0, 0, 0.58));
+}
+
+.writ-panel::after {
+  position: absolute;
+  inset: 6.5% 8%;
+  z-index: -1;
+  content: '';
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 68% 58% at 50% 50%,
+    rgba(243, 231, 202, 0.86) 0%,
+    rgba(243, 231, 202, 0.58) 48%,
+    rgba(243, 231, 202, 0) 82%
+  );
 }
 
 .writ-eyebrow {
@@ -404,13 +455,14 @@ function unwrapItems(payload) {
 .writ-field select,
 .writ-field textarea {
   width: 100%;
-  border: 1px solid rgba(122, 74, 24, 0.34);
-  border-radius: 5px;
-  padding: 10px 12px;
-  color: var(--ink);
+  border: 1px solid rgba(98, 55, 20, 0.26);
+  border-radius: 4px;
+  padding: 9px 10px;
+  color: #3b210f;
   font-family: var(--font-body);
   font-size: 0.92rem;
-  background: rgba(255, 250, 234, 0.72);
+  background: rgba(255, 244, 210, 0.56);
+  box-shadow: inset 0 1px 6px rgba(70, 34, 10, 0.12);
   transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 .writ-field input::placeholder,
@@ -422,11 +474,57 @@ function unwrapItems(payload) {
 .writ-field textarea:focus {
   outline: none;
   border-color: var(--gold);
-  background: rgba(255, 252, 240, 0.94);
-  box-shadow: 0 0 0 3px rgba(216, 154, 50, 0.22);
+  background: rgba(255, 244, 210, 0.72);
+  box-shadow:
+    inset 0 1px 6px rgba(70, 34, 10, 0.1),
+    0 0 0 2px rgba(216, 154, 50, 0.18);
 }
 .writ-field textarea {
   resize: vertical;
+}
+
+.writ-tag-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.writ-tag-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid rgba(98, 55, 20, 0.24);
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: #4c2a12;
+  font-size: 0.84rem;
+  background: rgba(255, 244, 210, 0.46);
+  box-shadow: inset 0 1px 5px rgba(70, 34, 10, 0.1);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.writ-tag-option:has(input:checked) {
+  border-color: rgba(169, 106, 28, 0.58);
+  background: rgba(235, 186, 94, 0.32);
+  box-shadow:
+    inset 0 1px 5px rgba(70, 34, 10, 0.1),
+    0 0 0 2px rgba(216, 154, 50, 0.14);
+}
+
+.writ-tag-option input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #b67a24;
+}
+
+.writ-tag-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(70, 34, 10, 0.18);
 }
 
 .writ-segmented {
@@ -542,6 +640,11 @@ function unwrapItems(payload) {
 }
 
 @media (max-width: 640px) {
+  .writ-panel {
+    --writ-pad-x: clamp(40px, 12vw, 76px);
+    --writ-pad-y: clamp(54px, 14vw, 88px);
+  }
+
   .writ-form {
     grid-template-columns: 1fr;
   }

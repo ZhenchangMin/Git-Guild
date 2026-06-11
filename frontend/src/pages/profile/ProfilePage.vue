@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { growthApi } from '../../api/growthApi'
 import { questApi } from '../../api/questApi'
 import { userApi } from '../../api/userApi'
-import { sessionStore } from '../../stores/sessionStore'
+import { sessionStore, updateSessionUser } from '../../stores/sessionStore'
 import profileArchiveBg from '../../assets/profile-archive-bg.png'
 import DifficultyTrendChart from '../../components/DifficultyTrendChart.vue'
 import {
@@ -108,6 +108,14 @@ function applyUser(payload) {
   if (user.displayBadgeId !== undefined) {
     displayBadgeId.value = user.displayBadgeId
   }
+  updateSessionUser({
+    userId: user.userId,
+    id: user.userId,
+    displayName: user.name,
+    avatarUrl: user.avatarUrl,
+    motto: user.motto,
+    createdAt: user.createdAt,
+  })
 }
 
 async function loadProfilePage() {

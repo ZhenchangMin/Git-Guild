@@ -1,13 +1,8 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 
 import { adminApi } from '../../api/adminApi'
 import { decisionMeta, questStatusMeta } from '../../data/admin'
-import operationRoomImg from '../../assets/operation room.png'
-import { clearSession } from '../../stores/sessionStore'
-
-const router = useRouter()
 
 const ADMIN_NAME = '管理员 · 审核台'
 const REASON_MAX = 500
@@ -349,15 +344,10 @@ async function submitDecision(decision) {
   }
 }
 
-function logout() {
-  clearSession()
-  router.push({ name: 'login' })
-}
 </script>
 
 <template>
-  <main class="app-shell">
-    <section class="scene work-scene" :style="{ backgroundImage: `url(${operationRoomImg})` }">
+  <div class="admin-review-route">
       <div class="session-action-stack" aria-label="账号操作">
         <button class="back-orb logout-orb logout-orb-admin" type="button" aria-label="退出登录" @click="logout">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -638,6 +628,5 @@ function logout() {
           </section>
         </aside>
       </div>
-    </section>
-  </main>
+  </div>
 </template>

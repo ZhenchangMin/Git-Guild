@@ -14,7 +14,7 @@ const maintainerName = computed(
   () => sessionStore.user?.displayName || sessionStore.user?.username || '委托人',
 )
 
-// 待审计数（null = 未知/隐藏徽标）。审核队列即待批阅提交，取条目数即可。
+// 待审计数（null = 未知/隐藏徽标）。审核队列会返回全状态提交，这里只统计待批阅项。
 const pendingReviews = ref(null)
 const repos = ref([])
 const reposLoading = ref(true)
@@ -46,6 +46,9 @@ function goPublish() {
 function goReviews() {
   router.push({ name: 'maintainer-review' })
 }
+function goAdventureWorkbench() {
+  router.push({ name: 'adventurer-workbench' })
+}
 function goRepoSync() {
   router.push({ name: 'repository-sync' })
 }
@@ -54,11 +57,15 @@ function openRepo(repo) {
   if (url) window.open(url, '_blank', 'noopener,noreferrer')
 }
 
+function isPendingReviewSubmission(item) {
+  return item?.status === 'PENDING_REVIEW'
+}
+
 onMounted(async () => {
   try {
     const res = await submissionApi.reviewQueue()
     const items = Array.isArray(res?.data) ? res.data : []
-    pendingReviews.value = items.length
+    pendingReviews.value = items.filter(isPendingReviewSubmission).length
   } catch {
     pendingReviews.value = null
   }
@@ -119,6 +126,15 @@ onMounted(async () => {
             <span class="office-portal-body">
               <strong>审核台</strong>
               <small>{{ pendingReviews ? `${pendingReviews} 份成果待批阅` : '批阅冒险家呈交的成果' }}</small>
+            </span>
+            <span class="office-portal-arrow" aria-hidden="true">→</span>
+          </button>
+
+          <button class="office-portal office-portal-adventure" type="button" @click="goAdventureWorkbench">
+            <span class="office-portal-glyph" aria-hidden="true">◆</span>
+            <span class="office-portal-body">
+              <strong>完成委托</strong>
+              <small>进入冒险家工作台，查看已接取任务、提交成果并追踪成长档案。</small>
             </span>
             <span class="office-portal-arrow" aria-hidden="true">→</span>
           </button>
@@ -262,6 +278,9 @@ onMounted(async () => {
 }
 .office-portal:active {
   transform: translateY(0) scale(0.99);
+}
+.office-portal-adventure {
+  grid-column: 1 / -1;
 }
 .office-portal-glyph {
   position: relative;

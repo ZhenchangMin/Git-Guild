@@ -85,16 +85,19 @@ function handleSubmitted(receipt) {
   lastReceipt.value = receipt
 }
 
-// Adventurers come from the workbench; everyone else (admin previewing, etc.)
-// goes back to the hall. We don't trust intent guards here — routes already
-// gate the page on ADVENTURER.
+// Adventurers and maintainers can both use the adventurer-style workbench to
+// complete accepted quests; admins preview from the hall.
 const backTarget = computed(() => {
-  if (sessionStore.role === 'ADVENTURER') return { name: 'adventurer-workbench' }
+  if (sessionStore.role === 'ADVENTURER' || sessionStore.role === 'MAINTAINER') {
+    return { name: 'adventurer-workbench' }
+  }
   return { name: 'hall' }
 })
 
 const backLabel = computed(() =>
-  sessionStore.role === 'ADVENTURER' ? '返回冒险者工作台' : '返回公会大厅',
+  sessionStore.role === 'ADVENTURER' || sessionStore.role === 'MAINTAINER'
+    ? '返回工作台'
+    : '返回公会大厅',
 )
 
 function navigateBack() {
