@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import hallImg from '../../assets/hall.png'
+import hallImg from '../../assets/hall-clean.png'
 import NotificationBell from '../../components/NotificationBell.vue'
 import { questApi } from '../../api/questApi'
 import { clearSession, hasLoginSession, sessionStore } from '../../stores/sessionStore'
@@ -243,8 +243,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="app-shell">
-    <button class="help-orb" type="button" aria-label="打开 Git Guild 使用教程" @click="openRoute('help')">?</button>
+  <main class="app-shell hall-shell">
+    <button class="help-orb hall-help-orb" type="button" aria-label="打开 Git Guild 使用教程" @click="openRoute('help')">?</button>
 
     <section class="hall-scene">
       <div class="session-action-stack" aria-label="账号与成长入口">
@@ -276,7 +276,11 @@ onUnmounted(() => {
       >
         <div ref="hallTrack" class="hall-track" :style="{ transform: `translateX(${hallOffset}px)` }">
           <img class="hall-image" :src="hallImg" alt="Git Guild 公会大厅" draggable="false" @load="centerHall" />
-          <svg class="hall-hotspot-map" :viewBox="`0 0 ${HALL_IMAGE_WIDTH} ${HALL_IMAGE_HEIGHT}`">
+          <svg
+            class="hall-hotspot-map"
+            :viewBox="`0 0 ${HALL_IMAGE_WIDTH} ${HALL_IMAGE_HEIGHT}`"
+            preserveAspectRatio="none"
+          >
             <path
               v-for="room in shapeRooms"
               :key="room.id"
@@ -333,9 +337,7 @@ onUnmounted(() => {
 <style scoped>
 .growth-orb {
   border-color: rgba(255, 219, 145, 0.56);
-  background:
-    linear-gradient(135deg, rgba(88, 48, 18, 0.86), rgba(20, 10, 3, 0.78)),
-    radial-gradient(circle at 22% 20%, rgba(255, 219, 145, 0.22), transparent 0 42%);
+  background: rgba(35, 20, 9, 0.68);
 }
 
 .growth-orb span {
@@ -345,38 +347,63 @@ onUnmounted(() => {
 .growth-orb:hover,
 .growth-orb:focus-visible {
   border-color: rgba(255, 226, 160, 0.88);
-  box-shadow: 0 0 26px rgba(255, 197, 89, 0.34);
+  box-shadow: none;
+}
+
+:global(.hall-shell .session-action-stack) {
+  gap: 8px;
+  border: 1px solid rgba(244, 190, 92, 0.24);
+  border-radius: 999px;
+  padding: 8px;
+  background: rgba(23, 13, 6, 0.44);
+  box-shadow: inset 0 1px 0 rgba(255, 226, 160, 0.1);
+}
+
+:global(.hall-shell .back-orb),
+:global(.hall-shell .help-orb) {
+  border-color: rgba(244, 190, 92, 0.34);
+  background: rgba(20, 11, 5, 0.48);
+  box-shadow: none;
+}
+
+:global(.hall-shell .back-orb:hover),
+:global(.hall-shell .back-orb:focus-visible),
+:global(.hall-shell .help-orb:hover),
+:global(.hall-shell .help-orb:focus-visible) {
+  border-color: rgba(255, 226, 160, 0.64);
+  background: rgba(72, 42, 16, 0.62);
+  box-shadow: none;
 }
 
 .hall-hotspot-map {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   z-index: 2;
-  width: calc(100svh * 10 / 3);
-  height: 100svh;
+  display: block;
+  width: 100%;
+  height: 100%;
   overflow: visible;
   pointer-events: none;
 }
 
 .hall-hotspot-path {
-  fill: rgba(255, 220, 132, 0.04);
-  stroke: rgba(255, 211, 116, 0.32);
-  stroke-width: 2;
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
   stroke-linejoin: round;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 5px rgba(255, 190, 82, 0.18));
+  filter: none;
   pointer-events: all;
   cursor: pointer;
-  transition: stroke 220ms ease, fill 220ms ease, filter 220ms ease;
+  transition: stroke 180ms ease, fill 180ms ease;
 }
 
 .hall-hotspot-path:hover,
 .hall-hotspot-path:focus-visible {
-  fill: rgba(255, 220, 132, 0.12);
-  stroke: rgba(255, 217, 128, 0.92);
-  filter: drop-shadow(0 0 10px rgba(255, 190, 82, 0.55));
+  fill: rgba(255, 226, 160, 0.045);
+  stroke: rgba(255, 226, 160, 0.34);
+  filter: none;
   outline: none;
 }
 
@@ -391,7 +418,7 @@ onUnmounted(() => {
 .shape-tooltip.active {
   opacity: 1;
   visibility: visible;
-  transform: translate(18px, calc(-100% - 16px));
+  transform: translate(16px, calc(-100% - 18px));
 }
 
 .shape-tooltip.below {
@@ -399,7 +426,7 @@ onUnmounted(() => {
 }
 
 .shape-tooltip.below.active {
-  transform: translate(18px, 18px);
+  transform: translate(16px, 18px);
 }
 
 .tooltip-cta {
