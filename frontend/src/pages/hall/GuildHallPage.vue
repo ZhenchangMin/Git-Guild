@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import hallImg from '../../assets/hall.webp'
+import hallImg from '../../assets/hall.png'
 import HallEntryTransition from '../../components/HallEntryTransition.vue'
 import NotificationBell from '../../components/NotificationBell.vue'
 import { questApi } from '../../api/questApi'
