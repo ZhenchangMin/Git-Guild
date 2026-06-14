@@ -30,7 +30,7 @@ const HALL_ENTRY_EXIT_MS = 620
 const HALL_ENTRY_FROM_GATE_KEY = 'gitguild.hallEntryFromGate'
 
 const hallImageReady = ref(false)
-const showHallEntry = ref(true)
+const showHallEntry = ref(false)
 const isHallEntryLeaving = ref(false)
 let hallEntryExitTimer = 0
 const hallEntryStatusText = ref('正在点亮公会大厅...')
@@ -230,8 +230,10 @@ function consumeHallEntrySource() {
   try {
     shouldFadeHallEntry.value = window.sessionStorage.getItem(HALL_ENTRY_FROM_GATE_KEY) === 'true'
     window.sessionStorage.removeItem(HALL_ENTRY_FROM_GATE_KEY)
+    showHallEntry.value = shouldFadeHallEntry.value
   } catch {
     shouldFadeHallEntry.value = false
+    showHallEntry.value = false
   }
 }
 
