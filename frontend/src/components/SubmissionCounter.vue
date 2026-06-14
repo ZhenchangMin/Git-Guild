@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
-import parchmentFormImg from '../assets/submission-form-parchment-v0-clean.png'
+import parchmentFormImg from '../assets/submission-form-parchment-v0-clean.webp'
 import { submissionApi } from '../api/submissionApi'
 import { sessionStore } from '../stores/sessionStore'
 import {

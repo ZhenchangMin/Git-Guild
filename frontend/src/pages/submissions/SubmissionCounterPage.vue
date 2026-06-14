@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
-import submissionCounterImg from '../../assets/submission-counter-clerk-v0.png'
+import submissionCounterImg from '../../assets/submission-counter-clerk-v0.webp'
 import SubmissionCounter from '../../components/SubmissionCounter.vue'
 import { sessionStore } from '../../stores/sessionStore'
 

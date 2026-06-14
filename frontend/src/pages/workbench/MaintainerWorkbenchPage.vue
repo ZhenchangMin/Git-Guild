@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import deskImg from '../../assets/desk.png'
+import deskImg from '../../assets/desk.webp'
 import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
 import { submissionApi } from '../../api/submissionApi'

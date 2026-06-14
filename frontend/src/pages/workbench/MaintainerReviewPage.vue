@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import workbenchImg from '../../assets/workbench.png'
+import workbenchImg from '../../assets/workbench.webp'
 import MaintainerReviewActions from '../../components/MaintainerReviewActions.vue'
 import MaintainerReviewDetail from '../../components/MaintainerReviewDetail.vue'
 import MaintainerReviewQueue from '../../components/MaintainerReviewQueue.vue'

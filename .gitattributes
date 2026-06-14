@@ -1,0 +1,4 @@
+# 保证在 Linux 服务器上运行的脚本始终是 LF 行尾，避免 Windows 提交带入 CRLF 导致 `bash: \r` 报错
+*.sh text eol=lf
+deploy/Dockerfile.* text eol=lf
+nginx.conf text eol=lf

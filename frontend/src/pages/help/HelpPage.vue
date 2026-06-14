@@ -1,7 +1,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 
-import hallImg from '../../assets/hall.png'
+import hallImg from '../../assets/hall.webp'
 
 const router = useRouter()
 

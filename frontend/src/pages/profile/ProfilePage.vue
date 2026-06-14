@@ -5,7 +5,7 @@ import { growthApi } from '../../api/growthApi'
 import { questApi } from '../../api/questApi'
 import { userApi } from '../../api/userApi'
 import { sessionStore, updateSessionUser } from '../../stores/sessionStore'
-import profileArchiveBg from '../../assets/profile-archive-bg.png'
+import profileArchiveBg from '../../assets/profile-archive-bg.webp'
 import DifficultyTrendChart from '../../components/DifficultyTrendChart.vue'
 import {
   profileIdentity as profileIdentityFallback,
@@ -123,42 +123,52 @@ async function loadProfilePage() {
   loadError.value = ''
   const failures = []
 
-  try {
-    applyUser(await userApi.me())
-  } catch {
+  // 五个接口相互独立，并行发起：总耗时从"五个串行相加（约 5s）"降到"最慢的一个"。
+  // 用 allSettled 而非 all，保证单个失败不影响其余结果，仍各自走原有兜底逻辑。
+  const [meRes, summaryRes, badgesRes, contribRes, assignRes] = await Promise.allSettled([
+    userApi.me(),
+    growthApi.summary(),
+    growthApi.badges(),
+    growthApi.contributions(),
+    questApi.myAssignments(),
+  ])
+
+  if (meRes.status === 'fulfilled') {
+    applyUser(meRes.value)
+  } else {
     failures.push('用户资料')
     Object.assign(profileIdentity, { ...profileIdentityFallback })
   }
 
-  try {
-    growth.value = normalizeGrowth(await growthApi.summary())
-  } catch {
+  if (summaryRes.status === 'fulfilled') {
+    growth.value = normalizeGrowth(summaryRes.value)
+  } else {
     failures.push('成长摘要')
     growth.value = { ...growthFallback }
   }
 
-  try {
-    badgeCards.value = normalizeBadges(await growthApi.badges())
-  } catch {
+  if (badgesRes.status === 'fulfilled') {
+    badgeCards.value = normalizeBadges(badgesRes.value)
+  } else {
     failures.push('徽章')
     badgeCards.value = [...badgeShowcase]
   }
 
-  try {
-    const data = unwrapApiData(await growthApi.contributions())
+  if (contribRes.status === 'fulfilled') {
+    const data = unwrapApiData(contribRes.value)
     contributions.value = Array.isArray(data.items) ? data.items : []
     repoCount.value = data.repoCount ?? 0
-  } catch {
+  } else {
     failures.push('贡献历程')
     contributions.value = []
     repoCount.value = 0
   }
 
   // 待审核 = 当前用户处于 IN_REVIEW 的接取数（真实统计）
-  try {
-    const stats = unwrapApiData(await questApi.myAssignments()).stats ?? {}
+  if (assignRes.status === 'fulfilled') {
+    const stats = unwrapApiData(assignRes.value).stats ?? {}
     pendingReviewCount.value = stats.inReview ?? 0
-  } catch {
+  } else {
     pendingReviewCount.value = 0
   }
 

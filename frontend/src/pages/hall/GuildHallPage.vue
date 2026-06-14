@@ -2,7 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import hallImg from '../../assets/hall.png'
+import hallImg from '../../assets/hall.webp'
+import HallEntryTransition from '../../components/HallEntryTransition.vue'
 import NotificationBell from '../../components/NotificationBell.vue'
 import { questApi } from '../../api/questApi'
 import { clearSession, hasLoginSession, sessionStore } from '../../stores/sessionStore'
@@ -25,6 +26,15 @@ const shapeTooltipPosition = ref({ x: 0, y: 0, below: false })
 
 const HALL_IMAGE_WIDTH = 6000
 const HALL_IMAGE_HEIGHT = 1800
+const HALL_ENTRY_EXIT_MS = 620
+const HALL_ENTRY_FROM_GATE_KEY = 'gitguild.hallEntryFromGate'
+
+const hallImageReady = ref(false)
+const showHallEntry = ref(true)
+const isHallEntryLeaving = ref(false)
+let hallEntryExitTimer = 0
+const hallEntryStatusText = ref('正在点亮公会大厅...')
+const shouldFadeHallEntry = ref(false)
 
 const baseRooms = [
   {
@@ -189,6 +199,42 @@ function centerHall() {
   hallOffset.value = clampHallOffset((viewport.clientWidth - track.offsetWidth) / 2)
 }
 
+function finishHallEntryIfReady() {
+  if (!showHallEntry.value || isHallEntryLeaving.value || !hallImageReady.value) return
+
+  if (!shouldFadeHallEntry.value) {
+    showHallEntry.value = false
+    nextTick(centerHall)
+    return
+  }
+
+  isHallEntryLeaving.value = true
+  window.clearTimeout(hallEntryExitTimer)
+  hallEntryExitTimer = window.setTimeout(() => {
+    showHallEntry.value = false
+    nextTick(centerHall)
+  }, HALL_ENTRY_EXIT_MS)
+}
+
+function markHallImageReady() {
+  hallImageReady.value = true
+  nextTick(centerHall)
+  finishHallEntryIfReady()
+}
+
+function markHallImageUnavailable() {
+  hallEntryStatusText.value = '公会大厅加载失败，请刷新后重试'
+}
+
+function consumeHallEntrySource() {
+  try {
+    shouldFadeHallEntry.value = window.sessionStorage.getItem(HALL_ENTRY_FROM_GATE_KEY) === 'true'
+    window.sessionStorage.removeItem(HALL_ENTRY_FROM_GATE_KEY)
+  } catch {
+    shouldFadeHallEntry.value = false
+  }
+}
+
 function isHallHotspotTarget(target) {
   return Boolean(target?.closest?.('.hotspot, .hall-hotspot-path'))
 }
@@ -227,6 +273,7 @@ function logout() {
 }
 
 onMounted(async () => {
+  consumeHallEntrySource()
   window.addEventListener('resize', centerHall)
   nextTick(centerHall)
   try {
@@ -239,6 +286,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', centerHall)
+  window.clearTimeout(hallEntryExitTimer)
 })
 </script>
 
@@ -246,8 +294,14 @@ onUnmounted(() => {
   <main class="app-shell">
     <button class="help-orb" type="button" aria-label="打开 Git Guild 使用教程" @click="openRoute('help')">?</button>
 
-    <section class="hall-scene">
-      <div class="session-action-stack" aria-label="账号与成长入口">
+    <section class="hall-scene" :class="{ 'is-entry-loading': showHallEntry, 'is-hall-ready': hallImageReady }">
+      <HallEntryTransition
+        v-if="showHallEntry"
+        :leaving="shouldFadeHallEntry && isHallEntryLeaving"
+        :status-text="hallEntryStatusText"
+      />
+
+      <div class="session-action-stack" aria-label="账号与成长入口" :aria-hidden="showHallEntry">
         <NotificationBell v-if="showNotificationBell" />
         <button class="back-orb growth-orb" type="button" aria-label="打开成长档案" @click="openRoute('profile')">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -275,7 +329,14 @@ onUnmounted(() => {
         @pointercancel="endHallDrag"
       >
         <div ref="hallTrack" class="hall-track" :style="{ transform: `translateX(${hallOffset}px)` }">
-          <img class="hall-image" :src="hallImg" alt="Git Guild 公会大厅" draggable="false" @load="centerHall" />
+          <img
+            class="hall-image"
+            :src="hallImg"
+            alt="Git Guild 公会大厅"
+            draggable="false"
+            @load="markHallImageReady"
+            @error="markHallImageUnavailable"
+          />
           <svg class="hall-hotspot-map" :viewBox="`0 0 ${HALL_IMAGE_WIDTH} ${HALL_IMAGE_HEIGHT}`">
             <path
               v-for="room in shapeRooms"
@@ -346,6 +407,26 @@ onUnmounted(() => {
 .growth-orb:focus-visible {
   border-color: rgba(255, 226, 160, 0.88);
   box-shadow: 0 0 26px rgba(255, 197, 89, 0.34);
+}
+
+.hall-scene.is-entry-loading .hall-viewport,
+.hall-scene.is-entry-loading .session-action-stack {
+  pointer-events: none;
+}
+
+.hall-scene:not(.is-hall-ready) .session-action-stack,
+.hall-scene:not(.is-hall-ready) .hall-hotspot-map,
+.hall-scene:not(.is-hall-ready) .hotspot,
+.hall-scene:not(.is-hall-ready) .shape-tooltip {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.session-action-stack,
+.hall-hotspot-map,
+.hotspot,
+.shape-tooltip {
+  transition: opacity 240ms ease, visibility 240ms ease;
 }
 
 .hall-hotspot-map {

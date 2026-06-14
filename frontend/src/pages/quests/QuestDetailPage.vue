@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
-import questBoardImg from '../../assets/quest board.png'
+import questBoardImg from '../../assets/quest board.webp'
 import QuestDetail from '../../components/QuestDetail.vue'
 import { sessionStore } from '../../stores/sessionStore'
 

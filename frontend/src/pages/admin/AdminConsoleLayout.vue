@@ -1,7 +1,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 
-import operationRoomImg from '../../assets/operation room.png'
+import operationRoomImg from '../../assets/operation room.webp'
 import { clearSession } from '../../stores/sessionStore'
 
 const router = useRouter()

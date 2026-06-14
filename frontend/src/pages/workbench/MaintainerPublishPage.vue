@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
-import parchmentFormImg from '../../assets/submission-form-parchment-v0-clean.png'
+import parchmentFormImg from '../../assets/submission-form-parchment-v0-clean.webp'
 
 const router = useRouter()
 
@@ -356,7 +356,7 @@ function unwrapItems(payload) {
   align-items: flex-start;
   padding: clamp(24px, 6vh, 64px) 18px;
   background-image: linear-gradient(rgba(8, 4, 2, 0.52), rgba(8, 4, 2, 0.52)),
-    url('../../assets/desk.png');
+    url('../../assets/desk.webp');
 }
 
 .writ-panel {

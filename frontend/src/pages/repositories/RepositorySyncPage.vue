@@ -1,7 +1,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 
-import deskImg from '../../assets/desk.png'
+import deskImg from '../../assets/desk.webp'
 import RepositorySyncDesk from '../../components/RepositorySyncDesk.vue'
 
 const router = useRouter()

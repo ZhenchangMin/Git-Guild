@@ -1,7 +1,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 
-import workbenchImg from '../../assets/workbench.png'
+import workbenchImg from '../../assets/workbench.webp'
 import Workbench from '../../components/Workbench.vue'
 
 const router = useRouter()
