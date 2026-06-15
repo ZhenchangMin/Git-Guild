@@ -33,4 +33,13 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     List<Submission> findReviewQueueForReviewer(
             @Param("reviewerId") Long reviewerId,
             @Param("admin") boolean admin);
+
+    @Query("""
+            select s
+            from Submission s
+            join fetch s.quest q
+            where s.submitter.userId = :submitterId
+            order by s.submittedAt desc
+            """)
+    List<Submission> findBySubmitterUserIdWithQuestOrderBySubmittedAtDesc(@Param("submitterId") Long submitterId);
 }
