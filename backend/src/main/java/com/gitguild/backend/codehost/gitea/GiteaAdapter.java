@@ -106,9 +106,13 @@ public interface GiteaAdapter {
      * @param repoName     迁入平台后的仓库名（平台内唯一，建议确定性派生）
      * @param description  仓库描述（可选）
      * @param withMetadata 是否一并迁入 Issue / PR / Label / Milestone（仅对可识别的源平台有效）
+     * @param authToken    源平台的鉴权 token（可选）：迁移 GitHub 仓库的 Issue 等元数据时必须带上，
+     *                     否则 Gitea 匿名访问 GitHub API 会触发 60 次/小时限流，导致迁移卡死、
+     *                     Issue 索引损坏。仅当源平台为 GitHub 时生效，其余源忽略。
      * @return 迁入后的平台仓库元数据，含 id、html_url、default_branch
      */
-    RepositoryInfo migrateRepository(String cloneAddr, String repoName, String description, boolean withMetadata);
+    RepositoryInfo migrateRepository(
+            String cloneAddr, String repoName, String description, boolean withMetadata, String authToken);
 
     /**
      * 在指定分支创建一个文件提交（Issue #13）。

@@ -37,9 +37,11 @@ class RepositoryServiceImplTest {
     @Mock private UserRepository userRepository;
     private final GiteaProperties giteaProperties = new GiteaProperties("http://localhost:3000", "", "spike-admin", null);
 
+    private static final String MIGRATION_TOKEN = "gh-migration-token";
+
     private RepositoryServiceImpl service() {
         return new RepositoryServiceImpl(giteaAdapter, giteaProperties,
-                codeRepositoryRepository, userRepository);
+                codeRepositoryRepository, userRepository, MIGRATION_TOKEN);
     }
 
     @Test
@@ -92,7 +94,7 @@ class RepositoryServiceImplTest {
                 "spike-admin/ZhenchangMin-Operating-System", "main", false, platformUrl);
 
         when(giteaAdapter.migrateRepository(eq(externalUrl),
-                eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true)))
+                eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true), eq(MIGRATION_TOKEN)))
                 .thenReturn(info);
         when(codeRepositoryRepository
                 .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc("GITEA", platformUrl))
@@ -107,7 +109,7 @@ class RepositoryServiceImplTest {
         assertThat(result.getDefaultBranch()).isEqualTo("main");
         assertThat(result.getExternalRepositoryId()).isEqualTo("9");
         verify(giteaAdapter).migrateRepository(eq(externalUrl),
-                eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true));
+                eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true), eq(MIGRATION_TOKEN));
     }
 
     @Test
@@ -126,7 +128,7 @@ class RepositoryServiceImplTest {
         // 源就在平台自己的 Gitea 上：直接登记，名称由地址推断，不触发迁移
         assertThat(result.getSourceUrl()).isEqualTo(internalUrl);
         assertThat(result.getName()).isEqualTo("demo-repo");
-        verify(giteaAdapter, never()).migrateRepository(anyString(), anyString(), any(), anyBoolean());
+        verify(giteaAdapter, never()).migrateRepository(anyString(), anyString(), any(), anyBoolean(), any());
     }
 
     @Test

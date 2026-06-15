@@ -55,6 +55,11 @@ gitea:
   # ⚠️ 该 token 仅对本地一次性 Gitea 有效，等同演示弱凭据，非生产凭据。
   token: ${GITEA_TOKEN:38f08180132021c3ebe7d777c6931b664997fd89}
   admin-username: ${GITEA_ADMIN_USERNAME:spike-admin}
+  # 迁移外部 GitHub 仓库时用于拉取 Issue 等元数据的鉴权 token。
+  # 留空则匿名迁移：GitHub 匿名 API 限流 60 次/小时，Issue 较多时会卡死并损坏索引；
+  # 配置一个 GitHub PAT（公开仓库无需任何 scope 即可享 5000 次/小时）后 Issue 才能稳定迁入。
+  # 生产示例：GITHUB_TOKEN=ghp_xxx（放在 gitguild.env，勿提交进仓库）。
+  migration-token: ${GITHUB_TOKEN:}
 
 jwt:
   # 开发环境默认值仅用于本地启动；生产环境必须通过 JWT_SECRET 提供至少 32 字节的随机密钥。

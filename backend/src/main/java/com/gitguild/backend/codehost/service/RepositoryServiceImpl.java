@@ -13,6 +13,7 @@ import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
 import java.net.URI;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,16 +25,20 @@ public class RepositoryServiceImpl implements RepositoryService {
     private final GiteaProperties giteaProperties;
     private final CodeRepositoryRepository codeRepositoryRepository;
     private final UserRepository userRepository;
+    /** 迁移外部 GitHub 仓库 Issue 时使用的鉴权 token（env GITHUB_TOKEN 注入，未配置则为空）。 */
+    private final String migrationToken;
 
     public RepositoryServiceImpl(
             GiteaAdapter giteaAdapter,
             GiteaProperties giteaProperties,
             CodeRepositoryRepository codeRepositoryRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            @Value("${gitea.migration-token:}") String migrationToken) {
         this.giteaAdapter = giteaAdapter;
         this.giteaProperties = giteaProperties;
         this.codeRepositoryRepository = codeRepositoryRepository;
         this.userRepository = userRepository;
+        this.migrationToken = migrationToken;
     }
 
     @Override
@@ -76,7 +81,7 @@ public class RepositoryServiceImpl implements RepositoryService {
         // 外部源：自动迁入平台 Gitea，再以平台副本地址登记
         if (RepositorySourceUrls.isExternalSource(trimmedSource, giteaProperties.baseUrl())) {
             String targetName = RepositorySourceUrls.deterministicRepoName(trimmedSource);
-            RepositoryInfo info = giteaAdapter.migrateRepository(trimmedSource, targetName, name, true);
+            RepositoryInfo info = giteaAdapter.migrateRepository(trimmedSource, targetName, name, true, migrationToken);
             return findOrCreate(resolvedHostType, info.htmlUrl(), owner, info.name(), info);
         }
 
