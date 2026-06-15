@@ -108,6 +108,7 @@ function normalizeQuestDetail(quest) {
       name: quest.repository?.name ?? '未关联仓库',
       branch: quest.repository?.defaultBranch ?? '未提供',
       syncStatus: quest.repository?.syncStatus ?? '未知',
+      webUrl: quest.repository?.webUrl ?? null,
     },
     issue: {
       issueId: quest.issue?.issueId ?? null,

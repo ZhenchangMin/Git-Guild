@@ -35,7 +35,7 @@ class RepositoryServiceImplTest {
     @Mock private GiteaAdapter giteaAdapter;
     @Mock private CodeRepositoryRepository codeRepositoryRepository;
     @Mock private UserRepository userRepository;
-    private final GiteaProperties giteaProperties = new GiteaProperties("http://localhost:3000", "", "spike-admin");
+    private final GiteaProperties giteaProperties = new GiteaProperties("http://localhost:3000", "", "spike-admin", null);
 
     private RepositoryServiceImpl service() {
         return new RepositoryServiceImpl(giteaAdapter, giteaProperties,

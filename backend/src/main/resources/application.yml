@@ -47,6 +47,9 @@ server:
 
 gitea:
   base-url: ${GITEA_BASE_URL:http://localhost:3000}
+  # 对外可访问的 Gitea 基址（浏览器用）。后端走内网 base-url 调 API，但仓库/Issue 链接要给用户能点开的外网地址。
+  # 未配置时回退到 base-url。生产示例：GITEA_PUBLIC_BASE_URL=http://47.236.0.207:3000
+  public-base-url: ${GITEA_PUBLIC_BASE_URL:}
   # 默认值 = 随仓库分发的本地演示快照（seed/gitea-data.tar.gz）里 spike-admin 的 token，
   # 所以队友无需 .env 即可直接 `mvnw spring-boot:run` 跑通演示。生产用 GITEA_TOKEN 覆盖。
   # ⚠️ 该 token 仅对本地一次性 Gitea 有效，等同演示弱凭据，非生产凭据。
