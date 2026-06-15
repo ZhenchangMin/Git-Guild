@@ -8,6 +8,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +21,7 @@ public class AssistantRateLimiter {
     private final Clock clock;
     private final Map<String, Deque<Long>> requestBuckets = new ConcurrentHashMap<>();
 
+    @Autowired
     public AssistantRateLimiter(AssistantRateLimitProperties properties) {
         this(properties, Clock.systemUTC());
     }

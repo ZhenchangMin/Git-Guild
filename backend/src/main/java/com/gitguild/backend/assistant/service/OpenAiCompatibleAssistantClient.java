@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -28,6 +29,7 @@ public class OpenAiCompatibleAssistantClient implements AssistantAiClient {
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
 
+    @Autowired
     public OpenAiCompatibleAssistantClient(AssistantAiProperties properties, ObjectMapper objectMapper) {
         this(properties, objectMapper, createRestClient(properties));
     }
