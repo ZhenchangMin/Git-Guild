@@ -324,7 +324,7 @@ public class QuestServiceImpl implements QuestService {
                 quest.getRewardXp(),
                 techStack,
                 new RepositoryBrief(repo.getRepositoryId(), repo.getName(), repo.getDefaultBranch(), repo.getSyncStatus()),
-                new QuestResponses.IssueBrief(issue.getIssueId(), issue.getExternalIssueId(), issue.getTitle(), issue.getStatus(), issue.getExternalUrl()),
+                issueBrief(issue),
                 prBrief);
     }
 
@@ -446,7 +446,7 @@ public class QuestServiceImpl implements QuestService {
                 quest.getStatus(),
                 new QuestResponses.UserBrief(quest.getPublisher().getUserId(), quest.getPublisher().getUsername()),
                 new QuestResponses.RepositoryBrief(quest.getRepository().getRepositoryId(), quest.getRepository().getName(), quest.getRepository().getDefaultBranch(), quest.getRepository().getSyncStatus()),
-                new QuestResponses.IssueBrief(quest.getIssue().getIssueId(), quest.getIssue().getExternalIssueId(), quest.getIssue().getTitle(), quest.getIssue().getStatus(), quest.getIssue().getExternalUrl()),
+                issueBrief(quest.getIssue()),
                 new QuestResponses.CategoryBrief(quest.getCategory().getCategoryId(), quest.getCategory().getName()),
                 tagResponses(quest),
                 assignment,
@@ -459,6 +459,15 @@ public class QuestServiceImpl implements QuestService {
                 .sorted(Comparator.comparing(QuestTag::getTagId))
                 .map(tag -> new QuestResponses.TagBrief(tag.getTagId(), tag.getName(), tag.getColor()))
                 .toList();
+    }
+
+    // issue 是可选关联（issue_id 可空）：未关联 Issue 的委托返回 null，避免裸解引用 NPE → 500。
+    private QuestResponses.IssueBrief issueBrief(CodeIssue issue) {
+        if (issue == null) {
+            return null;
+        }
+        return new QuestResponses.IssueBrief(issue.getIssueId(), issue.getExternalIssueId(),
+                issue.getTitle(), issue.getStatus(), issue.getExternalUrl());
     }
 
     private String toJson(List<String> values) {
@@ -586,12 +595,7 @@ public class QuestServiceImpl implements QuestService {
                         quest.getRepository().getName(),
                         quest.getRepository().getDefaultBranch(),
                         quest.getRepository().getSyncStatus()),
-                new QuestResponses.IssueBrief(
-                        quest.getIssue().getIssueId(),
-                        quest.getIssue().getExternalIssueId(),
-                        quest.getIssue().getTitle(),
-                        quest.getIssue().getStatus(),
-                        quest.getIssue().getExternalUrl()));
+                issueBrief(quest.getIssue()));
     }
 
 }

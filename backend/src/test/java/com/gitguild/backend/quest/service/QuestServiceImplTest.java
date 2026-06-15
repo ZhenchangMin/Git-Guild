@@ -409,6 +409,35 @@ class QuestServiceImplTest {
         assertThat(response.status()).isEqualTo(QuestStatus.CLOSED);
     }
 
+    @Test
+    void getQuestDetailShouldReturnNullIssueWhenQuestHasNoLinkedIssue() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        CodeRepository repository = repository(maintainer);
+        // 未关联 Issue 的委托：issue 为 null 时详情不应再 NPE → 500。
+        Quest quest = new Quest(
+                maintainer,
+                repository,
+                null,
+                category(),
+                "无 Issue 的委托",
+                "任务描述",
+                "完成标准",
+                Difficulty.C,
+                "[\"Vue\"]",
+                180,
+                6);
+        quest.setQuestId(5001L);
+        quest.setStatus(QuestStatus.PUBLISHED);
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+        when(assignmentRepository.findFirstByQuestQuestIdAndStatus(5001L, AssignmentStatus.ACTIVE))
+                .thenReturn(Optional.empty());
+
+        QuestDetailResponse response = questService.getQuestDetail(5001L, null);
+
+        assertThat(response.questId()).isEqualTo(5001L);
+        assertThat(response.issue()).isNull();
+    }
+
     private CreateQuestRequest createQuestRequest() {
         CreateQuestRequest request = new CreateQuestRequest();
         request.setRepositoryId(1001L);
