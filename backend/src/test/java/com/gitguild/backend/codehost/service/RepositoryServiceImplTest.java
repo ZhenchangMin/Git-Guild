@@ -153,13 +153,25 @@ class RepositoryServiceImplTest {
     }
 
     @Test
-    void listReturnsAllRepositoriesForMaintainer() {
+    void listReturnsOwnedRepositoriesForMaintainer() {
         User u = mockUser(7001L, UserRole.MAINTAINER);
         when(userRepository.findById(7001L)).thenReturn(Optional.of(u));
+        when(codeRepositoryRepository.findByOwnerUserId(7001L)).thenReturn(List.of());
+
+        // 维护者按导入者隔离：只看自己导入的仓库，不纵览平台全部
+        assertThat(service().listRepositories(7001L)).isEmpty();
+        verify(codeRepositoryRepository).findByOwnerUserId(7001L);
+        verify(codeRepositoryRepository, never()).findAll(any(Sort.class));
+    }
+
+    @Test
+    void listReturnsAllRepositoriesForAdmin() {
+        User u = mockUser(1L, UserRole.ADMIN);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(u));
         when(codeRepositoryRepository.findAll(any(Sort.class))).thenReturn(List.of());
 
-        // 维护者发布委托时应看到平台全部仓库，而非仅自己导入的
-        assertThat(service().listRepositories(7001L)).isEmpty();
+        // 仅 Admin 作为平台运营方纵览全部仓库
+        assertThat(service().listRepositories(1L)).isEmpty();
         verify(codeRepositoryRepository).findAll(any(Sort.class));
         verify(codeRepositoryRepository, never()).findByOwnerUserId(anyLong());
     }
