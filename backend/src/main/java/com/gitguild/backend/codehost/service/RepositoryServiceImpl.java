@@ -14,6 +14,7 @@ import com.gitguild.backend.user.repository.UserRepository;
 import java.net.URI;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -119,7 +120,13 @@ public class RepositoryServiceImpl implements RepositoryService {
     @Override
     @Transactional(readOnly = true)
     public List<CodeRepository> listRepositories(Long currentUserId) {
-        // Guild Master / Admin 可查看自己拥有的仓库
+        User user = findUser(currentUserId);
+        // 仓库是平台共享资源：Guild Master / Admin 发布委托时需要看到平台上所有已接入仓库，
+        // 而不仅是自己点"导入"的那批——否则用后端/他人身份导入的仓库在发布页选不到（owner 不匹配）。
+        // 其余角色仅能看自己拥有的仓库。
+        if (user.getRole() == UserRole.MAINTAINER || user.getRole() == UserRole.ADMIN) {
+            return codeRepositoryRepository.findAll(Sort.by(Sort.Direction.ASC, "repositoryId"));
+        }
         return codeRepositoryRepository.findByOwnerUserId(currentUserId);
     }
 

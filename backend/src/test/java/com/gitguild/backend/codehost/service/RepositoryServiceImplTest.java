@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class RepositoryServiceImplTest {
@@ -140,10 +142,25 @@ class RepositoryServiceImplTest {
     }
 
     @Test
-    void listReturnsOwnerRepositories() {
+    void listReturnsOwnedRepositoriesForNonPrivilegedRole() {
+        User u = mockUser(2001L, UserRole.BEGINNER);
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(u));
         when(codeRepositoryRepository.findByOwnerUserId(2001L)).thenReturn(List.of());
 
         assertThat(service().listRepositories(2001L)).isEmpty();
+        verify(codeRepositoryRepository, never()).findAll(any(Sort.class));
+    }
+
+    @Test
+    void listReturnsAllRepositoriesForMaintainer() {
+        User u = mockUser(7001L, UserRole.MAINTAINER);
+        when(userRepository.findById(7001L)).thenReturn(Optional.of(u));
+        when(codeRepositoryRepository.findAll(any(Sort.class))).thenReturn(List.of());
+
+        // 维护者发布委托时应看到平台全部仓库，而非仅自己导入的
+        assertThat(service().listRepositories(7001L)).isEmpty();
+        verify(codeRepositoryRepository).findAll(any(Sort.class));
+        verify(codeRepositoryRepository, never()).findByOwnerUserId(anyLong());
     }
 
     private User mockUser(Long id, UserRole role) {
