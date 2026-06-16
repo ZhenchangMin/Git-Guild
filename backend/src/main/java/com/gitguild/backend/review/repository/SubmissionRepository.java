@@ -38,8 +38,22 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             select s
             from Submission s
             join fetch s.quest q
+            join fetch s.pullRequest pr
             where s.submitter.userId = :submitterId
             order by s.submittedAt desc
             """)
     List<Submission> findBySubmitterUserIdWithQuestOrderBySubmittedAtDesc(@Param("submitterId") Long submitterId);
+
+    @Query("""
+            select s
+            from Submission s
+            join fetch s.quest q
+            join fetch s.pullRequest pr
+            where s.submitter.userId = :submitterId
+              and (:status is null or s.status = :status)
+            order by s.submittedAt desc
+            """)
+    List<Submission> findBySubmitterUserIdAndOptionalStatusWithQuestOrderBySubmittedAtDesc(
+            @Param("submitterId") Long submitterId,
+            @Param("status") SubmissionStatus status);
 }
