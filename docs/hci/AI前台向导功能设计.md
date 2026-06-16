@@ -317,9 +317,9 @@ AI_TIMEOUT_SECONDS=8
 - 不能执行业务操作。
 - 对越权请求直接拒答。
 
-## 9. 后端设计建议
+## 9. 后端 API 契约
 
-建议新增模块：
+### 9.1 模块结构
 
 ```text
 backend/src/main/java/com/gitguild/backend/assistant/
@@ -335,13 +335,24 @@ backend/src/main/java/com/gitguild/backend/assistant/
   service/OpenAiProvider.java
 ```
 
-### 9.1 接口草案
+### 9.2 接口定义
+
+#### 9.2.1 发送消息
 
 ```http
 POST /api/v1/assistant/chat
+Content-Type: application/json
+Authorization: Bearer <token>     # 可选；未登录时省略
 ```
 
-请求：
+**请求体：**
+
+| 字段 | 类型 | 必填 | 约束 | 说明 |
+|------|------|------|------|------|
+| `message` | string | 是 | 1-500 字符 | 用户问题。超过 500 字符返回 400。 |
+| `page` | string | 否 | 枚举，max 64 字符 | 前端当前页面标识，仅作上下文。合法值：`hall`、`quest-board`、`quest-detail`、`adventurer-workbench`、`maintainer-workbench`、`submission-counter`、`maintainer-review`、`profile`、`leaderboard`、`help`。不在枚举内 → 视为空，不影响回答生成。 |
+
+**请求示例：**
 
 ```json
 {
@@ -350,13 +361,26 @@ POST /api/v1/assistant/chat
 }
 ```
 
-说明：
+**响应体：**
 
-- `message` 是用户问题。
-- `page` 是前端当前页面，仅作为上下文。
-- 不从前端接收可信 `role`，角色由后端认证信息推断。
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `answer` | string | 是 | 回答正文，纯文本，max 1200 字符。 |
+| `source` | string | 是 | 枚举：`AI`、`FAQ`、`FALLBACK` |
+| `suggestedQuestions` | string[] | 否 | 最多 4 条推荐追问。FAQ 模式必含；AI 模式可选。 |
+| `actions` | object[] | 否 | 最多 3 个跳转动作。 |
+| `actions[].label` | string | 是 | 按钮展示文本，max 12 字符。 |
+| `actions[].routeName` | string | 是 | 前端路由名。后端从预定义白名单中选择；不在白名单则不返回该 action。 |
 
-响应：
+**路由白名单：**
+
+```text
+quest-board  quest-detail  adventurer-workbench  maintainer-workbench
+submission-counter  maintainer-review  profile  leaderboard  help
+repository-sync  maintainer-publish
+```
+
+**响应示例（AI 模式）：**
 
 ```json
 {
@@ -375,75 +399,271 @@ POST /api/v1/assistant/chat
 }
 ```
 
-`source` 可选值：
+**响应示例（FAQ 模式，未配置 AI）：**
 
-- `AI`
-- `FAQ`
-- `FALLBACK`
-
-### 9.2 上下文构造
-
-`AssistantContextBuilder` 负责把数据库数据转换为 AI 可见摘要。
-
-示例：
-
-```text
-当前用户：冒险家
-当前页面：hall
-可见委托摘要：
-1. QST-0003 修复登录表单校验
-   状态：IN_REVIEW
-   接取状态：ACTIVE
-   仓库：git-guild-frontend
-   任务分支：task/QST-0003
-   PR：#12 OPEN
-   最近审核：暂无
+```json
+{
+  "answer": "接取委托后，请进入工作台。工作台会为每个委托准备专属任务分支。你需要在本地 clone 仓库、checkout 到任务分支、完成代码修改、commit 并 push。完成后前往提交柜台登记成果。",
+  "source": "FAQ",
+  "suggestedQuestions": [
+    "如何提交成果？",
+    "如何查看 PR 状态？",
+    "我被退回后怎么修改？"
+  ],
+  "actions": [
+    {
+      "label": "前往工作台",
+      "routeName": "adventurer-workbench"
+    }
+  ]
+}
 ```
 
-注意：
+**响应示例（降级模式，AI 不可用）：**
 
-- 控制条目数量，例如最多 5 条相关委托。
-- 控制字段长度，例如描述最多 120 字。
-- 不发送敏感字段。
-- 不发送无关用户数据。
-
-### 9.3 AI Provider 隔离
-
-建议定义 `AiProvider` 接口，而不是把具体 AI 服务商写死在业务逻辑中。
-
-好处：
-
-- 可以替换服务商。
-- 可以在测试中 mock。
-- 可以在无 key 时切换 FAQ。
-
-## 10. 前端设计建议
-
-建议新增组件：
-
-```text
-frontend/src/components/AssistantGuide.vue
-frontend/src/api/assistantApi.js
+```json
+{
+  "answer": "前台向导暂时无法回答复杂问题。你可以查看帮助页面了解平台使用方法，或稍后再试。",
+  "source": "FALLBACK",
+  "suggestedQuestions": [
+    "冒险家怎么接任务？",
+    "委托人怎么审核提交？"
+  ]
+}
 ```
 
-第一版 UI：
+#### 9.2.2 错误码
 
-- 进入前台页面后，看板娘旁边浮现出聊天气泡，邀请用户对话
-- 页面下方浮现几个气泡，为用户推荐对话问题，可点击，默认展示 3-5 个快捷问题
-- 页面下方有输入框，支持用户输入问题并发送
-- 鼠标悬浮在看板娘热区时，鼠标旁显示“公会前台向导”及简单介绍
-- 回答内容需要支持中文字符（以及emoji？）
-- 看板娘聊天气泡支持 loading、失败、fallback 等提示
-- 支持回答下方的快捷跳转按钮，如有关PR的问题，提供一个“查看PR”的按钮
+| HTTP 状态码 | code | 说明 |
+|-------------|------|------|
+| 400 | `MESSAGE_TOO_LONG` | `message` 超过 500 字符限制。 |
+| 400 | `MESSAGE_EMPTY` | `message` 为空或仅空白。 |
+| 429 | `RATE_LIMITED` | 请求频率超限。见 9.3 限流。 |
+| 500 | `INTERNAL_ERROR` | 服务内部异常（含 AI 超时后也无法 fallback 的极端情况）。 |
 
-建议快捷问题：
+**400 错误响应体：**
 
-- 我是冒险家，下一步该做什么？
-- 如何提交成果？
-- 如何查看我的 PR？
-- 我被退回后怎么修改？
-- 我是委托人，哪些提交需要审核？
-- 委托人如何发布新委托？
+```json
+{
+  "code": "MESSAGE_TOO_LONG",
+  "message": "问题长度不能超过 500 字符。"
+}
+```
+
+**429 错误响应体：**
+
+```json
+{
+  "code": "RATE_LIMITED",
+  "message": "请求过于频繁，请稍后再试。"
+}
+```
+
+> 429 响应必须携带 `Retry-After` 头部（秒）。
+
+### 9.3 限流
+
+| 用户类型 | 限制 | 响应头 |
+|----------|------|--------|
+| 未登录（游客） | 5 次/分钟 | `X-RateLimit-Limit: 5` `X-RateLimit-Remaining: N` |
+| 已登录 | 12 次/分钟 | `X-RateLimit-Limit: 12` `X-RateLimit-Remaining: N` |
+
+> 限流 key：游客按 IP；已登录按 `userId`。滑动窗口实现。超限返回 429 + `Retry-After`。
+
+### 9.4 认证与权限
+
+- 游客（无 Authorization 头）：后端按未登录处理，只回答静态知识，不注入用户上下文。
+- 已登录（Bearer token）：后端从 token 解析当前用户和角色，按 9.5 节规则注入上下文。
+- **前端不传 `role` 字段。** 角色以后端 SecurityContext 为准，前端传来的任何角色标识仅作 UI 上下文参考，不作为权限判断依据。
+
+### 9.5 AssistantContextBuilder 规范
+
+`AssistantContextBuilder` 按角色和权限构造 AI 可见摘要，不把数据库全量暴露给 AI。
+
+**Adventurer 上下文（已登录的 ADVENTURER 或 BEGINNER 角色）：**
+
+```
+当前角色：冒险家
+当前页面：<page>
+
+我的委托（最多 5 条）：
+N. <questId> <questTitle>
+   委托状态：<questStatus>
+   接取状态：<assignmentStatus>
+   仓库：<repoName>
+   任务分支：<branchName>（如有）
+   PR：#<prNumber> <prStatus>（如有）
+   最近审核：<latestReviewConclusion>（如有）
+```
+
+**Maintainer 上下文（已登录的 MAINTAINER 角色）：**
+
+```
+当前角色：委托人
+当前页面：<page>
+
+我发布的委托（最多 5 条）：
+N. <questId> <questTitle>
+   委托状态：<questStatus>
+   仓库：<repoName>
+   待审核提交：<pendingSubmissionCount> 份
+
+我的待审核提交（最多 5 条）：
+N. 提交 #<submissionId>
+   委托：<questTitle>
+   提交人：<submitterUsername>
+   PR：#<prNumber> <prStatus>
+   提交时间：<submittedAt>
+```
+
+**字段限制：**
+
+| 约束 | 值 |
+|------|-----|
+| 委托标题 max 字符 | 120 |
+| 单次上下文总委托数 | 5 |
+| 单次上下文总提交数 | 5 |
+| 分支名 max 字符 | 80 |
+| 仓库名 max 字符 | 80 |
+
+**禁止注入的字段（即使数据库有）：**
+- 用户密码、token、密钥
+- 用户邮箱
+- 带凭据的 URL（如 clone URL 含 token）
+- 仓库源码内容
+- 提交说明全文（摘要即可）
+- 其他用户的委托/提交信息
+
+### 9.6 静态知识库
+
+阶段一 FAQ 模式不依赖 AI，由后端维护一份键值对知识库（可放在 `assistant/faq/` 目录或 Spring 配置中），按问题关键词匹配返回预写回答。
+
+FAQ 条目示例结构：
+
+```text
+关键词：接任务, 接取, 怎么接
+回答：在任务板找到感兴趣的委托后，点击进入详情页，选择"接取委托"。接取后，委托状态会变为"进行中"。你可以在工作台查看已接取的所有委托。
+追问：
+  - 接取后下一步做什么？
+  - 可以同时接多个委托吗？
+```
+
+至少覆盖以下问题域：
+1. 冒险家如何接取委托
+2. 接取后下一步做什么
+3. 如何提交成果
+4. 如何查看 PR 状态
+5. 被退回后怎么修改
+6. 委托人如何导入仓库
+7. 委托人如何发布委托
+8. 委托人如何审核提交
+9. 委托人如何合并 PR
+10. 演示账号和推荐演示流程
+
+### 9.7 AI Provider 接口
+
+```java
+public interface AiProvider {
+    /**
+     * @param systemPrompt  系统提示词（含角色、规则、上下文）
+     * @param userMessage   用户问题原文
+     * @param timeoutSeconds 超时秒数
+     * @return AI 响应文本；超时或异常时抛 AiProviderException
+     */
+    String chat(String systemPrompt, String userMessage, int timeoutSeconds);
+}
+```
+
+`AiProviderException` 由 `AssistantService` 捕获后降级为 FAQ 或 FALLBACK 回答。
+
+### 9.8 配置项
+
+```properties
+# AI 总开关（false 时始终走 FAQ 模式）
+assistant.ai.enabled=false
+
+# AI 服务商：openai / custom
+assistant.ai.provider=openai
+
+# API Key（不提交 Git）
+assistant.ai.api-key=${AI_API_KEY:}
+
+# 模型名
+assistant.ai.model=gpt-4o-mini
+
+# 超时（秒）
+assistant.ai.timeout-seconds=8
+
+# 连接超时（秒）
+assistant.ai.connect-timeout-seconds=5
+
+# FAQ 模式配置
+assistant.faq.knowledge-base-path=classpath:assistant/faq/knowledge.yml
+```
+
+> 未配置 `assistant.ai.api-key` 时，系统自动以 FAQ 模式启动，不需要显式设置 `assistant.ai.enabled=false`。
+
+## 10. 前端设计
+
+### 10.1 交互方案
+
+选择 **独立页面** 方案：点击公会大厅前台（desk 热点）后，跳转到前台向导专属页面（`/front-desk`）。页面呈左右分栏布局——左侧展示前台 NPC 角色立绘，右侧为聊天对话面板。页面左上角有返回大厅按钮。
+
+交互流程：
+1. 用户在大厅点击前台 SVG 热区 → router.push 到 `/front-desk`
+2. 页面展示 NPC 立绘 + 聊天面板，NPC 发出欢迎语和快捷问题
+3. 用户可点击快捷问题或自行输入，按 Enter 或点击发送按钮提交
+4. 回答区域展示 AI/FAQ 回答，含跳转按钮（如有）
+5. 页面左上角有返回大厅按钮
+
+### 10.2 文件清单
+
+```text
+frontend/src/pages/front-desk/FrontDeskPage.vue   # 前台向导独立页面
+frontend/src/api/assistantApi.js                   # API 调用模块
+frontend/src/components/AssistantGuide.vue         # 备用浮层组件（暂不使用）
+```
+
+### 10.3 路由
+
+```js
+{
+  path: '/front-desk',
+  name: 'front-desk',
+  component: FrontDeskPage,
+}
+```
+
+无需登录即可访问（游客可用），无角色限制。
+
+### 10.4 页面布局
+
+```
+┌─────────────────────────────────────────────┐
+│  ← 返回大厅                                  │
+│                                              │
+│   ┌──────────┐    ┌─────────────────────┐   │
+│   │          │    │  公会前台向导          │   │
+│   │  NPC     │    │  新手引导 & 委托答疑    │   │
+│   │  立绘    │    ├─────────────────────┤   │
+│   │          │    │                     │   │
+│   │          │    │  欢迎语 + 快捷问题    │   │
+│   │          │    │                     │   │
+│   │          │    │  聊天气泡区域         │   │
+│   │          │    │                     │   │
+│   │          │    │                     │   │
+│   │          │    ├─────────────────────┤   │
+│   │          │    │  [输入框] [发送]      │   │
+│   └──────────┘    └─────────────────────┘   │
+│                                              │
+└─────────────────────────────────────────────┘
+```
+
+移动端（≤820px）：隐藏 NPC 立绘，聊天面板占满宽度。
+
+### 10.5 状态设计
+
+与浮层方案一致：IDLE → LOADING → SUCCESS / ERROR / FALLBACK。
 
 ## 11. 测试计划
 

@@ -79,7 +79,7 @@ const baseRooms = [
     id: 'desk',
     label: '前台向导',
     hint: '新手引导、仓库接入和异常求助',
-    routeName: 'repository-sync',
+    routeName: 'front-desk',
     left: 39.72,
     top: 17.74,
     width: 23.18,
