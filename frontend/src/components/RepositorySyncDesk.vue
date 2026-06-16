@@ -18,6 +18,8 @@ const stage = ref('ready')
 const lastRepository = ref(null)
 const repositoryIssues = ref([])
 const errorMessage = ref('')
+// 导入失败弹窗：null = 不显示；否则为 { title, reason, hints, detail, sourceUrl }
+const failure = ref(null)
 
 // 迁移进度：后端是单次异步调用、不流式回传百分比，所以进度绑定真实阶段边界
 // （迁移 → 同步 Issue → 读取 Issue → 完成）；长耗时的迁移阶段用渐近爬升避免“卡死感”。
@@ -121,11 +123,75 @@ async function importRepository() {
     stage.value = 'ready'
     progress.value = 0
     progressStage.value = ''
+    // 左侧前台提示（保留）
     errorMessage.value = readableError(error, '仓库迁移失败，请确认地址正确且仓库为公开仓库。')
+    // 弹窗：尽力把失败原因诊断清楚后弹给用户
+    failure.value = diagnoseImportError(error, repositoryForm.value.sourceUrl.trim())
   } finally {
     stopCreep()
     loading.value = false
   }
+}
+
+/**
+ * 尽力从后端错误中诊断导入失败的真实原因。
+ * 综合 业务码(code) + HTTP 状态 + message/details 关键词，给出人话原因与可操作建议。
+ */
+function diagnoseImportError(error, sourceUrl) {
+  const code = error?.code ?? ''
+  const status = error?.status
+  const raw = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase()
+
+  let reason = '仓库导入失败，原因暂未能精确定位。'
+  let hints = ['确认仓库地址可访问', '确认仓库为公开仓库', '修正后重新导入']
+
+  if (code === 'VALIDATION_FAILED' || status === 400) {
+    reason = '仓库地址不合法或为空。'
+    hints = ['检查地址是否完整（含 https:// 与 owner/repo）', '去掉多余空格后重试']
+  } else if (/rate limit|rate limitation|429|too many request/.test(raw)) {
+    reason = 'GitHub 访问被限流（匿名访问约每小时 60 次）。'
+    hints = ['等待几分钟后重试', '若需频繁导入，请联系管理员为迁移配置 GitHub Token']
+  } else if (/not found|404/.test(raw)) {
+    reason = '找不到该仓库：地址可能拼写错误，或仓库是私有的。'
+    hints = ['核对地址里的 owner/repo 是否正确', '确认仓库为公开仓库（私有仓库暂不支持）']
+  } else if (/unauthorized|authentication|401|forbidden|403|private|permission/.test(raw) || code === 'FORBIDDEN') {
+    reason = '没有权限访问该仓库，通常是私有仓库。'
+    hints = ['确认仓库为公开仓库', '私有仓库目前暂不支持导入']
+  } else if (/already exists|conflict/.test(raw) || code === 'CODE_HOST_RESOURCE_CONFLICT' || status === 409) {
+    reason = '平台上已存在同名的仓库副本。'
+    hints = ['换一个「平台仓库名称」后重试', '或在受托仓库列表删除旧副本后再导入']
+  } else if (/timeout|timed out|deadline/.test(raw)) {
+    reason = '迁移超时：仓库可能过大，或网络较慢。'
+    hints = ['稍后重试', '大仓库迁移耗时较长，请耐心等待页面完成']
+  } else if (code === 'CODE_HOST_UNAVAILABLE' || status === 502 || status === 503 || status === 504) {
+    reason = '平台代码托管服务（Gitea）暂时不可用。'
+    hints = ['稍后重试', '若持续失败，请联系管理员检查 Gitea 服务状态']
+  } else if (!status || error?.name === 'TypeError' || /failed to fetch|networkerror/.test(raw)) {
+    reason = '网络请求失败，无法连接到后端服务。'
+    hints = ['检查本机网络连接', '确认后端服务正在运行后重试']
+  } else if (code === 'REPOSITORY_MIGRATION_FAILED') {
+    reason = '仓库迁移失败：通常是地址错误或仓库非公开。'
+    hints = ['确认仓库地址正确且可访问', '确认仓库为公开仓库（私有仓库暂不支持）']
+  }
+
+  return {
+    title: '仓库导入失败',
+    reason,
+    hints,
+    detail: error?.details || error?.message || '',
+    sourceUrl,
+  }
+}
+
+function closeFailure() {
+  failure.value = null
+}
+
+// 弹窗内「重新导入」：关掉弹窗并用当前表单重试
+function retryFromFailure() {
+  if (loading.value) return
+  failure.value = null
+  importRepository()
 }
 
 async function loadIssues(repositoryId = lastRepository.value?.repositoryId) {
@@ -282,6 +348,42 @@ onBeforeUnmount(stopCreep)
       </div>
 
     </form>
+
+    <transition name="failure-pop">
+      <div
+        v-if="failure"
+        class="import-failure-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="failure-title"
+        @click.self="closeFailure"
+      >
+        <div class="failure-card">
+          <button class="failure-close" type="button" aria-label="关闭" @click="closeFailure">×</button>
+          <span class="failure-icon" aria-hidden="true">!</span>
+          <p class="kicker">Import Failed</p>
+          <h2 id="failure-title">{{ failure.title }}</h2>
+          <p class="failure-reason">{{ failure.reason }}</p>
+          <p v-if="failure.sourceUrl" class="failure-source">{{ failure.sourceUrl }}</p>
+
+          <ul class="failure-hints">
+            <li v-for="hint in failure.hints" :key="hint">{{ hint }}</li>
+          </ul>
+
+          <details v-if="failure.detail" class="failure-detail">
+            <summary>技术细节</summary>
+            <code>{{ failure.detail }}</code>
+          </details>
+
+          <div class="failure-actions">
+            <button class="quiet-action" type="button" @click="closeFailure">关闭</button>
+            <button class="primary-action" type="button" :disabled="loading" @click="retryFromFailure">
+              重新导入
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -657,6 +759,180 @@ onBeforeUnmount(stopCreep)
   text-align: center;
   color: rgba(255, 231, 183, 0.6);
   font-size: 0.74rem;
+}
+
+/* ── 导入失败弹窗 ─────────────────────────────────────────── */
+.import-failure-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at 50% 35%, rgba(40, 14, 6, 0.66), rgba(6, 3, 2, 0.82));
+  backdrop-filter: blur(4px);
+}
+
+.failure-card {
+  position: relative;
+  width: min(440px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+  padding: 26px 26px 22px;
+  border: 1px solid rgba(238, 120, 82, 0.6);
+  border-radius: 16px;
+  color: #ffe7b5;
+  text-align: center;
+  background:
+    linear-gradient(180deg, rgba(38, 18, 10, 0.96), rgba(20, 9, 5, 0.96)),
+    radial-gradient(circle at 50% 0%, rgba(238, 120, 82, 0.22), transparent 52%);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 200, 160, 0.16);
+}
+
+.failure-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  color: rgba(255, 220, 196, 0.72);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  background: transparent;
+  transition: background 150ms ease, color 150ms ease;
+}
+.failure-close:hover {
+  color: #ffe7b5;
+  background: rgba(238, 120, 82, 0.2);
+}
+
+.failure-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: 2px auto 10px;
+  border-radius: 50%;
+  color: #fff1e6;
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  font-weight: 700;
+  background: radial-gradient(circle at 50% 30%, #ff8a5c, #d8431f);
+  box-shadow: 0 0 0 6px rgba(238, 120, 82, 0.16), 0 8px 20px rgba(160, 50, 20, 0.5);
+}
+
+.failure-card .kicker {
+  color: rgba(255, 176, 142, 0.82);
+}
+
+.failure-card h2 {
+  margin: 2px 0 10px;
+  color: #ffd9c4;
+  font-family: var(--font-display);
+  font-size: 1.32rem;
+}
+
+.failure-reason {
+  margin: 0 0 12px;
+  color: #ffe7d2;
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.failure-source {
+  margin: 0 auto 14px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 7px;
+  color: rgba(255, 224, 196, 0.78);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+  background: rgba(8, 5, 3, 0.5);
+  border: 1px solid rgba(238, 120, 82, 0.26);
+}
+
+.failure-hints {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 14px;
+  padding: 0;
+  text-align: left;
+  list-style: none;
+}
+.failure-hints li {
+  position: relative;
+  padding-left: 22px;
+  color: rgba(255, 231, 183, 0.86);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.failure-hints li::before {
+  content: '→';
+  position: absolute;
+  left: 4px;
+  color: #ff9c6f;
+}
+
+.failure-detail {
+  margin: 0 0 16px;
+  text-align: left;
+}
+.failure-detail summary {
+  color: rgba(255, 200, 160, 0.7);
+  font-size: 0.78rem;
+  cursor: pointer;
+  user-select: none;
+}
+.failure-detail code {
+  display: block;
+  margin-top: 8px;
+  padding: 9px 11px;
+  border-radius: 7px;
+  color: rgba(255, 226, 200, 0.82);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(238, 120, 82, 0.2);
+}
+
+.failure-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+.failure-actions .quiet-action,
+.failure-actions .primary-action {
+  min-height: 38px;
+  padding-inline: 20px;
+}
+
+.failure-pop-enter-active {
+  transition: opacity 200ms ease;
+}
+.failure-pop-leave-active {
+  transition: opacity 160ms ease;
+}
+.failure-pop-enter-from,
+.failure-pop-leave-to {
+  opacity: 0;
+}
+.failure-pop-enter-active .failure-card {
+  animation: failure-rise 260ms cubic-bezier(0.16, 0.84, 0.3, 1);
+}
+@keyframes failure-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @media (max-width: 980px) {
