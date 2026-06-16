@@ -46,15 +46,19 @@ P4 is the current integration stage. The project is no longer a static mock: the
 
 ```text
 Git-Guild/
-├── README.md                  # English project README
-├── docs/README.zh-CN.md       # Chinese project README
-├── .github/workflows/ci.yml   # GitHub Actions CI
-├── backend/                   # Spring Boot backend
-├── frontend/                  # Vue 3 frontend
-├── seed/                      # Seeded MySQL dump and Gitea snapshot
-├── scripts/                   # CI helper scripts
-├── docker-compose.yml         # MySQL, Redis, Gitea
-└── .env.example               # Optional local environment overrides
+├── README.md                    # English project README
+├── docs/README.zh-CN.md         # Chinese project README
+├── CONTEXT.md                   # Domain glossary
+├── .github/workflows/           # GitHub Actions CI
+├── .gitlab-ci.yml               # GitLab CI mirror
+├── docker-compose.yml           # Local dev
+├── docker-compose.prod.yml      # Production compose
+├── .env.example                 # Optional local environment overrides
+├── deploy/                      # Dockerfiles, nginx.conf, probe.sh
+├── scripts/                     # CI helper scripts (ci-static-check.mjs)
+├── seed/                        # Seeded MySQL dump + Gitea snapshot
+├── backend/                     # Spring Boot 3 backend
+└── frontend/                    # Vue 3 + Vite frontend
 ```
 
 ## Prerequisites
