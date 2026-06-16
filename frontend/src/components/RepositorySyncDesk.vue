@@ -5,7 +5,7 @@ import { repositoryApi } from '../api/repositoryApi'
 
 const repositoryForm = ref({
   sourceUrl: '',
-  name: 'gitguild-demo',
+  name: '',
   hostType: 'GITEA',
 })
 
@@ -146,7 +146,7 @@ function readableError(error, fallback) {
         <div class="form-grid compact">
           <label>
             平台仓库名称
-            <input v-model.trim="repositoryForm.name" placeholder="gitguild-demo" required />
+            <input v-model.trim="repositoryForm.name" placeholder="例: GitGuild" required />
           </label>
           <label>
             托管类型
@@ -347,6 +347,11 @@ function readableError(error, fallback) {
   padding: 9px 10px;
   color: #ffe9bb;
   background: rgba(8, 5, 3, 0.54);
+}
+
+/* 输入框占位示例文字：淡色，仅作示例引导，用户输入即覆盖。 */
+.frontdesk-pocket input::placeholder {
+  color: rgba(255, 231, 183, 0.4);
 }
 
 .frontdesk-pocket input:focus,
