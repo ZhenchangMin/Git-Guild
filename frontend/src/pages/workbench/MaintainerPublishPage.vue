@@ -178,8 +178,14 @@ async function publish() {
   }
 }
 
+// 返回上一页：有站内历史就弹出（通常是事务所），避免用 push 反复压入新条目造成
+// publish ↔ maintainer 历史栈来回 ping-pong 死循环；无历史（深链进入）时兜底回事务所。
 function backToWorkbench() {
-  router.push({ name: 'maintainer-workbench' })
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push({ name: 'maintainer-workbench' })
+  }
 }
 
 // ── 工具：解包 ApiResponse ───────────────────────────────────────────────────
