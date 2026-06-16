@@ -24,13 +24,13 @@ const form = ref({
   issueId: '',
   giteaIssueTitle: '',
   giteaIssueBody: '',
-  title: 'Hello World',
-  description: '在仓库中新增一个 hello world 文件，作为最短 MVP 演示任务。',
-  completionCriteria: '新增 hello.md（或 hello world 文件），内容包含 "Hello, Git-Guild!"，并通过 PR 合并。',
+  title: '',
+  description: '',
+  completionCriteria: '',
   categoryId: '',
   tagIds: [],
   difficulty: 'A',
-  techStack: 'Markdown',
+  techStack: '',
   estimatedHours: 1,
   rewardXp: 50,
 })
@@ -48,19 +48,19 @@ const selectedRepo = computed(
 const tagOptions = computed(() => tags.value.filter((tag) => tag.enabled !== false))
 
 // ── 加载仓库 + 分类 ─────────────────────────────────────────────────────────
+// 首屏只等"仓库 + 分类"这两个必填项；标签非必填，拆成非阻塞异步，避免拖慢表单首屏。
 async function loadMeta() {
   loadingMeta.value = true
   metaError.value = ''
   try {
-    const [repoPayload, catPayload, tagPayload] = await Promise.all([
+    const [repoPayload, catPayload] = await Promise.all([
       repositoryApi.list(),
       questApi.categories(),
-      questApi.tags({ size: 100 }),
     ])
     repositories.value = unwrapList(repoPayload)
     categories.value = unwrapList(catPayload)
-    tags.value = unwrapItems(tagPayload)
     if (repositories.value.length > 0) {
+      // 赋值即触发下方 watch(repositoryId) 去拉 Issue，无需再手动调用（否则会重复请求）。
       form.value.repositoryId = String(repositories.value[0].repositoryId)
     }
     const mvp = categories.value.find((c) => c.name === 'MVP') ?? categories.value[0]
@@ -69,6 +69,16 @@ async function loadMeta() {
     metaError.value = error?.message ?? '加载仓库/分类失败，请确认后端已启动。'
   } finally {
     loadingMeta.value = false
+  }
+  loadTags()
+}
+
+// 标签：非阻塞加载，失败不影响发布（标签可选）。
+async function loadTags() {
+  try {
+    tags.value = unwrapItems(await questApi.tags({ size: 100 }))
+  } catch {
+    tags.value = []
   }
 }
 
@@ -100,10 +110,8 @@ watch(
   (id) => loadIssues(id),
 )
 
-onMounted(async () => {
-  await loadMeta()
-  if (form.value.repositoryId) await loadIssues(form.value.repositoryId)
-})
+// Issue 由上方 watch(repositoryId) 在 loadMeta 设置首个仓库时自动加载，无需在此重复调用。
+onMounted(loadMeta)
 
 // ── 校验 + 提交 ─────────────────────────────────────────────────────────────
 const errors = computed(() => {
@@ -296,19 +304,27 @@ function unwrapItems(payload) {
 
           <label class="writ-field writ-wide">
             <span>任务标题</span>
-            <input v-model.trim="form.title" placeholder="Hello World" />
+            <input v-model.trim="form.title" placeholder="例：Hello World" />
             <small v-if="errors.title" class="writ-error">{{ errors.title }}</small>
           </label>
 
           <label class="writ-field writ-wide">
             <span>任务描述</span>
-            <textarea v-model="form.description" rows="3"></textarea>
+            <textarea
+              v-model="form.description"
+              rows="3"
+              placeholder="例：在仓库中新增一个 hello world 文件，作为最短 MVP 演示任务。"
+            ></textarea>
             <small v-if="errors.description" class="writ-error">{{ errors.description }}</small>
           </label>
 
           <label class="writ-field writ-wide">
             <span>完成标准</span>
-            <textarea v-model="form.completionCriteria" rows="2"></textarea>
+            <textarea
+              v-model="form.completionCriteria"
+              rows="2"
+              placeholder='例：新增 hello.md（或 hello world 文件），内容包含 "Hello, Git-Guild!"，并通过 PR 合并。'
+            ></textarea>
             <small v-if="errors.completionCriteria" class="writ-error">{{ errors.completionCriteria }}</small>
           </label>
 
@@ -431,6 +447,8 @@ function unwrapItems(payload) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  /* 顶端对齐：避免"目标仓库"格因多一行地址提示而拉高同行的"分类"选择框，导致两框不齐。 */
+  align-items: start;
 }
 .writ-field {
   display: grid;
