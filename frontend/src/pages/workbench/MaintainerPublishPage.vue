@@ -223,13 +223,7 @@ function unwrapItems(payload) {
           <p class="writ-sub">委托人起草任务并提交管理员审核（DRAFT → 待审核），通过后上架悬赏板。</p>
         </header>
 
-        <div v-if="loadingMeta" class="writ-skeleton" aria-hidden="true">
-          <span v-for="n in 5" :key="n" class="sk sk-row"></span>
-        </div>
-
-        <p v-else-if="metaError" class="writ-banner error">{{ metaError }}</p>
-
-        <div v-else-if="submitOk" class="writ-receipt">
+        <div v-if="submitOk" class="writ-receipt">
           <div class="wax-seal" aria-hidden="true">
             <span class="wax-glow"></span>
             <span class="wax-rune">委</span>
@@ -246,9 +240,13 @@ function unwrapItems(payload) {
         </div>
 
         <form v-else class="writ-form" @submit.prevent="publish">
+          <p v-if="metaError" class="writ-banner error writ-wide">{{ metaError }}</p>
+
           <label class="writ-field">
             <span>目标仓库</span>
-            <select v-model="form.repositoryId">
+            <select v-model="form.repositoryId" :disabled="loadingMeta">
+              <option v-if="loadingMeta" value="" disabled>载入仓库中…</option>
+              <option v-else-if="!repositories.length" value="" disabled>暂无可用仓库，请先导入</option>
               <option v-for="r in repositories" :key="r.repositoryId" :value="String(r.repositoryId)">
                 {{ r.name }}（{{ r.defaultBranch || 'main' }}）
               </option>
@@ -259,7 +257,9 @@ function unwrapItems(payload) {
 
           <label class="writ-field">
             <span>分类</span>
-            <select v-model="form.categoryId">
+            <select v-model="form.categoryId" :disabled="loadingMeta">
+              <option v-if="loadingMeta" value="" disabled>载入分类中…</option>
+              <option v-else-if="!categories.length" value="" disabled>暂无分类</option>
               <option v-for="c in categories" :key="c.categoryId" :value="String(c.categoryId)">{{ c.name }}</option>
             </select>
             <small v-if="errors.categoryId" class="writ-error">{{ errors.categoryId }}</small>
@@ -380,6 +380,8 @@ function unwrapItems(payload) {
   justify-content: center;
   align-items: flex-start;
   padding: clamp(24px, 6vh, 64px) 18px;
+  /* desk.webp 主色兜底：图片加载完成前先铺同色调底，避免背景突兀切换。 */
+  background-color: #241710;
   background-image: linear-gradient(rgba(8, 4, 2, 0.52), rgba(8, 4, 2, 0.52)),
     url('../../assets/desk.webp');
 }
@@ -508,6 +510,16 @@ function unwrapItems(payload) {
 }
 .writ-field textarea {
   resize: vertical;
+}
+/* 仓库/分类下拉在元数据到达前可见但禁用：轻微脉动，提示"正在载入"而非故障。 */
+.writ-field select:disabled {
+  color: rgba(91, 53, 29, 0.55);
+  cursor: progress;
+  animation: writ-loading-pulse 1.3s ease-in-out infinite;
+}
+@keyframes writ-loading-pulse {
+  0%, 100% { background: rgba(255, 244, 210, 0.4); }
+  50% { background: rgba(255, 244, 210, 0.66); }
 }
 
 .writ-tag-options {
@@ -638,33 +650,6 @@ function unwrapItems(payload) {
   margin-top: 20px;
 }
 
-.writ-skeleton {
-  display: grid;
-  gap: 14px;
-  margin-top: 8px;
-}
-.sk {
-  border-radius: 5px;
-  background: linear-gradient(
-    90deg,
-    rgba(122, 74, 24, 0.1),
-    rgba(122, 74, 24, 0.22),
-    rgba(122, 74, 24, 0.1)
-  );
-  background-size: 200% 100%;
-  animation: writ-shimmer 1.3s ease-in-out infinite;
-}
-.sk-row {
-  height: 40px;
-}
-@keyframes writ-shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
 
 @media (max-width: 640px) {
   .writ-panel {

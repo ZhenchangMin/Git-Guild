@@ -267,6 +267,9 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   padding: clamp(24px, 6vh, 72px) 18px;
+  /* desk.webp 的暖棕主色兜底：图片下载完成前先铺同色调底，避免「近黑 → 暖色木桌」的突兀切换。 */
+  background-color: #241710;
+  background-repeat: no-repeat;
 }
 
 .office-hall {
