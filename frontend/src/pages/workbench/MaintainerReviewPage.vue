@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import workbenchImg from '../../assets/workbench.webp'
+import HomeOrb from '../../components/HomeOrb.vue'
 import MaintainerReviewActions from '../../components/MaintainerReviewActions.vue'
 import MaintainerReviewDetail from '../../components/MaintainerReviewDetail.vue'
 import MaintainerReviewQueue from '../../components/MaintainerReviewQueue.vue'
@@ -325,6 +326,7 @@ onMounted(loadReviewQueue)
       class="scene work-scene maintainer-review-scene"
       :style="{ backgroundImage: `url(${workbenchImg})` }"
     >
+      <HomeOrb />
       <button class="back-orb" type="button" aria-label="返回委托人工作台" @click="backToWorkbench">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />

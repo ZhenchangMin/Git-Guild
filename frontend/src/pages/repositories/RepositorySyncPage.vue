@@ -2,6 +2,7 @@
 import { useRouter } from 'vue-router'
 
 import deskImg from '../../assets/desk.webp'
+import HomeOrb from '../../components/HomeOrb.vue'
 import RepositorySyncDesk from '../../components/RepositorySyncDesk.vue'
 
 const router = useRouter()
@@ -19,6 +20,7 @@ function goBack() {
 <template>
   <main class="app-shell">
     <section class="scene work-scene desk-mode" :style="{ backgroundImage: `url(${deskImg})` }">
+      <HomeOrb />
       <button class="back-orb" type="button" aria-label="返回上一页" @click="goBack">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />

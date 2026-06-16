@@ -2,6 +2,7 @@
 import { useRouter } from 'vue-router'
 
 import workbenchImg from '../../assets/workbench.webp'
+import HomeOrb from '../../components/HomeOrb.vue'
 import Workbench from '../../components/Workbench.vue'
 
 const router = useRouter()
@@ -38,6 +39,7 @@ function openProfile() {
       class="scene work-scene workbench-mode"
       :style="{ backgroundImage: `url(${workbenchImg})` }"
     >
+      <HomeOrb />
       <button class="back-orb" type="button" aria-label="返回上一页" @click="goBack">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import submissionCounterImg from '../../assets/submission-counter-clerk-v0.webp'
+import HomeOrb from '../../components/HomeOrb.vue'
 import SubmissionCounter from '../../components/SubmissionCounter.vue'
 import { sessionStore } from '../../stores/sessionStore'
 
@@ -117,6 +118,7 @@ function formatReceiptTime(date) {
       class="scene work-scene submission-mode"
       :style="{ backgroundImage: `url(${submissionCounterImg})` }"
     >
+      <HomeOrb />
       <button class="back-orb" type="button" :aria-label="backLabel" @click="navigateBack">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />

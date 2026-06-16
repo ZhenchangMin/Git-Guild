@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import deskImg from '../../assets/desk.webp'
+import HomeOrb from '../../components/HomeOrb.vue'
 import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
 import { submissionApi } from '../../api/submissionApi'
@@ -99,6 +100,7 @@ onMounted(async () => {
 <template>
   <main class="app-shell">
     <section class="scene office-scene" :style="{ backgroundImage: `url(${deskImg})` }">
+      <HomeOrb />
       <button class="back-orb" type="button" aria-label="返回上一页" @click="goBack">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />

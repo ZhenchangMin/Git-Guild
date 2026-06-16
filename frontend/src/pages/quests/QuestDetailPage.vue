@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import questBoardImg from '../../assets/quest board.webp'
+import HomeOrb from '../../components/HomeOrb.vue'
 import QuestDetail from '../../components/QuestDetail.vue'
 import { sessionStore } from '../../stores/sessionStore'
 
@@ -171,6 +172,7 @@ onMounted(loadQuestDetail)
 <template>
   <main class="app-shell">
     <section class="scene quest-detail-mode" :style="{ backgroundImage: `url(${questBoardImg})` }">
+      <HomeOrb />
       <button class="back-orb" type="button" aria-label="返回上一页" @click="goBack">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />

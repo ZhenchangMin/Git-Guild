@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
+import HomeOrb from '../../components/HomeOrb.vue'
 import parchmentFormImg from '../../assets/submission-form-parchment-v0-clean.webp'
 
 const router = useRouter()
@@ -206,6 +207,7 @@ function unwrapItems(payload) {
 <template>
   <main class="app-shell">
     <section class="scene writ-scene">
+      <HomeOrb />
       <button class="back-orb" type="button" aria-label="返回委托人事务所" @click="backToWorkbench">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
