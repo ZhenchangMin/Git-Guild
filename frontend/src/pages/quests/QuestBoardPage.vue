@@ -111,11 +111,11 @@ function normalizeQuestSummary(quest) {
     id: routeId,
     routeId,
     title: quest.title ?? '未命名委托',
-    issuer: quest.publisher?.username
-      ? `委托人 · ${quest.publisher.username}`
-      : quest.repository?.name
-        ? `委托人 · ${quest.repository.name}`
-        : '委托人 · 推荐系统',
+    // 委托板列表接口（QuestSummaryResponse）只带仓库、不带 publisher，
+    // 故此处展示「任务所在仓库」，标签即为「仓库」而非「委托人」。
+    issuer: quest.repository?.name
+      ? `仓库 · ${quest.repository.name}`
+      : '仓库 · 未关联',
     category: quest.category?.name ?? '推荐',
     difficulty: quest.difficulty ?? 'C',
     stack: techStack.length > 0 ? techStack.join(' / ') : '待补充',
@@ -142,7 +142,7 @@ function normalizeRecommendationItem(item, questMap, index) {
     id: fallback.id ?? routeId,
     routeId,
     title: brief.title ?? fallback.title ?? '未命名委托',
-    issuer: brief.repositoryName ? `委托人 · ${brief.repositoryName}` : fallback.issuer ?? '委托人 · 推荐系统',
+    issuer: brief.repositoryName ? `仓库 · ${brief.repositoryName}` : fallback.issuer ?? '仓库 · 推荐',
     category: fallback.category ?? '推荐',
     difficulty: brief.difficulty ?? fallback.difficulty ?? 'C',
     stack: techStack.length > 0 ? techStack.join(' / ') : fallback.stack ?? '待补充',
