@@ -146,8 +146,13 @@ async function loadQuestDetail() {
   }
 }
 
+// 有站内历史就弹回真正的来路（任务板 / 工作台等），无历史（深链直入）时兜底到任务板。
 function goBack() {
-  router.push({ name: 'quest-board' })
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push({ name: 'quest-board' })
+  }
 }
 
 function openWorkbench() {
