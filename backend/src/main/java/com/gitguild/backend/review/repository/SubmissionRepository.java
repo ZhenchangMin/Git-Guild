@@ -33,4 +33,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     List<Submission> findReviewQueueForReviewer(
             @Param("reviewerId") Long reviewerId,
             @Param("admin") boolean admin);
+
+    /** 指定 Quest 集合下的全部提交，供仓库级联删除清理使用。 */
+    List<Submission> findByQuestQuestIdIn(Collection<Long> questIds);
 }

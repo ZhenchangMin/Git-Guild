@@ -1,7 +1,10 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { repositoryApi } from '../api/repositoryApi'
+
+const router = useRouter()
 
 const repositoryForm = ref({
   sourceUrl: '',
@@ -15,6 +18,30 @@ const stage = ref('ready')
 const lastRepository = ref(null)
 const repositoryIssues = ref([])
 const errorMessage = ref('')
+
+// 迁移进度：后端是单次异步调用、不流式回传百分比，所以进度绑定真实阶段边界
+// （迁移 → 同步 Issue → 读取 Issue → 完成）；长耗时的迁移阶段用渐近爬升避免“卡死感”。
+const progress = ref(0)
+const progressStage = ref('')
+let creepTimer = null
+
+function stopCreep() {
+  if (creepTimer) {
+    clearInterval(creepTimer)
+    creepTimer = null
+  }
+}
+
+// 在迁移阶段平滑渐近爬升到 cap（永不到顶），制造“持续推进”的真实反馈。
+function startCreep(cap) {
+  stopCreep()
+  creepTimer = setInterval(() => {
+    if (progress.value < cap) {
+      progress.value += Math.max(0.4, (cap - progress.value) * 0.06)
+      if (progress.value > cap) progress.value = cap
+    }
+  }, 220)
+}
 
 const notice = computed(() => {
   if (errorMessage.value) {
@@ -62,6 +89,9 @@ async function importRepository() {
   errorMessage.value = ''
   loading.value = true
   repositoryIssues.value = []
+  progress.value = 6
+  progressStage.value = '正在迁移仓库到平台…'
+  startCreep(68)
   try {
     const response = await repositoryApi.importRepository({
       sourceUrl: repositoryForm.value.sourceUrl.trim(),
@@ -71,13 +101,29 @@ async function importRepository() {
     const repository = response?.data
     if (!repository?.repositoryId) throw new Error('仓库导入成功但未返回 repositoryId。')
     lastRepository.value = repository
+
+    // 真实阶段锚点：迁移完成 → 同步 Issue → 读取 Issue → 完成
+    stopCreep()
+    progress.value = 78
+    progressStage.value = '同步 Issue…'
     await repositoryApi.sync(repository.repositoryId)
+
+    progress.value = 90
+    progressStage.value = '读取 Issue 列表…'
     await loadIssues(repository.repositoryId)
+
+    progress.value = 100
+    progressStage.value = '接入完成'
     stage.value = 'imported'
+    // 让满格进度条短暂亮相再隐去，给一个“完成”的收尾反馈
+    await new Promise((resolve) => setTimeout(resolve, 350))
   } catch (error) {
     stage.value = 'ready'
+    progress.value = 0
+    progressStage.value = ''
     errorMessage.value = readableError(error, '仓库迁移失败，请确认地址正确且仓库为公开仓库。')
   } finally {
+    stopCreep()
     loading.value = false
   }
 }
@@ -104,6 +150,13 @@ function readableError(error, fallback) {
   if (error?.message) return `${fallback} ${error.message}`
   return fallback
 }
+
+// 接入成功后引导维护者直接去发布委托
+function goPublish() {
+  router.push({ name: 'maintainer-publish' })
+}
+
+onBeforeUnmount(stopCreep)
 </script>
 
 <template>
@@ -158,6 +211,45 @@ function readableError(error, fallback) {
         <button class="primary-action section-action" type="submit" :disabled="!canImport">
           {{ loading ? '正在导入仓库…' : '导入仓库并同步' }}
         </button>
+
+        <div
+          v-if="loading"
+          class="migrate-progress"
+          role="progressbar"
+          :aria-valuenow="Math.round(progress)"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div class="migrate-progress-head">
+            <span class="migrate-stage">{{ progressStage }}</span>
+            <span class="migrate-pct">{{ Math.round(progress) }}%</span>
+          </div>
+          <div class="migrate-track">
+            <div class="migrate-fill" :style="{ width: `${progress}%` }">
+              <span class="migrate-spark" aria-hidden="true"></span>
+            </div>
+          </div>
+          <p class="migrate-hint">大型仓库迁移可能需要一会儿，请保持页面打开…</p>
+        </div>
+      </section>
+
+      <section v-if="lastRepository" class="form-section">
+        <div class="section-head">
+          <strong>可用 Issue</strong>
+          <span>{{ issueLoading ? '读取中' : `${issueOptions.length} 条可用于发布委托` }}</span>
+        </div>
+        <ul v-if="issueOptions.length" class="issue-list">
+          <li v-for="issue in issueOptions.slice(0, 6)" :key="issue.issueId">
+            <span>#{{ issue.externalIssueId || issue.issueId }}</span>
+            <strong>{{ issue.title }}</strong>
+          </li>
+        </ul>
+        <p v-else class="form-note">
+          当前没有可用 OPEN Issue。导入完成后仍可回到工作台，通过“发布委托”新建 Gitea Issue。
+        </p>
+        <button class="quiet-action section-action" type="button" :disabled="issueLoading" @click="loadIssues()">
+          {{ issueLoading ? '同步 Issue 中…' : '重新读取 Issue' }}
+        </button>
       </section>
 
       <section v-if="lastRepository" class="form-section repository-result">
@@ -179,26 +271,15 @@ function readableError(error, fallback) {
             <dd>{{ lastRepository.sourceUrl }}</dd>
           </div>
         </dl>
-        <button class="quiet-action section-action" type="button" :disabled="issueLoading" @click="loadIssues()">
-          {{ issueLoading ? '同步 Issue 中…' : '重新读取 Issue' }}
-        </button>
       </section>
 
-      <section v-if="lastRepository" class="form-section">
-        <div class="section-head">
-          <strong>可用 Issue</strong>
-          <span>{{ issueLoading ? '读取中' : `${issueOptions.length} 条可用于发布委托` }}</span>
-        </div>
-        <ul v-if="issueOptions.length" class="issue-list">
-          <li v-for="issue in issueOptions.slice(0, 6)" :key="issue.issueId">
-            <span>#{{ issue.externalIssueId || issue.issueId }}</span>
-            <strong>{{ issue.title }}</strong>
-          </li>
-        </ul>
-        <p v-else class="form-note">
-          当前没有可用 OPEN Issue。导入完成后仍可回到工作台，通过“发布委托”新建 Gitea Issue。
-        </p>
-      </section>
+      <div v-if="stage === 'imported'" class="next-step">
+        <button class="cta-publish" type="button" @click="goPublish">
+          <span>去发布委托</span>
+          <span class="cta-publish-arrow" aria-hidden="true">→</span>
+        </button>
+        <span class="next-step-hint">仓库已接入 · 下一步起草并发布委托</span>
+      </div>
 
     </form>
   </div>
@@ -452,6 +533,130 @@ function readableError(error, fallback) {
 .primary-action:disabled {
   cursor: wait;
   opacity: 0.68;
+}
+
+/* ── 迁移进度条（暗金鎏光 + 前缘 spark） ───────────────────── */
+.migrate-progress {
+  display: grid;
+  gap: 7px;
+  margin-top: 2px;
+}
+.migrate-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.migrate-stage {
+  color: #ffe1a0;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+}
+.migrate-pct {
+  color: var(--gold-bright);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.migrate-track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(224, 163, 72, 0.3);
+  background: rgba(8, 5, 3, 0.6);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+.migrate-fill {
+  position: relative;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #b9772a, #ffd277 55%, #ffe6a8);
+  background-size: 200% 100%;
+  box-shadow: 0 0 12px rgba(255, 194, 92, 0.5);
+  transition: width 420ms cubic-bezier(0.4, 0, 0.2, 1);
+  animation: migrate-shimmer 1.6s linear infinite;
+}
+@keyframes migrate-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.migrate-spark {
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: radial-gradient(circle, #fff6dd, rgba(255, 210, 119, 0.2) 70%, transparent);
+  box-shadow: 0 0 10px 2px rgba(255, 214, 130, 0.7);
+  animation: migrate-pulse 1.1s ease-in-out infinite;
+}
+@keyframes migrate-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.migrate-hint {
+  margin: 1px 0 0;
+  color: rgba(255, 231, 183, 0.5);
+  font-size: 0.72rem;
+}
+
+/* ── 接入成功后的下一步 CTA：去发布委托 ───────────────────── */
+.next-step {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 2px;
+}
+.cta-publish {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  border: none;
+  border-radius: 9px;
+  color: #3a1f0c;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  background: linear-gradient(180deg, #ffe6a6, #e9b860 60%, #d89a32);
+  box-shadow: 0 8px 22px rgba(120, 70, 18, 0.45), inset 0 1px 0 rgba(255, 247, 220, 0.6);
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+.cta-publish:hover,
+.cta-publish:focus-visible {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: 0 0 0 5px rgba(255, 204, 105, 0.14), 0 12px 26px rgba(120, 70, 18, 0.5);
+  outline: none;
+}
+.cta-publish:active {
+  transform: translateY(0) scale(0.99);
+}
+.cta-publish-arrow {
+  font-size: 1.15rem;
+  transition: transform 160ms ease;
+}
+.cta-publish:hover .cta-publish-arrow,
+.cta-publish:focus-visible .cta-publish-arrow {
+  transform: translateX(4px);
+}
+.next-step-hint {
+  text-align: center;
+  color: rgba(255, 231, 183, 0.6);
+  font-size: 0.74rem;
 }
 
 @media (max-width: 980px) {

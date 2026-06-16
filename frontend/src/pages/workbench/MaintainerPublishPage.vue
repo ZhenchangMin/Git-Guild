@@ -6,6 +6,7 @@ import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
 import HomeOrb from '../../components/HomeOrb.vue'
 import parchmentFormImg from '../../assets/submission-form-parchment-v0-clean.webp'
+import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
 
 const router = useRouter()
 
@@ -253,7 +254,7 @@ function unwrapItems(payload) {
               </option>
             </select>
             <small v-if="errors.repositoryId" class="writ-error">{{ errors.repositoryId }}</small>
-            <small v-else-if="selectedRepo" class="writ-hint">{{ selectedRepo.sourceUrl }}</small>
+            <small v-else-if="selectedRepo" class="writ-hint">{{ toBrowsableGiteaUrl(selectedRepo.sourceUrl) }}</small>
           </label>
 
           <label class="writ-field">

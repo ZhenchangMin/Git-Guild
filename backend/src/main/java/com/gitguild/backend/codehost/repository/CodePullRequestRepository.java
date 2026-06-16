@@ -1,6 +1,7 @@
 package com.gitguild.backend.codehost.repository;
 
 import com.gitguild.backend.codehost.domain.CodePullRequest;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -19,4 +20,7 @@ public interface CodePullRequestRepository extends JpaRepository<CodePullRequest
     Optional<CodePullRequest> findByRepositoryRepositoryIdAndExternalPrId(Long repositoryId, String externalPrId);
 
     Optional<CodePullRequest> findByPullRequestIdAndRepositoryRepositoryId(Long pullRequestId, Long repositoryId);
+
+    /** 某仓库下的全部 PR，供仓库级联删除清理使用。 */
+    List<CodePullRequest> findByRepositoryRepositoryId(Long repositoryId);
 }

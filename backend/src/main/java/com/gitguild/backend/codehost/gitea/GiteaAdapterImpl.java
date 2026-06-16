@@ -297,6 +297,22 @@ public class GiteaAdapterImpl implements GiteaAdapter {
         return getPullRequest(owner, repo, prNumber);
     }
 
+    @Override
+    public void deleteRepository(String owner, String repo) {
+        try {
+            execute(() -> client.delete()
+                    .uri("/repos/{owner}/{repo}", owner, repo)
+                    .retrieve()
+                    .toBodilessEntity(), "repo=" + owner + "/" + repo + " delete");
+        } catch (BusinessException e) {
+            // 已不存在视为删除成功（幂等）；其余错误上抛，调用方回滚事务
+            if ("CODE_HOST_RESOURCE_NOT_FOUND".equals(e.getCode())) {
+                return;
+            }
+            throw e;
+        }
+    }
+
     /**
      * 统一执行 Gitea 调用并把传输层异常翻译为业务异常。
      *

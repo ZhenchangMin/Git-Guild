@@ -31,4 +31,7 @@ public interface QuestRepository extends JpaRepository<Quest, Long>, JpaSpecific
 
     /** 当前维护者发布的全部 Quest（含所有状态），供「我发布的委托」视图按创建时间倒序展示。 */
     List<Quest> findByPublisherUserIdOrderByCreatedAtDesc(Long publisherId);
+
+    /** 某仓库下的全部 Quest，供仓库级联删除按 FK 安全顺序清理使用。 */
+    List<Quest> findByRepositoryRepositoryId(Long repositoryId);
 }

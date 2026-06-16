@@ -37,13 +37,14 @@ class RepositoryServiceImplTest {
     @Mock private GiteaAdapter giteaAdapter;
     @Mock private CodeRepositoryRepository codeRepositoryRepository;
     @Mock private UserRepository userRepository;
+    @Mock private RepositoryCascadeDeleter cascadeDeleter;
     private final GiteaProperties giteaProperties = new GiteaProperties("http://localhost:3000", "", "spike-admin", null);
 
     private static final String MIGRATION_TOKEN = "gh-migration-token";
 
     private RepositoryServiceImpl service() {
         return new RepositoryServiceImpl(giteaAdapter, giteaProperties,
-                codeRepositoryRepository, userRepository, MIGRATION_TOKEN);
+                codeRepositoryRepository, userRepository, cascadeDeleter, MIGRATION_TOKEN);
     }
 
     @Test
@@ -161,6 +162,44 @@ class RepositoryServiceImplTest {
         assertThat(service().listRepositories(7001L)).isEmpty();
         verify(codeRepositoryRepository).findAll(any(Sort.class));
         verify(codeRepositoryRepository, never()).findByOwnerUserId(anyLong());
+    }
+
+    @Test
+    void deleteRepositoryByMaintainerInvokesCascade() {
+        User u = mockUser(2001L, UserRole.MAINTAINER);
+        CodeRepository repo = new CodeRepository(u, "demo-repo", "GITEA",
+                "http://localhost:3000/spike-admin/demo-repo");
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(u));
+        when(codeRepositoryRepository.findById(55L)).thenReturn(Optional.of(repo));
+
+        service().deleteRepository(2001L, 55L);
+
+        verify(cascadeDeleter).deleteCascade(repo);
+    }
+
+    @Test
+    void deleteRepositoryRejectsNonPrivilegedRole() {
+        User u = mockUser(3001L, UserRole.BEGINNER);
+        when(userRepository.findById(3001L)).thenReturn(Optional.of(u));
+
+        assertThatThrownBy(() -> service().deleteRepository(3001L, 55L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("FORBIDDEN");
+        verify(cascadeDeleter, never()).deleteCascade(any());
+    }
+
+    @Test
+    void deleteRepositoryNotFound() {
+        User u = mockUser(2001L, UserRole.MAINTAINER);
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(u));
+        when(codeRepositoryRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().deleteRepository(2001L, 999L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("REPOSITORY_NOT_FOUND");
+        verify(cascadeDeleter, never()).deleteCascade(any());
     }
 
     private User mockUser(Long id, UserRole role) {

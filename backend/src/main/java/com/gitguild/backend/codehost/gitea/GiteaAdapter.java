@@ -130,4 +130,18 @@ public interface GiteaAdapter {
      * 合并指定 PR，供课程作业 MVP 审核闭环代理执行。
      */
     PrInfo mergePullRequest(String owner, String repo, int prNumber);
+
+    /**
+     * 删除平台 Gitea 上的仓库（对应 {@code DELETE /repos/{owner}/{repo}}）。
+     *
+     * <p>供「委托人删除已导入仓库」级联清理使用：先在平台库删除业务数据，再删掉迁入的 Gitea 副本。
+     *
+     * <p><b>幂等：</b>目标仓库已不存在（Gitea 返回 404）时静默返回，不抛异常——便于重试与
+     * 「DB 记录在、Gitea 副本已被手动删」的兜底。其余错误（401/5xx/网络）仍抛
+     * {@link com.gitguild.backend.common.BusinessException}，调用方据此回滚事务。
+     *
+     * @param owner Gitea 仓库 owner
+     * @param repo  Gitea 仓库名
+     */
+    void deleteRepository(String owner, String repo);
 }

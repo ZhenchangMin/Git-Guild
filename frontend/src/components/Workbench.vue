@@ -10,6 +10,7 @@ import { growthApi } from '../api/growthApi'
 import { repositoryApi } from '../api/repositoryApi'
 import { submissionApi } from '../api/submissionApi'
 import { workbenchStats, workbenchUser } from '../data/workbench'
+import { toBrowsableGiteaUrl } from '../utils/giteaUrl'
 
 // 已清空所有 mock 业务数据：工作台只展示后端真实数据，无数据即呈现真实空态。
 // 这些空数组保留原变量名，下游 reduce/filter/find/v-for 均对空数组安全。
@@ -320,7 +321,7 @@ let copiedTimer = 0
 
 // 冒险家不是仓库 owner，GET /repositories 列表对他为空；改为按 repositoryId 取仓库详情拿 sourceUrl。
 const taskCloneUrl = computed(
-  () => taskRepoSourceUrl.value || getRepositoryUrl(selectedTaskRepository.value),
+  () => toBrowsableGiteaUrl(taskRepoSourceUrl.value) || getRepositoryUrl(selectedTaskRepository.value),
 )
 const taskRepoFolder = computed(() => {
   const url = taskCloneUrl.value
@@ -814,7 +815,7 @@ function findRepositoryForTask(task) {
 }
 
 function getRepositoryUrl(repository) {
-  return repository?.giteaUrl || repository?.sourceUrl || repository?.url || ''
+  return toBrowsableGiteaUrl(repository?.giteaUrl || repository?.sourceUrl || repository?.url || '')
 }
 
 function normalizeRepositoryName(name = '') {

@@ -1,6 +1,7 @@
 package com.gitguild.backend.growth.repository;
 
 import com.gitguild.backend.growth.domain.ContributionRecord;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,4 +23,10 @@ public interface ContributionRecordRepository extends JpaRepository<Contribution
     List<ContributionRecord> findByUserUserIdOrderByCompletedAtDesc(Long userId);
 
     Optional<ContributionRecord> findFirstByUserUserIdOrderByCompletedAtAsc(Long userId);
+
+    /** 指定 Quest 集合关联的全部贡献记录，供仓库级联删除清理使用。 */
+    List<ContributionRecord> findByQuestQuestIdIn(Collection<Long> questIds);
+
+    /** 指定仓库关联的全部贡献记录，供仓库级联删除兜底清理使用。 */
+    List<ContributionRecord> findByRepositoryRepositoryId(Long repositoryId);
 }

@@ -32,4 +32,8 @@ export const repositoryApi = {
   myRepositories() {
     return request('/repositories')
   },
+  // 删除已接入的仓库（级联清理其委托/提交/审核及 Gitea 副本）
+  remove(repositoryId) {
+    return request(`/repositories/${repositoryId}`, { method: 'DELETE' })
+  },
 }

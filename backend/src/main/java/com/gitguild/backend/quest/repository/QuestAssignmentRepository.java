@@ -24,4 +24,7 @@ public interface QuestAssignmentRepository extends JpaRepository<QuestAssignment
      * 查 Adventurer 的所有 ACTIVE 接取，用于推荐算法候选集过滤——排除已接取的 Quest。
      */
     List<QuestAssignment> findByAssigneeUserIdAndStatus(Long assigneeId, AssignmentStatus status);
+
+    /** 指定 Quest 集合下的全部接取记录，供仓库级联删除清理使用。 */
+    List<QuestAssignment> findByQuestQuestIdIn(Collection<Long> questIds);
 }

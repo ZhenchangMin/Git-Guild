@@ -26,6 +26,7 @@ public class RepositoryServiceImpl implements RepositoryService {
     private final GiteaProperties giteaProperties;
     private final CodeRepositoryRepository codeRepositoryRepository;
     private final UserRepository userRepository;
+    private final RepositoryCascadeDeleter cascadeDeleter;
     /** 迁移外部 GitHub 仓库 Issue 时使用的鉴权 token（env GITHUB_TOKEN 注入，未配置则为空）。 */
     private final String migrationToken;
 
@@ -34,11 +35,13 @@ public class RepositoryServiceImpl implements RepositoryService {
             GiteaProperties giteaProperties,
             CodeRepositoryRepository codeRepositoryRepository,
             UserRepository userRepository,
+            RepositoryCascadeDeleter cascadeDeleter,
             @Value("${gitea.migration-token:}") String migrationToken) {
         this.giteaAdapter = giteaAdapter;
         this.giteaProperties = giteaProperties;
         this.codeRepositoryRepository = codeRepositoryRepository;
         this.userRepository = userRepository;
+        this.cascadeDeleter = cascadeDeleter;
         this.migrationToken = migrationToken;
     }
 
@@ -128,6 +131,21 @@ public class RepositoryServiceImpl implements RepositoryService {
             return codeRepositoryRepository.findAll(Sort.by(Sort.Direction.ASC, "repositoryId"));
         }
         return codeRepositoryRepository.findByOwnerUserId(currentUserId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteRepository(Long currentUserId, Long repositoryId) {
+        User user = findUser(currentUserId);
+        if (user.getRole() != UserRole.MAINTAINER && user.getRole() != UserRole.ADMIN) {
+            throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN,
+                    "仅 Guild Master 或 Admin 可删除仓库",
+                    "userId=" + currentUserId + " role=" + user.getRole());
+        }
+        CodeRepository repository = codeRepositoryRepository.findById(repositoryId)
+                .orElseThrow(() -> new BusinessException("REPOSITORY_NOT_FOUND", HttpStatus.NOT_FOUND,
+                        "仓库不存在", "repositoryId=" + repositoryId));
+        cascadeDeleter.deleteCascade(repository);
     }
 
     private User findUser(Long userId) {
