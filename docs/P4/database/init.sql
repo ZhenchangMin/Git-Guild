@@ -315,3 +315,37 @@ CREATE TABLE IF NOT EXISTS notifications (
                                KEY idx_notifications_receiver_status_created (receiver_id, status, created_at),
                                KEY idx_notifications_related (related_type, related_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 异常处理中心：平台自动检测到的运维异常（当前主要为仓库同步失败）。
+-- repository_id 为轻引用（不建外键，避免与仓库生命周期强耦合）。
+CREATE TABLE IF NOT EXISTS platform_exceptions (
+                               exception_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                               category VARCHAR(32) NOT NULL,
+                               type VARCHAR(64) NOT NULL,
+                               title VARCHAR(255) NOT NULL,
+                               status VARCHAR(32) NOT NULL DEFAULT 'UNRESOLVED',
+                               repository_id BIGINT NULL,
+                               repository_name VARCHAR(255) NULL,
+                               related_quest VARCHAR(64) NULL,
+                               reason VARCHAR(1000) NOT NULL,
+                               impact VARCHAR(1000) NULL,
+                               suggestion VARCHAR(1000) NULL,
+                               retryable BIT(1) NOT NULL DEFAULT b'0',
+                               resolution_action VARCHAR(64) NULL,
+                               resolution_comment VARCHAR(1000) NULL,
+                               resolved_by BIGINT NULL,
+                               detected_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                               resolved_at DATETIME NULL,
+                               KEY idx_platform_exceptions_category_status (category, status, detected_at),
+                               KEY idx_platform_exceptions_repo (repository_id, category, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 异常日志（只追加），按 seq 保序，随异常级联。
+CREATE TABLE IF NOT EXISTS platform_exception_logs (
+                               exception_id BIGINT NOT NULL,
+                               seq INT NOT NULL,
+                               line VARCHAR(1000) NOT NULL,
+                               PRIMARY KEY (exception_id, seq),
+                               CONSTRAINT fk_platform_exception_logs_exception
+                                   FOREIGN KEY (exception_id) REFERENCES platform_exceptions(exception_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

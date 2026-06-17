@@ -19,6 +19,7 @@ import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
 import com.gitguild.backend.codehost.service.RepositoryService;
+import com.gitguild.backend.codehost.service.RepositorySyncService;
 import com.gitguild.backend.security.CurrentUserPrincipal;
 import com.gitguild.backend.user.domain.User;
 import java.util.List;
@@ -35,6 +36,7 @@ class CodeHostControllerTest {
 
     private GiteaAdapter giteaAdapter;
     private RepositoryService repositoryService;
+    private RepositorySyncService repositorySyncService;
     private CodeRepositoryRepository repositoryRepository;
     private CodeIssueRepository issueRepository;
     private CodePullRequestRepository pullRequestRepository;
@@ -45,12 +47,14 @@ class CodeHostControllerTest {
     void setUp() {
         giteaAdapter = org.mockito.Mockito.mock(GiteaAdapter.class);
         repositoryService = org.mockito.Mockito.mock(RepositoryService.class);
+        repositorySyncService = org.mockito.Mockito.mock(RepositorySyncService.class);
         repositoryRepository = org.mockito.Mockito.mock(CodeRepositoryRepository.class);
         issueRepository = org.mockito.Mockito.mock(CodeIssueRepository.class);
         pullRequestRepository = org.mockito.Mockito.mock(CodePullRequestRepository.class);
         mockMvc = MockMvcBuilders.standaloneSetup(new CodeHostController(
                 giteaAdapter,
                 repositoryService,
+                repositorySyncService,
                 repositoryRepository,
                 issueRepository,
                 pullRequestRepository)).build();

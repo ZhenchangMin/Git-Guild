@@ -63,13 +63,13 @@ class AdminQuestServiceImplTest {
     }
 
     @Test
-    void listPendingQuestsShouldQueryPendingAdminReviewQuestsWithSafePagination() {
+    void listQuestsWithSpecificStatusShouldQueryThatStatusWithSafePagination() {
         User maintainer = user(2001L, UserRole.MAINTAINER);
         Quest quest = quest(maintainer, QuestStatus.PENDING_ADMIN_REVIEW);
         when(questRepository.findByStatus(any(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(quest)));
 
-        AdminQuestPageResponse response = adminQuestService.listPendingQuests(0, 100);
+        AdminQuestPageResponse response = adminQuestService.listQuests("PENDING_ADMIN_REVIEW", 0, 100);
 
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().get(0).questId()).isEqualTo(5001L);
@@ -81,6 +81,28 @@ class AdminQuestServiceImplTest {
         verify(questRepository).findByStatus(eq(QuestStatus.PENDING_ADMIN_REVIEW), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(50);
+    }
+
+    @Test
+    void listQuestsWithoutStatusShouldQueryPipelineStatusesExcludingDraft() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        Quest quest = quest(maintainer, QuestStatus.PUBLISHED);
+        when(questRepository.findByStatusIn(any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(quest)));
+
+        AdminQuestPageResponse response = adminQuestService.listQuests(null, 1, 20);
+
+        assertThat(response.items()).hasSize(1);
+        // 「全部」视图覆盖待审核/已上架/已退回/已下架，但不含 DRAFT
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<java.util.Collection<QuestStatus>> statusesCaptor =
+                ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(questRepository).findByStatusIn(statusesCaptor.capture(), any(Pageable.class));
+        assertThat(statusesCaptor.getValue())
+                .containsExactlyInAnyOrder(
+                        QuestStatus.PENDING_ADMIN_REVIEW, QuestStatus.PUBLISHED,
+                        QuestStatus.REJECTED, QuestStatus.CLOSED)
+                .doesNotContain(QuestStatus.DRAFT);
     }
 
     @Test

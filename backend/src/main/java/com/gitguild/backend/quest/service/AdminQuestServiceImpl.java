@@ -17,6 +17,7 @@ import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -43,17 +44,42 @@ public class AdminQuestServiceImpl implements AdminQuestService {
         this.userRepository = userRepository;
     }
 
+    /** 管理员控制台「全部」视图覆盖的审核流水线状态（排除尚未提交的 DRAFT）。 */
+    private static final List<QuestStatus> PIPELINE_STATUSES = List.of(
+            QuestStatus.PENDING_ADMIN_REVIEW,
+            QuestStatus.PUBLISHED,
+            QuestStatus.REJECTED,
+            QuestStatus.CLOSED);
+
     @Override
     @Transactional(readOnly = true)
-    public AdminQuestPageResponse listPendingQuests(int page, int size) {
+    public AdminQuestPageResponse listQuests(String status, int page, int size) {
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 50);
-        Page<Quest> result = questRepository.findByStatus(
-                QuestStatus.PENDING_ADMIN_REVIEW,
-                PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.ASC, "createdAt")));
+        PageRequest pageable = PageRequest.of(
+                safePage - 1, safeSize, Sort.by(Sort.Direction.ASC, "createdAt"));
+
+        QuestStatus filter = parseStatus(status);
+        Page<Quest> result = filter == null
+                ? questRepository.findByStatusIn(PIPELINE_STATUSES, pageable)
+                : questRepository.findByStatus(filter, pageable);
+
         return new AdminQuestPageResponse(
                 result.getContent().stream().map(this::toSummary).toList(),
                 safePage, safeSize, result.getTotalElements(), result.getTotalPages());
+    }
+
+    /** 解析状态筛选：null/空/ALL → 不限（返回全部流水线状态）；非法值 → 400。 */
+    private QuestStatus parseStatus(String status) {
+        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status)) {
+            return null;
+        }
+        try {
+            return QuestStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST,
+                    "任务状态不合法", "status=" + status);
+        }
     }
 
     @Override

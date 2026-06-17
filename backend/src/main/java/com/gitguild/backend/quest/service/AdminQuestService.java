@@ -25,12 +25,17 @@ import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewResponse;
 public interface AdminQuestService {
 
     /**
-     * 返回当前所有 PENDING_ADMIN_REVIEW 状态的 Quest，按创建时间升序分页。
+     * 返回管理员控制台的 Quest 分页列表，按创建时间升序。
      *
-     * @param page 1-based 页码，传入小于 1 的值时自动修正为 1
-     * @param size 每页数量，上限 50，超出时自动截断
+     * <p>{@code status} 为空或 {@code ALL} 时，返回审核流水线全部状态（待审核 / 已上架 / 已退回 / 已下架，
+     * 排除尚未提交的 DRAFT）；指定具体状态时仅返回该状态。这样「已上架」等筛选 tab 才有数据，
+     * 管理员也能对已上架任务执行下架。
+     *
+     * @param status 目标状态名（QuestStatus 枚举名），null/空/ALL 表示全部流水线状态
+     * @param page   1-based 页码，传入小于 1 的值时自动修正为 1
+     * @param size   每页数量，上限 50，超出时自动截断
      */
-    AdminQuestPageResponse listPendingQuests(int page, int size);
+    AdminQuestPageResponse listQuests(String status, int page, int size);
 
     /**
      * 对指定 Quest 执行 Admin 审核决策，并生成审核凭证。

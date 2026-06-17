@@ -44,8 +44,8 @@ class AdminQuestControllerTest {
     }
 
     @Test
-    void listPendingQuestsShouldReturnPageResponse() throws Exception {
-        when(adminQuestService.listPendingQuests(1, 10))
+    void listQuestsShouldReturnPageResponse() throws Exception {
+        when(adminQuestService.listQuests(null, 1, 10))
                 .thenReturn(new AdminQuestPageResponse(
                         List.of(new AdminQuestSummaryResponse(
                                 5001L,
@@ -71,7 +71,7 @@ class AdminQuestControllerTest {
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.size").value(10));
 
-        verify(adminQuestService).listPendingQuests(1, 10);
+        verify(adminQuestService).listQuests(null, 1, 10);
     }
 
     @Test

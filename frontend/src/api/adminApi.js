@@ -1,7 +1,7 @@
-import { request, requestMock } from './httpClient'
+import { request } from './httpClient'
 
 // 管理员控制台接口层。路径对齐 docs/P4/临时文档/P4-005 前后端接口契约清单.md
-// 与 docs/P3/API规范/（管理员审核 / 任务分类）。任务审核已接真实后端，其他管理员模块仍保留 mock。
+// 与 docs/P3/API规范/（管理员审核 / 任务分类）。审核、分类、异常处理中心均已接真实后端。
 
 export const adminApi = {
   // ── 任务审核（M1）──────────────────────────────────
@@ -23,19 +23,20 @@ export const adminApi = {
     return request(`/quests/${questId}/admin-reviews`, { method: 'POST', body: payload })
   },
 
-  // ── 异常处理中心（M3 / M4 / M5）────────────────────
-  listRepositoryExceptions(params) {
-    return requestMock('/repository-exceptions', { params })
+  // ── 异常处理中心（M3 / M4 / M5，已接真实后端）────────
+  // 按分类 / 状态筛选异常列表（ALL 或空表示不限）。
+  listExceptions(params) {
+    return request(`/admin/exceptions${toQuery(params)}`)
   },
-  getRepositoryException(exceptionId) {
-    return requestMock(`/repository-exceptions/${exceptionId}`)
+  getException(exceptionId) {
+    return request(`/admin/exceptions/${exceptionId}`)
   },
-  retryRepositoryException(exceptionId) {
-    return requestMock(`/repository-exceptions/${exceptionId}/retry`, { method: 'POST' })
+  retryException(exceptionId) {
+    return request(`/admin/exceptions/${exceptionId}/retry`, { method: 'POST' })
   },
   // action + comment：处理同步 / 关联 / 权限违规类异常。
   resolveException(exceptionId, payload) {
-    return requestMock(`/admin/exceptions/${exceptionId}/resolve`, { method: 'POST', body: payload })
+    return request(`/admin/exceptions/${exceptionId}/resolve`, { method: 'POST', body: payload })
   },
 
   // ── 平台配置：分类与标签（M2，已接真实后端）────────
