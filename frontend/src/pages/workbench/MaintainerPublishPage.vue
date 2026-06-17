@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
@@ -9,6 +9,7 @@ import parchmentFormImg from '../../assets/submission-form-parchment-v0-clean.we
 import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
 
 const router = useRouter()
+const route = useRoute()
 
 // ── 选项数据 ────────────────────────────────────────────────────────────────
 const repositories = ref([])
@@ -62,8 +63,12 @@ async function loadMeta() {
     repositories.value = unwrapList(repoPayload)
     categories.value = unwrapList(catPayload)
     if (repositories.value.length > 0) {
-      // 赋值即触发下方 watch(repositoryId) 去拉 Issue，无需再手动调用（否则会重复请求）。
-      form.value.repositoryId = String(repositories.value[0].repositoryId)
+      // 若从同步台「去发布委托」跳入，query.repoId 指定了刚导入的仓库，优先预选它；
+      // 赋值即触发下方 watch(repositoryId) 去拉 Issue，无需再手动调用。
+      const preselect = route.query.repoId
+        ? repositories.value.find((r) => String(r.repositoryId) === String(route.query.repoId))
+        : null
+      form.value.repositoryId = String((preselect ?? repositories.value[0]).repositoryId)
     }
     const mvp = categories.value.find((c) => c.name === 'MVP') ?? categories.value[0]
     if (mvp) form.value.categoryId = String(mvp.categoryId)

@@ -265,9 +265,12 @@ function readableError(error, fallback) {
   return fallback
 }
 
-// 接入成功后引导维护者直接去发布委托
+// 接入成功后引导维护者直接去发布委托，并把刚导入的仓库 ID 带过去以便预选
 function goPublish() {
-  router.push({ name: 'maintainer-publish' })
+  router.push({
+    name: 'maintainer-publish',
+    query: { repoId: lastRepository.value?.repositoryId },
+  })
 }
 
 onBeforeUnmount(stopCreep)
