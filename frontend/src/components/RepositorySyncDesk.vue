@@ -116,6 +116,31 @@ async function importRepository() {
   errorMessage.value = ''
   failure.value = null
   cancelled.value = false
+
+  // ── 重复导入预检：迁移前先对比已有列表，避免依赖后端报错来检测 ──────────
+  // （GiteaAdapter 可能把 409 当幂等成功处理，catch 块收不到错误）
+  const guessedName = deterministicRepoName(repositoryForm.value.sourceUrl.trim())
+  try {
+    const listRes = await repositoryApi.list()
+    const allRepos = Array.isArray(listRes?.data)
+      ? listRes.data
+      : Array.isArray(listRes?.data?.items)
+        ? listRes.data.items
+        : []
+    const found = allRepos.find(
+      (r) => r.name === guessedName || r.name === repositoryForm.value.name.trim(),
+    )
+    if (found) {
+      lastRepository.value = found
+      await loadIssues(found.repositoryId)
+      stage.value = 'duplicate'
+      return
+    }
+  } catch {
+    // 列表拉取失败时不阻断，继续正常导入流程
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   loading.value = true
   repositoryIssues.value = []
   lastRepository.value = null
