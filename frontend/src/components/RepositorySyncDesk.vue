@@ -68,6 +68,15 @@ const notice = computed(() => {
     }
   }
 
+  if (stage.value === 'duplicate') {
+    return {
+      tone: 'success',
+      title: '仓库已导入过',
+      body: `${lastRepository.value?.name ?? '该仓库'} 已在平台登记，无需重复导入。可直接使用已有副本发布委托。`,
+      steps: ['平台已有该仓库副本', '可直接在 Gitea 打开查看', '或去发布委托'],
+    }
+  }
+
   return {
     tone: 'info',
     title: '接入受托仓库',
@@ -83,6 +92,18 @@ function inferRepositoryName(sourceUrl) {
   const clean = sourceUrl.trim().replace(/\.git$/i, '')
   const name = clean.split('/').filter(Boolean).pop()
   return name || repositoryForm.value.name
+}
+
+// 与后端 RepositorySourceUrls.deterministicRepoName 对齐：{owner}-{repo}（去掉 .git）
+function deterministicRepoName(sourceUrl) {
+  try {
+    const path = new URL(sourceUrl.trim()).pathname.replace(/\.git$/i, '')
+    const parts = path.split('/').filter(Boolean)
+    if (parts.length >= 2) return `${parts[parts.length - 2]}-${parts[parts.length - 1]}`
+    return parts[parts.length - 1] || repositoryForm.value.name.trim() || 'repository'
+  } catch {
+    return repositoryForm.value.name.trim() || 'repository'
+  }
 }
 
 function syncNameFromUrl() {
@@ -134,9 +155,44 @@ async function importRepository() {
   } catch (error) {
     // 用户主动停止：静默重置，不报错、不弹窗
     if (cancelled.value || error?.name === 'AbortError') return
-    stage.value = 'ready'
+
+    stopCreep()
     progress.value = 0
     progressStage.value = ''
+
+    // 重复导入：Gitea 已有同名副本（409 / CODE_HOST_RESOURCE_CONFLICT / already exists）
+    const rawErr = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase()
+    const isDuplicate =
+      error?.code === 'CODE_HOST_RESOURCE_CONFLICT' ||
+      error?.status === 409 ||
+      /already exists/.test(rawErr)
+
+    if (isDuplicate) {
+      errorMessage.value = ''
+      // 尝试在用户已有仓库列表中找到对应副本以便预填 Gitea 地址和 Issue
+      try {
+        const listRes = await repositoryApi.list()
+        const allRepos = Array.isArray(listRes?.data)
+          ? listRes.data
+          : Array.isArray(listRes?.data?.items)
+            ? listRes.data.items
+            : []
+        const guessedName = deterministicRepoName(repositoryForm.value.sourceUrl)
+        const found = allRepos.find(
+          (r) => r.name === guessedName || r.name === repositoryForm.value.name.trim(),
+        )
+        if (found) {
+          lastRepository.value = found
+          await loadIssues(found.repositoryId)
+        }
+      } catch {
+        // 列表拉取失败时不阻断：仍然展示「已导入过」提示，只是没有具体仓库信息
+      }
+      stage.value = 'duplicate'
+      return
+    }
+
+    stage.value = 'ready'
     // 左侧前台提示（保留）
     errorMessage.value = readableError(error, '仓库迁移失败，请确认地址正确且仓库为公开仓库。')
     // 弹窗：尽力把失败原因诊断清楚后弹给用户
@@ -273,6 +329,12 @@ function goPublish() {
   })
 }
 
+// 在新标签页打开 Gitea 仓库页面（与工作台「在 Gitea 打开」行为一致）
+function openInGitea() {
+  const url = toBrowsableGiteaUrl(lastRepository.value?.sourceUrl)
+  if (url) window.open(url, '_blank', 'noopener')
+}
+
 onBeforeUnmount(stopCreep)
 </script>
 
@@ -399,12 +461,22 @@ onBeforeUnmount(stopCreep)
         </dl>
       </section>
 
-      <div v-if="stage === 'imported'" class="next-step">
-        <button class="cta-publish" type="button" @click="goPublish">
-          <span>去发布委托</span>
-          <span class="cta-publish-arrow" aria-hidden="true">→</span>
-        </button>
-        <span class="next-step-hint">仓库已接入 · 下一步起草并发布委托</span>
+      <div v-if="stage === 'imported' || stage === 'duplicate'" class="next-step">
+        <div class="next-step-buttons">
+          <button
+            v-if="lastRepository?.sourceUrl"
+            class="cta-gitea"
+            type="button"
+            @click="openInGitea"
+          >在 Gitea 打开 ↗</button>
+          <button class="cta-publish" type="button" @click="goPublish">
+            <span>去发布委托</span>
+            <span class="cta-publish-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+        <span class="next-step-hint">
+          {{ stage === 'duplicate' ? '仓库已导入过 · 可直接使用已有副本' : '仓库已接入 · 下一步起草并发布委托' }}
+        </span>
       </div>
 
     </form>
@@ -796,6 +868,38 @@ onBeforeUnmount(stopCreep)
   display: grid;
   gap: 6px;
   margin: 2px 0 2px;
+}
+.next-step-buttons {
+  display: flex;
+  gap: 10px;
+}
+.next-step-buttons .cta-publish {
+  flex: 1;
+}
+/* 「在 Gitea 打开」次级按钮：暗金边框，与 cta-publish 并排 */
+.cta-gitea {
+  min-height: 42px;
+  padding-inline: 18px;
+  border: 1px solid rgba(238, 184, 91, 0.54);
+  border-radius: 9px;
+  color: #ffe4ad;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(80, 43, 18, 0.72), rgba(50, 24, 8, 0.8));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+  transition: filter 150ms ease, transform 120ms ease;
+}
+.cta-gitea:hover,
+.cta-gitea:focus-visible {
+  filter: brightness(1.14);
+  transform: translateY(-1px);
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(255, 204, 105, 0.12), 0 6px 16px rgba(0, 0, 0, 0.38);
+}
+.cta-gitea:active {
+  transform: translateY(0) scale(0.99);
 }
 .cta-publish {
   display: flex;
