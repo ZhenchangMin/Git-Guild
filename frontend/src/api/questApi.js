@@ -30,9 +30,6 @@ export const questApi = {
   ensureTaskBranch(questId) {
     return request(`/quests/${questId}/task-branch`, { method: 'POST' })
   },
-  myAssignments() {
-    return request('/users/me/quest-assignments')
-  },
   recommendations(params) {
     return request(withQuery('/recommendations/quests', params))
   },

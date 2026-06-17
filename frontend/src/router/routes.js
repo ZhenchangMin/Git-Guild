@@ -4,6 +4,7 @@ import AdminReviewPage from '../pages/admin/AdminReviewPage.vue'
 import AdminTaxonomyPage from '../pages/admin/AdminTaxonomyPage.vue'
 import LoginPage from '../pages/auth/LoginPage.vue'
 import GuildHallPage from '../pages/hall/GuildHallPage.vue'
+import FrontDeskPage from '../pages/front-desk/FrontDeskPage.vue'
 import HelpPage from '../pages/help/HelpPage.vue'
 import LeaderboardPage from '../pages/leaderboard/LeaderboardPage.vue'
 import ProfilePage from '../pages/profile/ProfilePage.vue'
@@ -114,6 +115,11 @@ export const routes = [
     path: '/help',
     name: 'help',
     component: HelpPage,
+  },
+  {
+    path: '/front-desk',
+    name: 'front-desk',
+    component: FrontDeskPage,
   },
   {
     path: '/:pathMatch(.*)*',

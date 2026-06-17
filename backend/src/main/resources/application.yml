@@ -61,6 +61,21 @@ gitea:
   # 生产示例：GITHUB_TOKEN=ghp_xxx（放在 gitguild.env，勿提交进仓库）。
   migration-token: ${GITHUB_TOKEN:}
 
+assistant:
+  ai:
+    enabled: ${ASSISTANT_AI_ENABLED:false}
+    provider: ${ASSISTANT_AI_PROVIDER:openai-compatible}
+    # OpenAI-compatible API root, usually ending with /v1.
+    base-url: ${ASSISTANT_AI_BASE_URL:}
+    api-key: ${ASSISTANT_AI_API_KEY:}
+    model: ${ASSISTANT_AI_MODEL:}
+    timeout-ms: ${ASSISTANT_AI_TIMEOUT_MS:8000}
+    max-prompt-chars: ${ASSISTANT_AI_MAX_PROMPT_CHARS:4000}
+  rate-limit:
+    enabled: ${ASSISTANT_RATE_LIMIT_ENABLED:true}
+    max-requests: ${ASSISTANT_RATE_LIMIT_MAX_REQUESTS:10}
+    window-seconds: ${ASSISTANT_RATE_LIMIT_WINDOW_SECONDS:60}
+
 jwt:
   # 开发环境默认值仅用于本地启动；生产环境必须通过 JWT_SECRET 提供至少 32 字节的随机密钥。
   secret: ${JWT_SECRET:dev-secret-please-change-in-production-env}
@@ -108,3 +123,18 @@ jwt:
   # 生产环境不提供默认值，避免误用开发密钥。
   secret: ${JWT_SECRET}
   expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+assistant:
+  ai:
+    enabled: ${ASSISTANT_AI_ENABLED:false}
+    provider: ${ASSISTANT_AI_PROVIDER:openai-compatible}
+    # OpenAI-compatible API root, usually ending with /v1.
+    base-url: ${ASSISTANT_AI_BASE_URL:}
+    api-key: ${ASSISTANT_AI_API_KEY:}
+    model: ${ASSISTANT_AI_MODEL:}
+    timeout-ms: ${ASSISTANT_AI_TIMEOUT_MS:8000}
+    max-prompt-chars: ${ASSISTANT_AI_MAX_PROMPT_CHARS:4000}
+  rate-limit:
+    enabled: ${ASSISTANT_RATE_LIMIT_ENABLED:true}
+    max-requests: ${ASSISTANT_RATE_LIMIT_MAX_REQUESTS:10}
+    window-seconds: ${ASSISTANT_RATE_LIMIT_WINDOW_SECONDS:60}

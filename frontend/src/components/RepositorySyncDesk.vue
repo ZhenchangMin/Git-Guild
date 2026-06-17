@@ -374,7 +374,7 @@ onBeforeUnmount(stopCreep)
   <div class="frontdesk-guide" aria-label="前台仓库导入向导">
     <section class="mascot-dialogue" :class="notice.tone" aria-live="polite">
       <span class="dialogue-tail" aria-hidden="true"></span>
-      <p class="kicker">前台向导</p>
+      <p class="kicker">艾丽丝</p>
       <h2>{{ notice.title }}</h2>
       <p>{{ notice.body }}</p>
       <ol>

@@ -21,8 +21,9 @@ import com.gitguild.backend.review.domain.SubmissionStatus;
 import com.gitguild.backend.review.dto.CreateSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
-import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionDetailResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionListItemResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
 import com.gitguild.backend.review.repository.ReviewRecordRepository;
 import com.gitguild.backend.review.repository.SubmissionRepository;
 import com.gitguild.backend.user.domain.User;
@@ -133,6 +134,17 @@ public class SubmissionServiceImpl implements SubmissionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<SubmissionListItemResponse> listSubmissions(Long currentUserId, SubmissionStatus status) {
+        findUser(currentUserId);
+        return submissionRepository
+                .findBySubmitterUserIdAndOptionalStatusWithQuestOrderBySubmittedAtDesc(currentUserId, status)
+                .stream()
+                .map(this::toListItem)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public List<SubmissionReviewQueueItemResponse> listReviewQueue(Long currentUserId) {
         User currentUser = findUser(currentUserId);
@@ -220,6 +232,18 @@ public class SubmissionServiceImpl implements SubmissionService {
                 submission.getStatus(),
                 submission.getSubmittedAt(),
                 records.stream().map(this::toReviewResponse).toList());
+    }
+
+    private SubmissionListItemResponse toListItem(Submission submission) {
+        Quest quest = submission.getQuest();
+        CodePullRequest pullRequest = submission.getPullRequest();
+        return new SubmissionListItemResponse(
+                submission.getSubmissionId(),
+                new SubmissionResponses.QuestBrief(quest.getQuestId(), quest.getTitle(), quest.getStatus()),
+                SubmissionResponses.PullRequestBrief.from(pullRequest),
+                submission.getDescription(),
+                submission.getStatus(),
+                submission.getSubmittedAt());
     }
 
     private SubmissionReviewQueueItemResponse toReviewQueueItem(Submission submission) {
