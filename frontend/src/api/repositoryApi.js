@@ -13,20 +13,20 @@ export const repositoryApi = {
   detail(repositoryId) {
     return request(`/repositories/${repositoryId}`)
   },
-  importRepository(payload) {
-    return request('/repositories/import', { method: 'POST', body: payload })
+  importRepository(payload, options = {}) {
+    return request('/repositories/import', { method: 'POST', body: payload, signal: options.signal })
   },
-  sync(repositoryId, payload) {
-    return request(`/repositories/${repositoryId}/sync`, { method: 'POST', body: payload })
+  sync(repositoryId, payload, options = {}) {
+    return request(`/repositories/${repositoryId}/sync`, { method: 'POST', body: payload, signal: options.signal })
   },
-  issues(repositoryId, params) {
+  issues(repositoryId, params, options = {}) {
     const query = new URLSearchParams()
     Object.entries(params ?? {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return
       query.set(key, String(value))
     })
     const suffix = query.toString() ? `?${query}` : ''
-    return request(`/repositories/${repositoryId}/issues${suffix}`)
+    return request(`/repositories/${repositoryId}/issues${suffix}`, { signal: options.signal })
   },
   // Get all repositories for the current user (for workbench)
   myRepositories() {

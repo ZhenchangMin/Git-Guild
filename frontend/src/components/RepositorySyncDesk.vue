@@ -16,6 +16,9 @@ const repositoryForm = ref({
 const loading = ref(false)
 const issueLoading = ref(false)
 const stage = ref('ready')
+// 用户主动停止导入的标记 + 中断进行中请求的控制器
+const cancelled = ref(false)
+let abortController = null
 const lastRepository = ref(null)
 const repositoryIssues = ref([])
 const errorMessage = ref('')
@@ -90,17 +93,23 @@ function syncNameFromUrl() {
 
 async function importRepository() {
   errorMessage.value = ''
+  failure.value = null
+  cancelled.value = false
   loading.value = true
   repositoryIssues.value = []
+  lastRepository.value = null
   progress.value = 6
   progressStage.value = '正在迁移仓库到平台…'
   startCreep(68)
+  abortController = new AbortController()
+  const signal = abortController.signal
   try {
     const response = await repositoryApi.importRepository({
       sourceUrl: repositoryForm.value.sourceUrl.trim(),
       name: repositoryForm.value.name.trim(),
       hostType: repositoryForm.value.hostType,
-    })
+    }, { signal })
+    if (cancelled.value) return
     const repository = response?.data
     if (!repository?.repositoryId) throw new Error('仓库导入成功但未返回 repositoryId。')
     lastRepository.value = repository
@@ -109,11 +118,13 @@ async function importRepository() {
     stopCreep()
     progress.value = 78
     progressStage.value = '同步 Issue…'
-    await repositoryApi.sync(repository.repositoryId)
+    await repositoryApi.sync(repository.repositoryId, undefined, { signal })
+    if (cancelled.value) return
 
     progress.value = 90
     progressStage.value = '读取 Issue 列表…'
-    await loadIssues(repository.repositoryId)
+    await loadIssues(repository.repositoryId, { signal })
+    if (cancelled.value) return
 
     progress.value = 100
     progressStage.value = '接入完成'
@@ -121,6 +132,8 @@ async function importRepository() {
     // 让满格进度条短暂亮相再隐去，给一个“完成”的收尾反馈
     await new Promise((resolve) => setTimeout(resolve, 350))
   } catch (error) {
+    // 用户主动停止：静默重置，不报错、不弹窗
+    if (cancelled.value || error?.name === 'AbortError') return
     stage.value = 'ready'
     progress.value = 0
     progressStage.value = ''
@@ -131,6 +144,35 @@ async function importRepository() {
   } finally {
     stopCreep()
     loading.value = false
+    abortController = null
+  }
+}
+
+// 停止导入：中断进行中的请求，丢弃本次进度与已产生的服务器副本，回到初始态。
+async function stopImport() {
+  if (!loading.value) return
+  cancelled.value = true
+  if (abortController) abortController.abort()
+
+  const created = lastRepository.value
+  // 立即重置界面，丢掉本次所有导入痕迹
+  lastRepository.value = null
+  repositoryIssues.value = []
+  progress.value = 0
+  progressStage.value = ''
+  stage.value = 'ready'
+  errorMessage.value = ''
+  failure.value = null
+  stopCreep()
+  loading.value = false
+
+  // 若服务器已创建仓库副本，一并删除（级联 + Gitea 副本），best-effort
+  if (created?.repositoryId) {
+    try {
+      await repositoryApi.remove(created.repositoryId)
+    } catch {
+      // 删除失败不阻断停止；残留副本可稍后在受托仓库列表手动删除
+    }
   }
 }
 
@@ -198,7 +240,7 @@ function retryFromFailure() {
   importRepository()
 }
 
-async function loadIssues(repositoryId = lastRepository.value?.repositoryId) {
+async function loadIssues(repositoryId = lastRepository.value?.repositoryId, options = {}) {
   if (!repositoryId) {
     repositoryIssues.value = []
     return
@@ -206,9 +248,11 @@ async function loadIssues(repositoryId = lastRepository.value?.repositoryId) {
 
   issueLoading.value = true
   try {
-    const response = await repositoryApi.issues(repositoryId, { size: 50 })
+    const response = await repositoryApi.issues(repositoryId, { size: 50 }, { signal: options.signal })
     repositoryIssues.value = response?.data?.items ?? []
   } catch (error) {
+    // 用户停止导入而中断的请求：静默忽略
+    if (cancelled.value || error?.name === 'AbortError') return
     errorMessage.value = readableError(error, 'Issue 列表读取失败，可稍后在工作台重试同步。')
   } finally {
     issueLoading.value = false
@@ -280,6 +324,15 @@ onBeforeUnmount(stopCreep)
         </div>
         <button class="primary-action section-action" type="submit" :disabled="!canImport">
           {{ loading ? '正在导入仓库…' : '导入仓库并同步' }}
+        </button>
+
+        <button
+          v-if="loading"
+          class="section-action stop-import"
+          type="button"
+          @click="stopImport"
+        >
+          停止导入
         </button>
 
         <div
@@ -639,6 +692,24 @@ onBeforeUnmount(stopCreep)
 .primary-action:disabled {
   cursor: wait;
   opacity: 0.68;
+}
+
+/* 停止导入：红褐警示，立即中断本次导入并丢弃已产生的副本 */
+.stop-import {
+  min-height: 34px;
+  padding-inline: 16px;
+  border: 1px solid rgba(238, 120, 82, 0.6);
+  border-radius: 8px;
+  color: #ffd2bf;
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(120, 44, 28, 0.66), rgba(70, 24, 14, 0.72));
+  transition: filter 150ms ease, transform 120ms ease;
+}
+.stop-import:hover {
+  filter: brightness(1.12);
+}
+.stop-import:active {
+  transform: translateY(1px);
 }
 
 /* ── 迁移进度条（暗金鎏光 + 前缘 spark） ───────────────────── */
