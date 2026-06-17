@@ -27,6 +27,7 @@ public class RepositoryServiceImpl implements RepositoryService {
     private final CodeRepositoryRepository codeRepositoryRepository;
     private final UserRepository userRepository;
     private final RepositoryCascadeDeleter cascadeDeleter;
+    private final MigrationVerifier migrationVerifier;
     /** 迁移外部 GitHub 仓库 Issue 时使用的鉴权 token（env GITHUB_TOKEN 注入，未配置则为空）。 */
     private final String migrationToken;
 
@@ -36,12 +37,14 @@ public class RepositoryServiceImpl implements RepositoryService {
             CodeRepositoryRepository codeRepositoryRepository,
             UserRepository userRepository,
             RepositoryCascadeDeleter cascadeDeleter,
+            MigrationVerifier migrationVerifier,
             @Value("${gitea.migration-token:}") String migrationToken) {
         this.giteaAdapter = giteaAdapter;
         this.giteaProperties = giteaProperties;
         this.codeRepositoryRepository = codeRepositoryRepository;
         this.userRepository = userRepository;
         this.cascadeDeleter = cascadeDeleter;
+        this.migrationVerifier = migrationVerifier;
         this.migrationToken = migrationToken;
     }
 
@@ -86,6 +89,8 @@ public class RepositoryServiceImpl implements RepositoryService {
         if (RepositorySourceUrls.isExternalSource(trimmedSource, giteaProperties.baseUrl())) {
             String targetName = RepositorySourceUrls.deterministicRepoName(trimmedSource);
             RepositoryInfo info = giteaAdapter.migrateRepository(trimmedSource, targetName, name, true, migrationToken);
+            // 校验迁移真正完成，避免「Gitea 先返回成功、实际克隆卡死」造成的假成功登记
+            info = migrationVerifier.verifyMigrated(info);
             return findOrCreate(resolvedHostType, info.htmlUrl(), owner, info.name(), info);
         }
 

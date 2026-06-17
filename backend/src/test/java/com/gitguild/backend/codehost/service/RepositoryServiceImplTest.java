@@ -38,13 +38,14 @@ class RepositoryServiceImplTest {
     @Mock private CodeRepositoryRepository codeRepositoryRepository;
     @Mock private UserRepository userRepository;
     @Mock private RepositoryCascadeDeleter cascadeDeleter;
+    @Mock private MigrationVerifier migrationVerifier;
     private final GiteaProperties giteaProperties = new GiteaProperties("http://localhost:3000", "", "spike-admin", null);
 
     private static final String MIGRATION_TOKEN = "gh-migration-token";
 
     private RepositoryServiceImpl service() {
         return new RepositoryServiceImpl(giteaAdapter, giteaProperties,
-                codeRepositoryRepository, userRepository, cascadeDeleter, MIGRATION_TOKEN);
+                codeRepositoryRepository, userRepository, cascadeDeleter, migrationVerifier, MIGRATION_TOKEN);
     }
 
     @Test
@@ -103,6 +104,8 @@ class RepositoryServiceImplTest {
                 .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc("GITEA", platformUrl))
                 .thenReturn(Optional.empty());
         when(codeRepositoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // 迁移校验放行（passthrough）：本用例只验证外部源被迁入并登记
+        when(migrationVerifier.verifyMigrated(any())).thenAnswer(inv -> inv.getArgument(0));
 
         CodeRepository result = service().importRepository(42L, externalUrl, "OS 课程仓库", "GITEA");
 

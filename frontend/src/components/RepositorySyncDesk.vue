@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { repositoryApi } from '../api/repositoryApi'
+import { toBrowsableGiteaUrl } from '../utils/giteaUrl'
 
 const router = useRouter()
 
@@ -148,6 +149,9 @@ function diagnoseImportError(error, sourceUrl) {
   if (code === 'VALIDATION_FAILED' || status === 400) {
     reason = '仓库地址不合法或为空。'
     hints = ['检查地址是否完整（含 https:// 与 owner/repo）', '去掉多余空格后重试']
+  } else if (code === 'REPOSITORY_MIGRATION_INCOMPLETE') {
+    reason = '仓库迁移未真正完成：源仓库可能过大、不存在或为私有，平台尚未接入成功。'
+    hints = ['确认地址有效且仓库为公开仓库', '超大仓库建议精简历史（剔除大文件）后再导入', '稍后重试']
   } else if (/rate limit|rate limitation|429|too many request/.test(raw)) {
     reason = 'GitHub 访问被限流（匿名访问约每小时 60 次）。'
     hints = ['等待几分钟后重试', '若需频繁导入，请联系管理员为迁移配置 GitHub Token']
@@ -334,7 +338,7 @@ onBeforeUnmount(stopCreep)
           </div>
           <div>
             <dt>地址</dt>
-            <dd>{{ lastRepository.sourceUrl }}</dd>
+            <dd>{{ toBrowsableGiteaUrl(lastRepository.sourceUrl) }}</dd>
           </div>
         </dl>
       </section>
