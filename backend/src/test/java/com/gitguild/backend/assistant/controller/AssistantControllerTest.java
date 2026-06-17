@@ -135,6 +135,7 @@ class AssistantControllerTest {
         AssistantChatRequest request = request("我想发任务", "hall");
 
         mockMvc.perform(post("/api/v1/assistant/chat")
+                        .principal(authentication(2001L, "ROLE_MAINTAINER"))
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -146,10 +147,28 @@ class AssistantControllerTest {
         AssistantChatRequest request = request("我想审查成果", "hall");
 
         mockMvc.perform(post("/api/v1/assistant/chat")
+                        .principal(authentication(2001L, "ROLE_MAINTAINER"))
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.actions[0].routeName").value("maintainer-review"));
+    }
+
+    @Test
+    void chatShouldNotReturnMaintainerActionsForAdventurerRestrictedIntents() throws Exception {
+        for (String message : List.of("我怎么发布委托？", "怎么审核委托？", "我能审核提交吗？", "怎么合并 PR？", "怎么同步仓库？")) {
+            AssistantChatRequest request = request(message, "hall");
+
+            mockMvc.perform(post("/api/v1/assistant/chat")
+                            .principal(authentication(3001L, "ROLE_BEGINNER"))
+                            .contentType("application/json")
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.source").value(AssistantAnswerSource.FAQ.name()))
+                    .andExpect(jsonPath("$.data.answer").value(org.hamcrest.Matchers.containsString("不是委托人身份")))
+                    .andExpect(jsonPath("$.data.answer").value(org.hamcrest.Matchers.containsString("不能")))
+                    .andExpect(jsonPath("$.data.actions").value(org.hamcrest.Matchers.empty()));
+        }
     }
 
     @Test
@@ -277,7 +296,7 @@ class AssistantControllerTest {
     }
 
     private AssistantContextAssembler contextAssembler() {
-        return new AssistantContextAssembler(null, null, null, null, null, objectMapper) {
+        return new AssistantContextAssembler(null, null, null, null, null, null, objectMapper) {
             @Override
             public AssistantChatContext assemble(String message, String page, org.springframework.security.core.Authentication authentication) {
                 return AssistantChatContext.from(message, page, authentication);

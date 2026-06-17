@@ -3,6 +3,7 @@ package com.gitguild.backend.assistant.service;
 import com.gitguild.backend.assistant.dto.AssistantAnswerSource;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -11,6 +12,11 @@ public class AssistantFallbackService implements AssistantAnswerService {
     @Override
     public AssistantAnswerResult answer(AssistantChatContext context) {
         String normalizedMessage = normalize(context.message());
+
+        Optional<AssistantAnswerResult> restrictedAnswer = answerRestrictedMaintainerIntent(context);
+        if (restrictedAnswer.isPresent()) {
+            return restrictedAnswer.get();
+        }
 
         if (isAcceptedTaskNextStepQuestion(normalizedMessage)) {
             return faq(
@@ -36,7 +42,7 @@ public class AssistantFallbackService implements AssistantAnswerService {
                     List.of("如何查看 PR 状态？", "被退回后怎么重新提交？"));
         }
 
-        if (containsAny(normalizedMessage, List.of("发布委托", "新建委托", "新建任务", "发任务", "发悬赏", "issue 发布"))) {
+        if (isPublishQuestion(normalizedMessage)) {
             return faq(
                     "委托人发布任务时，先在仓库接入页导入或同步仓库，再从 Issue 生成委托草稿，补充标题、说明、验收标准、难度、技术栈和奖励 XP。提交后需要等待管理员审核通过，委托才会进入悬赏任务板。",
                     List.of("委托人如何接入仓库？", "为什么我发布的委托还没出现在任务板？"));
@@ -44,8 +50,14 @@ public class AssistantFallbackService implements AssistantAnswerService {
 
         if (isReviewQuestion(normalizedMessage)) {
             return faq(
-                    "委托人可以在提交审核台查看冒险家提交的成果。审核时建议先打开关联 PR，检查实现范围和验收标准，再选择通过、退回修改或驳回。通过审核不会自动合并 PR，合并是单独操作。",
-                    List.of("审核通过后还需要合并 PR 吗？", "退回修改时应该写什么反馈？"));
+                    "委托人可以在提交审核台查看冒险家提交的成果。审核时建议先阅读成果说明，再打开关联 PR 检查实现范围和验收标准，然后选择通过、退回修改或驳回。如果平台检测到可合并的 PR，可以在审核页使用单独的合并 PR 按钮自主合并，不需要回到 Gitea 操作。",
+                    List.of("退回修改意见怎么写？", "什么时候需要合并 PR？"));
+        }
+
+        if (isMergePullRequestQuestion(normalizedMessage)) {
+            return faq(
+                    "委托人可以在提交审核台处理 PR 合并。建议先确认成果满足验收标准、PR 状态可合并，再通过审核页的合并 PR 按钮自主合并；GitGuild 不会在聊天中替你合并 PR。",
+                    List.of("审核成果怎么判断？", "退回修改意见怎么写？"));
         }
 
         if (containsAny(normalizedMessage, List.of("工作台", "clone", "克隆", "分支", "checkout", "push", "commit", "提交代码"))) {
@@ -54,7 +66,7 @@ public class AssistantFallbackService implements AssistantAnswerService {
                     List.of("如何提交成果？", "任务分支是什么？"));
         }
 
-        if (containsAny(normalizedMessage, List.of("仓库接入", "同步仓库", "导入仓库", "接入仓库", "repository sync"))) {
+        if (isRepositorySyncQuestion(normalizedMessage)) {
             return faq(
                     "仓库接入用于把 Gitea 仓库同步到 Git Guild。委托人可以导入仓库、读取 Issue，并基于 Issue 发布委托。同步失败时，优先检查仓库地址、访问凭据和 Gitea 服务状态。",
                     List.of("委托人如何发布任务？", "同步仓库失败怎么办？"));
@@ -80,7 +92,7 @@ public class AssistantFallbackService implements AssistantAnswerService {
 
         if (containsAny(normalizedMessage, List.of("演示", "demo", "账号", "密码"))) {
             return faq(
-                    "本地演示账号通常包括冒险家 advent、委托人 guild 和管理员 admin，默认密码为 admin123。前台向导主要服务游客、冒险家和委托人；管理员后台不纳入本功能范围。",
+                    "本地演示账号通常包括冒险家 advent、委托人 guild 和管理员 admin，默认密码为 admin123。艾丽丝作为 GitGuild AI 向导，主要服务来访者、冒险家和委托人；管理员后台不纳入本功能范围。",
                     List.of("推荐演示流程是什么？", "我是冒险家，下一步做什么？"));
         }
 
@@ -97,6 +109,39 @@ public class AssistantFallbackService implements AssistantAnswerService {
 
     public AssistantAnswerResult answer(String message, String page) {
         return answer(AssistantChatContext.anonymous(message, page));
+    }
+
+    public Optional<AssistantAnswerResult> answerRestrictedMaintainerIntent(AssistantChatContext context) {
+        if (context.hasRole("ROLE_MAINTAINER")) {
+            return Optional.empty();
+        }
+
+        String normalizedMessage = normalize(context.message());
+        if (isPublishQuestion(normalizedMessage)) {
+            return Optional.of(faq(
+                    "你当前不是委托人身份，不能发布委托。发布委托需要委托人先接入或同步仓库，再从 Issue 生成委托草稿并提交审核；作为冒险家，你可以先到悬赏任务板接取适合自己的委托，完成后到提交柜台登记成果。",
+                    List.of("冒险家怎么接取委托？", "如何提交成果？")));
+        }
+
+        if (isReviewQuestion(normalizedMessage)) {
+            return Optional.of(faq(
+                    "你当前不是委托人身份，不能审核成果。审核提交是委托人的权限；作为冒险家，你可以提交成果，并在提交柜台查看审核状态。如果被退回，就根据审核意见修改后重新提交。",
+                    List.of("如何提交成果？", "在哪里看提交状态？")));
+        }
+
+        if (isRepositorySyncQuestion(normalizedMessage)) {
+            return Optional.of(faq(
+                    "你当前不是委托人身份，不能接入或同步仓库。仓库接入用于委托人导入 Gitea 仓库和读取 Issue；作为冒险家，你可以在悬赏任务板选择已发布的委托来参与开发。",
+                    List.of("冒险家怎么接取委托？", "悬赏任务板怎么筛选？")));
+        }
+
+        if (isMergePullRequestQuestion(normalizedMessage)) {
+            return Optional.of(faq(
+                    "你当前不是委托人身份，不能合并 PR。PR 合并由委托人在提交审核台根据验收结果和 PR 状态自主操作；作为冒险家，你可以确认代码已 push、PR 信息正确，并在提交柜台查看审核状态。",
+                    List.of("如何查看提交状态？", "PR 信息怎么提交？")));
+        }
+
+        return Optional.empty();
     }
 
     private AssistantAnswerResult answerByPage(String normalizedMessage, String page) {
@@ -141,12 +186,26 @@ public class AssistantFallbackService implements AssistantAnswerService {
     }
 
     private boolean isReviewQuestion(String normalizedMessage) {
-        if (containsAny(normalizedMessage, List.of("审核提交", "批阅", "待审核", "审核台", "查看提交", "提交审核"))) {
+        if (containsAny(normalizedMessage, List.of("审核提交", "审核成果", "审核委托", "审核任务", "批阅", "待审核", "审核台", "查看提交", "提交审核"))) {
             return true;
         }
-        boolean hasReviewVerb = containsAny(normalizedMessage, List.of("审阅", "审查", "检查"));
+        boolean hasReviewVerb = containsAny(normalizedMessage, List.of("审核", "审阅", "审查", "检查"));
         boolean hasReviewObject = containsAny(normalizedMessage, List.of("委托", "任务", "成果"));
         return hasReviewVerb && hasReviewObject;
+    }
+
+    private boolean isPublishQuestion(String normalizedMessage) {
+        return containsAny(normalizedMessage, List.of("发布委托", "新建委托", "新建任务", "发任务", "发悬赏", "issue 发布"));
+    }
+
+    private boolean isRepositorySyncQuestion(String normalizedMessage) {
+        return containsAny(normalizedMessage, List.of("仓库接入", "同步仓库", "导入仓库", "接入仓库", "repository sync"));
+    }
+
+    private boolean isMergePullRequestQuestion(String normalizedMessage) {
+        boolean asksMerge = containsAny(normalizedMessage, List.of("合并", "merge"));
+        boolean asksPullRequest = containsAny(normalizedMessage, List.of("pr", "pull request", "拉取请求"));
+        return asksMerge && asksPullRequest;
     }
 
     private boolean isAcceptedTaskNextStepQuestion(String normalizedMessage) {

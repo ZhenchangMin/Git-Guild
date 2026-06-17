@@ -28,6 +28,11 @@ public class AssistantAnswerOrchestrator implements AssistantAnswerService {
 
     @Override
     public AssistantAnswerResult answer(AssistantChatContext context) {
+        Optional<AssistantAnswerResult> restrictedAnswer = fallbackService.answerRestrictedMaintainerIntent(context);
+        if (restrictedAnswer.isPresent()) {
+            return restrictedAnswer.get();
+        }
+
         if (!aiProperties.isReady() || aiClient.isEmpty()) {
             return fallbackService.answer(context);
         }

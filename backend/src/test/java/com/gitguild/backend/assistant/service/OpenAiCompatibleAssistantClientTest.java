@@ -78,6 +78,9 @@ class OpenAiCompatibleAssistantClientTest {
                         "C",
                         List.of("java", "spring"),
                         100,
+                        8,
+                        "后端",
+                        List.of("bugfix", "spring"),
                         "PUBLISHED",
                         0.93,
                         List.of("技术栈匹配", "难度适合"))),
@@ -93,6 +96,9 @@ class OpenAiCompatibleAssistantClientTest {
         assertThat(requestBody.get()).contains("可推荐的委托板候选");
         assertThat(requestBody.get()).contains("questId=301");
         assertThat(requestBody.get()).contains("修复 Java 接口");
+        assertThat(requestBody.get()).contains("estimatedHours=8");
+        assertThat(requestBody.get()).contains("category=后端");
+        assertThat(requestBody.get()).contains("tags=[bugfix, spring]");
         assertThat(requestBody.get()).contains("matchScore=0.93");
         assertThat(requestBody.get()).contains("只能从");
         assertThat(requestBody.get()).contains("不得基于未提供");

@@ -6,6 +6,7 @@ import com.gitguild.backend.assistant.config.AssistantAiProperties;
 import com.gitguild.backend.assistant.dto.AssistantAnswerSource;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class AssistantAnswerOrchestratorTest {
@@ -50,6 +51,41 @@ class AssistantAnswerOrchestratorTest {
     }
 
     @Test
+    void shouldPreemptRestrictedMaintainerIntentsBeforeCallingAi() {
+        AtomicInteger aiCalls = new AtomicInteger();
+        AssistantAnswerOrchestrator orchestrator = new AssistantAnswerOrchestrator(
+                properties(true, "test-key", "demo-model"),
+                new AssistantFallbackService(),
+                Optional.of(context -> {
+                    aiCalls.incrementAndGet();
+                    return Optional.of(aiAnswer());
+                }));
+
+        List.of("我怎么发布委托？", "怎么审核委托？", "我能审核提交吗？", "怎么合并 PR？", "怎么同步仓库？")
+                .forEach(message -> {
+                    AssistantAnswerResult result = orchestrator.answer(authenticatedContext(message, "ROLE_BEGINNER"));
+
+                    assertThat(result.source()).isEqualTo(AssistantAnswerSource.FAQ);
+                    assertThat(result.answer()).contains("不是委托人身份").contains("不能");
+                    assertThat(result.answer()).doesNotContain("AI answer");
+                });
+        assertThat(aiCalls.get()).isZero();
+    }
+
+    @Test
+    void shouldAllowMaintainerIntentsToUseAiForMaintainerRole() {
+        AssistantAnswerOrchestrator orchestrator = new AssistantAnswerOrchestrator(
+                properties(true, "test-key", "demo-model"),
+                new AssistantFallbackService(),
+                Optional.of(context -> Optional.of(aiAnswer())));
+
+        AssistantAnswerResult result = orchestrator.answer(authenticatedContext("我怎么发布委托？", "ROLE_MAINTAINER"));
+
+        assertThat(result.source()).isEqualTo(AssistantAnswerSource.AI);
+        assertThat(result.answer()).isEqualTo("AI answer");
+    }
+
+    @Test
     void shouldUseFallbackWhenAiClientFails() {
         AssistantAnswerOrchestrator orchestrator = new AssistantAnswerOrchestrator(
                 properties(true, "test-key", "demo-model"),
@@ -77,5 +113,17 @@ class AssistantAnswerOrchestratorTest {
 
     private AssistantAnswerResult aiAnswer() {
         return new AssistantAnswerResult("AI answer", AssistantAnswerSource.AI, List.of("follow up"));
+    }
+
+    private AssistantChatContext authenticatedContext(String message, String role) {
+        return new AssistantChatContext(
+                message,
+                "hall",
+                3001L,
+                List.of(role),
+                null,
+                List.of(),
+                List.of(),
+                List.of());
     }
 }

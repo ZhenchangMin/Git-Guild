@@ -6,6 +6,8 @@ import com.gitguild.backend.assistant.service.AssistantChatContext.QuestRecommen
 import com.gitguild.backend.assistant.service.AssistantChatContext.QuestStatusSnapshot;
 import com.gitguild.backend.assistant.service.AssistantChatContext.SubmissionStatusSnapshot;
 import com.gitguild.backend.assistant.service.AssistantChatContext.UserProfileSnapshot;
+import com.gitguild.backend.codehost.domain.CodePullRequest;
+import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.growth.domain.ContributionRecord;
 import com.gitguild.backend.growth.domain.GrowthProfile;
 import com.gitguild.backend.growth.repository.ContributionRecordRepository;
@@ -17,7 +19,10 @@ import com.gitguild.backend.quest.domain.QuestAssignment;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
+import com.gitguild.backend.review.domain.ReviewRecord;
 import com.gitguild.backend.review.domain.Submission;
+import com.gitguild.backend.review.domain.SubmissionStatus;
+import com.gitguild.backend.review.repository.ReviewRecordRepository;
 import com.gitguild.backend.review.repository.SubmissionRepository;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -35,6 +40,7 @@ public class AssistantContextAssembler {
     private static final int MAX_SUBMISSION_SNAPSHOTS = 5;
     private static final int MAX_QUEST_BOARD_CANDIDATES = 8;
     private static final int MAX_PROFILE_TECH_STACKS = 5;
+    private static final int MAX_REVIEW_SUMMARY_CHARS = 120;
     private static final double TECH_WEIGHT = 0.6;
     private static final double DIFFICULTY_WEIGHT = 0.4;
     private static final double BEGINNER_BOOST = 0.2;
@@ -42,6 +48,7 @@ public class AssistantContextAssembler {
     private final QuestRepository questRepository;
     private final QuestAssignmentRepository assignmentRepository;
     private final SubmissionRepository submissionRepository;
+    private final ReviewRecordRepository reviewRecordRepository;
     private final GrowthProfileRepository growthProfileRepository;
     private final ContributionRecordRepository contributionRecordRepository;
     private final ObjectMapper objectMapper;
@@ -50,12 +57,14 @@ public class AssistantContextAssembler {
             QuestRepository questRepository,
             QuestAssignmentRepository assignmentRepository,
             SubmissionRepository submissionRepository,
+            ReviewRecordRepository reviewRecordRepository,
             GrowthProfileRepository growthProfileRepository,
             ContributionRecordRepository contributionRecordRepository,
             ObjectMapper objectMapper) {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.submissionRepository = submissionRepository;
+        this.reviewRecordRepository = reviewRecordRepository;
         this.growthProfileRepository = growthProfileRepository;
         this.contributionRecordRepository = contributionRecordRepository;
         this.objectMapper = objectMapper;
@@ -116,7 +125,7 @@ public class AssistantContextAssembler {
                 : submissionRepository.findBySubmitterUserIdWithQuestOrderBySubmittedAtDesc(context.userId());
         return submissions.stream()
                 .limit(MAX_SUBMISSION_SNAPSHOTS)
-                .map(this::toSubmissionSnapshot)
+                .map(submission -> toSubmissionSnapshot(submission, context))
                 .toList();
     }
 
@@ -144,25 +153,55 @@ public class AssistantContextAssembler {
     }
 
     private QuestStatusSnapshot toQuestSnapshot(Quest quest) {
+        CodeRepository repository = quest.getRepository();
         return new QuestStatusSnapshot(
                 quest.getQuestId(),
                 quest.getTitle(),
-                quest.getStatus().name());
+                quest.getStatus().name(),
+                null,
+                "",
+                "",
+                repositoryName(repository),
+                repositoryDefaultBranch(repository),
+                questNextAction(quest));
     }
 
     private QuestStatusSnapshot toAssignedQuestSnapshot(QuestAssignment assignment) {
         Quest quest = assignment.getQuest();
+        CodeRepository repository = quest.getRepository();
         return new QuestStatusSnapshot(
                 quest.getQuestId(),
                 quest.getTitle(),
-                "quest=" + quest.getStatus().name() + ",assignment=" + assignment.getStatus().name());
+                quest.getStatus().name(),
+                assignment.getAssignmentId(),
+                assignment.getStatus().name(),
+                assignment.getTaskBranch(),
+                repositoryName(repository),
+                repositoryDefaultBranch(repository),
+                assignedQuestNextAction(assignment));
     }
 
-    private SubmissionStatusSnapshot toSubmissionSnapshot(Submission submission) {
+    private SubmissionStatusSnapshot toSubmissionSnapshot(Submission submission, AssistantChatContext context) {
+        Quest quest = submission.getQuest();
+        CodePullRequest pullRequest = submission.getPullRequest();
+        ReviewRecord latestReview = latestReviewRecord(submission.getSubmissionId());
         return new SubmissionStatusSnapshot(
                 submission.getSubmissionId(),
-                submission.getQuest().getQuestId(),
-                submission.getStatus().name());
+                quest.getQuestId(),
+                quest.getTitle(),
+                submission.getStatus().name(),
+                submittedAtText(submission),
+                pullRequest != null ? pullRequest.getPullRequestId() : null,
+                pullRequest != null ? pullRequest.getExternalPrId() : "",
+                pullRequest != null ? pullRequest.getTitle() : "",
+                pullRequest != null ? pullRequest.getStatus() : "",
+                pullRequest != null ? pullRequest.getSourceBranch() : "",
+                pullRequest != null ? pullRequest.getTargetBranch() : "",
+                pullRequest != null && pullRequest.isMerged(),
+                latestReview != null ? latestReview.getDecision().name() : "",
+                latestReview != null ? truncate(clean(latestReview.getSummary()), MAX_REVIEW_SUMMARY_CHARS) : "",
+                latestReview != null ? latestReview.getReviewedAt().toString() : "",
+                submissionNextAction(submission, context, pullRequest));
     }
 
     private QuestRecommendationSnapshot toQuestRecommendationSnapshot(
@@ -184,9 +223,85 @@ public class AssistantContextAssembler {
                 quest.getDifficulty().name(),
                 questTechs,
                 quest.getRewardXp(),
+                quest.getEstimatedHours(),
+                quest.getCategory() != null ? quest.getCategory().getName() : "",
+                tagNames(quest),
                 quest.getStatus().name(),
                 score,
                 recommendationReasons(techMatch, difficultyMatch, beginnerBoost > 0));
+    }
+
+    private String questNextAction(Quest quest) {
+        return switch (quest.getStatus()) {
+            case DRAFT -> "补充委托信息后提交管理员审核";
+            case PENDING_ADMIN_REVIEW -> "等待管理员审核，通过后会出现在悬赏任务板";
+            case PUBLISHED -> "委托已发布，可等待冒险家接取";
+            case IN_PROGRESS -> "已有冒险家接取，可关注提交审核台是否出现成果";
+            case IN_REVIEW -> "有成果进入审核流程，请到提交审核台处理";
+            case COMPLETED -> "委托已完成，可查看成果和成长记录";
+            case REJECTED -> "查看退回原因，修改委托后重新提交审核";
+            case CLOSED -> "委托已关闭或下架，通常不再继续流转";
+        };
+    }
+
+    private String assignedQuestNextAction(QuestAssignment assignment) {
+        if (assignment.getStatus() == AssignmentStatus.COMPLETED) {
+            return "该委托已完成，可查看提交记录和成长记录";
+        }
+        if (assignment.getStatus() == AssignmentStatus.CANCELLED || assignment.getStatus() == AssignmentStatus.ABANDONED) {
+            return "该委托已不在进行中，可回到悬赏任务板选择新的委托";
+        }
+        if (assignment.getTaskBranch() == null || assignment.getTaskBranch().isBlank()) {
+            return "进入冒险家工作台准备任务分支，然后按页面提示 clone 仓库并开始开发";
+        }
+        return "在任务分支 " + assignment.getTaskBranch() + " 上完成修改并 push，完成后到提交柜台登记成果和 PR 信息";
+    }
+
+    private String submissionNextAction(
+            Submission submission,
+            AssistantChatContext context,
+            CodePullRequest pullRequest) {
+        SubmissionStatus status = submission.getStatus();
+        boolean maintainer = context.hasRole("ROLE_MAINTAINER");
+        boolean merged = pullRequest != null && pullRequest.isMerged();
+        return switch (status) {
+            case PENDING_REVIEW -> maintainer
+                    ? "进入提交审核台查看成果说明和关联 PR，选择通过、退回修改或驳回；如 PR 可合并，可使用合并 PR 按钮"
+                    : "等待委托人审核；可以检查成果说明和 PR 信息是否完整";
+            case CHANGES_REQUESTED -> "根据最近审核意见修改代码或成果说明，然后重新提交";
+            case APPROVED -> merged
+                    ? "成果已通过且 PR 已合并，可查看成长记录"
+                    : "成果已通过；如果 PR 仍未合并，委托人可在审核页按需使用合并 PR 按钮";
+            case REJECTED -> "本次提交被驳回，需要重新确认委托验收标准后再处理";
+        };
+    }
+
+    private ReviewRecord latestReviewRecord(Long submissionId) {
+        if (submissionId == null) {
+            return null;
+        }
+        List<ReviewRecord> records = reviewRecordRepository.findBySubmissionSubmissionIdOrderByReviewedAtDesc(submissionId);
+        return records.isEmpty() ? null : records.get(0);
+    }
+
+    private List<String> tagNames(Quest quest) {
+        return quest.getTags().stream()
+                .map(tag -> clean(tag.getName()))
+                .filter(name -> !name.isBlank())
+                .sorted()
+                .toList();
+    }
+
+    private String repositoryName(CodeRepository repository) {
+        return repository == null ? "" : clean(repository.getName());
+    }
+
+    private String repositoryDefaultBranch(CodeRepository repository) {
+        return repository == null ? "" : clean(repository.getDefaultBranch());
+    }
+
+    private String submittedAtText(Submission submission) {
+        return submission.getSubmittedAt() == null ? "" : submission.getSubmittedAt().toString();
     }
 
     private RecommendationProfile recommendationProfile(List<ContributionRecord> records) {
@@ -280,6 +395,18 @@ public class AssistantContextAssembler {
 
     private double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    private String clean(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", " ").trim();
+    }
+
+    private String truncate(String value, int maxChars) {
+        String text = clean(value);
+        if (maxChars <= 0 || text.length() <= maxChars) {
+            return text;
+        }
+        return text.substring(0, maxChars);
     }
 
     private record RecommendationProfile(List<String> preferredTechStacks, double avgDifficulty) {

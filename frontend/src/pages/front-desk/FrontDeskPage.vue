@@ -10,6 +10,7 @@ import { sessionStore } from '../../stores/sessionStore'
 import { useAssistantChat } from '../../composables/useAssistantChat'
 
 const router = useRouter()
+const pageEnteredAt = Date.now()
 
 const {
   messages,
@@ -21,6 +22,8 @@ const {
   welcomeMessage,
   send,
   onKeydown,
+  deleteMessage,
+  formatMessageTime,
 } = useAssistantChat({ page: 'front-desk' })
 
 const sceneRef = ref(null)
@@ -80,27 +83,32 @@ const displayName = computed(() => {
 
 const defaultWelcomeBubbleText = computed(() => {
   if (isVisitor.value) return welcomeMessage.value
-  return `欢迎回来，${displayName.value}！有什么可以帮你的？`
+  return `欢迎回来，${displayName.value}！我是艾丽丝，GitGuild AI 向导。有什么可以帮你的？`
 })
 
+const currentVisitMessages = computed(() => messages.value.filter((message) => {
+  const createdAt = Date.parse(message.createdAt)
+  return Number.isFinite(createdAt) && createdAt >= pageEnteredAt
+}))
+
 const latestAssistantMessage = computed(() => {
-  for (let index = messages.value.length - 1; index >= 0; index -= 1) {
-    const message = messages.value[index]
+  for (let index = currentVisitMessages.value.length - 1; index >= 0; index -= 1) {
+    const message = currentVisitMessages.value[index]
     if (message.role === 'npc') return message
   }
   return null
 })
 
 const latestUserMessage = computed(() => {
-  for (let index = messages.value.length - 1; index >= 0; index -= 1) {
-    const message = messages.value[index]
+  for (let index = currentVisitMessages.value.length - 1; index >= 0; index -= 1) {
+    const message = currentVisitMessages.value[index]
     if (message.role === 'user') return message
   }
   return null
 })
 
 const welcomeBubbleText = computed(() => {
-  if (loading.value) return '前台正在翻阅公会手册'
+  if (loading.value) return '艾丽丝正在翻阅公会手册'
   return latestAssistantMessage.value?.text || defaultWelcomeBubbleText.value
 })
 
@@ -462,7 +470,7 @@ function backToHall() {
         class="desk-welcome-bubble"
         :style="welcomeBubbleStyle"
         aria-live="polite"
-        aria-label="前台欢迎语"
+        aria-label="艾丽丝欢迎语"
       >
         <svg
           class="bubble-frame bubble-frame--npc"
@@ -488,7 +496,7 @@ function backToHall() {
         </svg>
         <span class="desk-npc-icon" aria-hidden="true">&#9872;</span>
         <div class="desk-welcome-copy">
-          <strong>公会前台向导</strong>
+          <strong>艾丽丝</strong>
           <p class="desk-welcome-message" :class="{ 'is-loading': loading }">
             <span v-if="loading" class="loading-text">{{ welcomeBubbleText }}</span>
             <template v-else>{{ welcomeBubbleText }}</template>
@@ -556,13 +564,13 @@ function backToHall() {
         >{{ q }}</button>
       </section>
 
-      <footer class="desk-input-dock" aria-label="向前台向导提问">
+      <footer class="desk-input-dock" aria-label="向艾丽丝提问">
         <div class="desk-input-row">
           <input
             v-model="draft"
             class="desk-input"
             type="text"
-            placeholder="向前台向导提问..."
+            placeholder="向艾丽丝提问..."
             maxlength="500"
             :disabled="loading"
             @keydown="onKeydown"
@@ -587,7 +595,7 @@ function backToHall() {
           class="desk-history-layer"
           role="dialog"
           aria-modal="true"
-          aria-label="前台向导历史对话"
+          aria-label="艾丽丝历史对话"
           tabindex="-1"
           @keydown.escape="closeHistory"
         >
@@ -596,7 +604,7 @@ function backToHall() {
           <article class="history-panel">
             <header class="history-head">
               <div>
-                <span>公会前台向导</span>
+                <span>GitGuild AI 向导</span>
                 <h2>本次对话记录</h2>
               </div>
               <button class="history-close" type="button" aria-label="关闭历史记录" @click="closeHistory">
@@ -611,6 +619,11 @@ function backToHall() {
 
               <div v-for="msg in messages" :key="`history-${msg.id}`" class="history-msg" :class="msg.role">
                 <p class="history-bubble">{{ msg.text }}</p>
+
+                <div class="history-meta">
+                  <time v-if="msg.createdAt" :datetime="msg.createdAt">{{ formatMessageTime(msg.createdAt) }}</time>
+                  <button class="history-delete" type="button" @click="deleteMessage(msg.id)">删除</button>
+                </div>
 
                 <div v-if="msg.source" class="desk-source history-source">
                   <span v-if="msg.source === 'AI'" class="source-badge ai">&#9733; AI 回答</span>
@@ -631,20 +644,10 @@ function backToHall() {
 
               <div v-if="loading" class="history-msg npc">
                 <p class="history-bubble desk-loading">
-                  <span class="loading-text">前台正在翻阅公会手册</span>
+                  <span class="loading-text">艾丽丝正在翻阅公会手册</span>
                 </p>
               </div>
             </div>
-
-            <footer class="history-foot">
-              <button
-                v-for="q in promptBubbles"
-                :key="`history-prompt-${q}`"
-                class="desk-quick-chip"
-                type="button"
-                @click="send(q)"
-              >{{ q }}</button>
-            </footer>
           </article>
         </section>
       </Transition>
@@ -1176,7 +1179,7 @@ function backToHall() {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   width: min(980px, calc(100vw - 96px));
   height: min(720px, calc(100svh - 96px));
   border: 1px solid rgba(231, 177, 90, 0.44);
@@ -1271,18 +1274,42 @@ function backToHall() {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
 }
 
+.history-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline: 4px;
+  color: rgba(255, 232, 190, 0.48);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.history-msg.user .history-meta {
+  justify-content: flex-end;
+}
+
+.history-delete {
+  border: 1px solid rgba(238, 184, 91, 0.26);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: rgba(255, 232, 190, 0.68);
+  background: rgba(17, 9, 5, 0.36);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.history-delete:hover,
+.history-delete:focus-visible {
+  border-color: rgba(232, 140, 100, 0.58);
+  color: #ffe0da;
+  background: rgba(110, 42, 36, 0.42);
+  transform: translateY(-1px);
+}
+
 .history-source,
 .history-actions {
   margin-inline: 4px;
-}
-
-.history-foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 15px 24px 18px;
-  border-top: 1px solid rgba(238, 184, 91, 0.16);
-  background: linear-gradient(180deg, transparent, rgba(255, 220, 132, 0.03));
 }
 
 .msg-slide-enter-active {

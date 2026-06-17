@@ -77,7 +77,7 @@ const baseRooms = [
   },
   {
     id: 'desk',
-    label: '前台向导',
+    label: '艾丽丝',
     hint: '新手引导、仓库接入和异常求助',
     routeName: 'front-desk',
     left: 39.72,

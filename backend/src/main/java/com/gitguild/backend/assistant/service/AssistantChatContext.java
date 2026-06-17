@@ -82,6 +82,9 @@ public record AssistantChatContext(
             String difficulty,
             List<String> techStack,
             int rewardXp,
+            int estimatedHours,
+            String categoryName,
+            List<String> tagNames,
             String status,
             double matchScore,
             List<String> reasons) {
@@ -90,6 +93,8 @@ public record AssistantChatContext(
             title = normalize(title);
             difficulty = normalize(difficulty);
             techStack = techStack == null ? List.of() : List.copyOf(techStack);
+            categoryName = normalize(categoryName);
+            tagNames = tagNames == null ? List.of() : List.copyOf(tagNames);
             status = normalize(status);
             reasons = reasons == null ? List.of() : List.copyOf(reasons);
         }
@@ -98,13 +103,57 @@ public record AssistantChatContext(
     public record QuestStatusSnapshot(
             Long questId,
             String title,
-            String status) {
+            String questStatus,
+            Long assignmentId,
+            String assignmentStatus,
+            String taskBranch,
+            String repositoryName,
+            String repositoryDefaultBranch,
+            String nextAction) {
+
+        public QuestStatusSnapshot {
+            title = normalize(title);
+            questStatus = normalize(questStatus);
+            assignmentStatus = normalize(assignmentStatus);
+            taskBranch = normalize(taskBranch);
+            repositoryName = normalize(repositoryName);
+            repositoryDefaultBranch = normalize(repositoryDefaultBranch);
+            nextAction = normalize(nextAction);
+        }
     }
 
     public record SubmissionStatusSnapshot(
             Long submissionId,
             Long questId,
-            String status) {
+            String questTitle,
+            String submissionStatus,
+            String submittedAt,
+            Long pullRequestId,
+            String externalPrId,
+            String prTitle,
+            String prStatus,
+            String sourceBranch,
+            String targetBranch,
+            boolean merged,
+            String latestReviewDecision,
+            String latestReviewSummary,
+            String latestReviewedAt,
+            String nextAction) {
+
+        public SubmissionStatusSnapshot {
+            questTitle = normalize(questTitle);
+            submissionStatus = normalize(submissionStatus);
+            submittedAt = normalize(submittedAt);
+            externalPrId = normalize(externalPrId);
+            prTitle = normalize(prTitle);
+            prStatus = normalize(prStatus);
+            sourceBranch = normalize(sourceBranch);
+            targetBranch = normalize(targetBranch);
+            latestReviewDecision = normalize(latestReviewDecision);
+            latestReviewSummary = normalize(latestReviewSummary);
+            latestReviewedAt = normalize(latestReviewedAt);
+            nextAction = normalize(nextAction);
+        }
     }
 
     private static String normalize(String value) {

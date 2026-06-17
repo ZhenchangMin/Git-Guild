@@ -21,6 +21,7 @@ import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.review.domain.Submission;
 import com.gitguild.backend.review.domain.SubmissionStatus;
+import com.gitguild.backend.review.repository.ReviewRecordRepository;
 import com.gitguild.backend.review.repository.SubmissionRepository;
 import com.gitguild.backend.security.CurrentUserPrincipal;
 import com.gitguild.backend.user.domain.User;
@@ -34,6 +35,7 @@ class AssistantContextAssemblerTest {
     private QuestRepository questRepository;
     private QuestAssignmentRepository assignmentRepository;
     private SubmissionRepository submissionRepository;
+    private ReviewRecordRepository reviewRecordRepository;
     private GrowthProfileRepository growthProfileRepository;
     private ContributionRecordRepository contributionRecordRepository;
     private AssistantContextAssembler assembler;
@@ -43,6 +45,7 @@ class AssistantContextAssemblerTest {
         questRepository = mock(QuestRepository.class);
         assignmentRepository = mock(QuestAssignmentRepository.class);
         submissionRepository = mock(SubmissionRepository.class);
+        reviewRecordRepository = mock(ReviewRecordRepository.class);
         growthProfileRepository = mock(GrowthProfileRepository.class);
         contributionRecordRepository = mock(ContributionRecordRepository.class);
         when(questRepository.findByStatusIn(any())).thenReturn(List.of());
@@ -50,6 +53,7 @@ class AssistantContextAssemblerTest {
                 questRepository,
                 assignmentRepository,
                 submissionRepository,
+                reviewRecordRepository,
                 growthProfileRepository,
                 contributionRecordRepository,
                 new ObjectMapper());
@@ -68,7 +72,7 @@ class AssistantContextAssemblerTest {
         assertThat(context.questBoardCandidates().get(0).questId()).isEqualTo(301L);
         assertThat(context.questStatuses()).isEmpty();
         assertThat(context.submissionStatuses()).isEmpty();
-        verifyNoInteractions(assignmentRepository, submissionRepository, growthProfileRepository, contributionRecordRepository);
+        verifyNoInteractions(assignmentRepository, submissionRepository, reviewRecordRepository, growthProfileRepository, contributionRecordRepository);
     }
 
     @Test
@@ -104,9 +108,11 @@ class AssistantContextAssemblerTest {
         assertThat(context.questBoardCandidates().get(0).reasons()).contains("技术栈匹配");
         assertThat(context.questStatuses()).hasSize(1);
         assertThat(context.questStatuses().get(0).questId()).isEqualTo(101L);
-        assertThat(context.questStatuses().get(0).status()).isEqualTo("quest=IN_PROGRESS,assignment=ACTIVE");
+        assertThat(context.questStatuses().get(0).questStatus()).isEqualTo("IN_PROGRESS");
+        assertThat(context.questStatuses().get(0).assignmentStatus()).isEqualTo("ACTIVE");
         assertThat(context.submissionStatuses()).hasSize(1);
         assertThat(context.submissionStatuses().get(0).submissionId()).isEqualTo(501L);
+        assertThat(context.submissionStatuses().get(0).submissionStatus()).isEqualTo("PENDING_REVIEW");
     }
 
     @Test
@@ -123,9 +129,9 @@ class AssistantContextAssemblerTest {
 
         assertThat(context.roleLabel()).isEqualTo("委托人");
         assertThat(context.questStatuses()).hasSize(1);
-        assertThat(context.questStatuses().get(0).status()).isEqualTo("PUBLISHED");
+        assertThat(context.questStatuses().get(0).questStatus()).isEqualTo("PUBLISHED");
         assertThat(context.submissionStatuses()).hasSize(1);
-        assertThat(context.submissionStatuses().get(0).status()).isEqualTo("CHANGES_REQUESTED");
+        assertThat(context.submissionStatuses().get(0).submissionStatus()).isEqualTo("CHANGES_REQUESTED");
         verifyNoInteractions(assignmentRepository);
     }
 
@@ -140,7 +146,7 @@ class AssistantContextAssemblerTest {
         assertThat(context.questBoardCandidates()).isEmpty();
         assertThat(context.questStatuses()).isEmpty();
         assertThat(context.submissionStatuses()).isEmpty();
-        verifyNoInteractions(questRepository, assignmentRepository, submissionRepository, growthProfileRepository, contributionRecordRepository);
+        verifyNoInteractions(questRepository, assignmentRepository, submissionRepository, reviewRecordRepository, growthProfileRepository, contributionRecordRepository);
     }
 
     private Quest quest(Long questId, String title, QuestStatus status, Difficulty difficulty, String techStackJson, int rewardXp) {
