@@ -10,7 +10,9 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -58,6 +60,20 @@ public class RepositoryController {
                         r.getDefaultBranch(), r.getDescription()))
                 .toList();
         return ApiResponse.success(items);
+    }
+
+    /**
+     * 删除一个已接入的仓库，级联清理其全部业务数据与平台 Gitea 副本。
+     *
+     * <p>仅 Guild Master / Admin 可调用（服务层鉴权）。
+     */
+    @DeleteMapping("/{repositoryId}")
+    public ApiResponse<Void> deleteRepository(
+            Authentication authentication,
+            @PathVariable Long repositoryId) {
+        repositoryService.deleteRepository(
+                SecurityPrincipalUtils.currentUserId(authentication), repositoryId);
+        return ApiResponse.success("仓库已删除", null);
     }
 
     /**

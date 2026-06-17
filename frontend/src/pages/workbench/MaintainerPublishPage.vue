@@ -1,12 +1,15 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
+import HomeOrb from '../../components/HomeOrb.vue'
 import parchmentFormImg from '../../assets/submission-form-parchment-v0-clean.webp'
+import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
 
 const router = useRouter()
+const route = useRoute()
 
 // ── 选项数据 ────────────────────────────────────────────────────────────────
 const repositories = ref([])
@@ -24,13 +27,13 @@ const form = ref({
   issueId: '',
   giteaIssueTitle: '',
   giteaIssueBody: '',
-  title: 'Hello World',
-  description: '在仓库中新增一个 hello world 文件，作为最短 MVP 演示任务。',
-  completionCriteria: '新增 hello.md（或 hello world 文件），内容包含 "Hello, Git-Guild!"，并通过 PR 合并。',
+  title: '',
+  description: '',
+  completionCriteria: '',
   categoryId: '',
   tagIds: [],
   difficulty: 'A',
-  techStack: 'Markdown',
+  techStack: '',
   estimatedHours: 1,
   rewardXp: 50,
 })
@@ -48,20 +51,24 @@ const selectedRepo = computed(
 const tagOptions = computed(() => tags.value.filter((tag) => tag.enabled !== false))
 
 // ── 加载仓库 + 分类 ─────────────────────────────────────────────────────────
+// 首屏只等"仓库 + 分类"这两个必填项；标签非必填，拆成非阻塞异步，避免拖慢表单首屏。
 async function loadMeta() {
   loadingMeta.value = true
   metaError.value = ''
   try {
-    const [repoPayload, catPayload, tagPayload] = await Promise.all([
+    const [repoPayload, catPayload] = await Promise.all([
       repositoryApi.list(),
       questApi.categories(),
-      questApi.tags({ size: 100 }),
     ])
     repositories.value = unwrapList(repoPayload)
     categories.value = unwrapList(catPayload)
-    tags.value = unwrapItems(tagPayload)
     if (repositories.value.length > 0) {
-      form.value.repositoryId = String(repositories.value[0].repositoryId)
+      // 若从同步台「去发布委托」跳入，query.repoId 指定了刚导入的仓库，优先预选它；
+      // 赋值即触发下方 watch(repositoryId) 去拉 Issue，无需再手动调用。
+      const preselect = route.query.repoId
+        ? repositories.value.find((r) => String(r.repositoryId) === String(route.query.repoId))
+        : null
+      form.value.repositoryId = String((preselect ?? repositories.value[0]).repositoryId)
     }
     const mvp = categories.value.find((c) => c.name === 'MVP') ?? categories.value[0]
     if (mvp) form.value.categoryId = String(mvp.categoryId)
@@ -69,6 +76,16 @@ async function loadMeta() {
     metaError.value = error?.message ?? '加载仓库/分类失败，请确认后端已启动。'
   } finally {
     loadingMeta.value = false
+  }
+  loadTags()
+}
+
+// 标签：非阻塞加载，失败不影响发布（标签可选）。
+async function loadTags() {
+  try {
+    tags.value = unwrapItems(await questApi.tags({ size: 100 }))
+  } catch {
+    tags.value = []
   }
 }
 
@@ -100,10 +117,8 @@ watch(
   (id) => loadIssues(id),
 )
 
-onMounted(async () => {
-  await loadMeta()
-  if (form.value.repositoryId) await loadIssues(form.value.repositoryId)
-})
+// Issue 由上方 watch(repositoryId) 在 loadMeta 设置首个仓库时自动加载，无需在此重复调用。
+onMounted(loadMeta)
 
 // ── 校验 + 提交 ─────────────────────────────────────────────────────────────
 const errors = computed(() => {
@@ -170,8 +185,14 @@ async function publish() {
   }
 }
 
+// 返回上一页：有站内历史就弹出（通常是事务所），避免用 push 反复压入新条目造成
+// publish ↔ maintainer 历史栈来回 ping-pong 死循环；无历史（深链进入）时兜底回事务所。
 function backToWorkbench() {
-  router.push({ name: 'maintainer-workbench' })
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push({ name: 'maintainer-workbench' })
+  }
 }
 
 // ── 工具：解包 ApiResponse ───────────────────────────────────────────────────
@@ -192,6 +213,7 @@ function unwrapItems(payload) {
 <template>
   <main class="app-shell">
     <section class="scene writ-scene">
+      <HomeOrb />
       <button class="back-orb" type="button" aria-label="返回委托人事务所" @click="backToWorkbench">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
@@ -206,13 +228,7 @@ function unwrapItems(payload) {
           <p class="writ-sub">委托人起草任务并提交管理员审核（DRAFT → 待审核），通过后上架悬赏板。</p>
         </header>
 
-        <div v-if="loadingMeta" class="writ-skeleton" aria-hidden="true">
-          <span v-for="n in 5" :key="n" class="sk sk-row"></span>
-        </div>
-
-        <p v-else-if="metaError" class="writ-banner error">{{ metaError }}</p>
-
-        <div v-else-if="submitOk" class="writ-receipt">
+        <div v-if="submitOk" class="writ-receipt">
           <div class="wax-seal" aria-hidden="true">
             <span class="wax-glow"></span>
             <span class="wax-rune">委</span>
@@ -229,20 +245,26 @@ function unwrapItems(payload) {
         </div>
 
         <form v-else class="writ-form" @submit.prevent="publish">
+          <p v-if="metaError" class="writ-banner error writ-wide">{{ metaError }}</p>
+
           <label class="writ-field">
             <span>目标仓库</span>
-            <select v-model="form.repositoryId">
+            <select v-model="form.repositoryId" :disabled="loadingMeta">
+              <option v-if="loadingMeta" value="" disabled>载入仓库中…</option>
+              <option v-else-if="!repositories.length" value="" disabled>暂无可用仓库，请先导入</option>
               <option v-for="r in repositories" :key="r.repositoryId" :value="String(r.repositoryId)">
                 {{ r.name }}（{{ r.defaultBranch || 'main' }}）
               </option>
             </select>
             <small v-if="errors.repositoryId" class="writ-error">{{ errors.repositoryId }}</small>
-            <small v-else-if="selectedRepo" class="writ-hint">{{ selectedRepo.sourceUrl }}</small>
+            <small v-else-if="selectedRepo" class="writ-hint">{{ toBrowsableGiteaUrl(selectedRepo.sourceUrl) }}</small>
           </label>
 
           <label class="writ-field">
             <span>分类</span>
-            <select v-model="form.categoryId">
+            <select v-model="form.categoryId" :disabled="loadingMeta">
+              <option v-if="loadingMeta" value="" disabled>载入分类中…</option>
+              <option v-else-if="!categories.length" value="" disabled>暂无分类</option>
               <option v-for="c in categories" :key="c.categoryId" :value="String(c.categoryId)">{{ c.name }}</option>
             </select>
             <small v-if="errors.categoryId" class="writ-error">{{ errors.categoryId }}</small>
@@ -296,19 +318,27 @@ function unwrapItems(payload) {
 
           <label class="writ-field writ-wide">
             <span>任务标题</span>
-            <input v-model.trim="form.title" placeholder="Hello World" />
+            <input v-model.trim="form.title" placeholder="例：Hello World" />
             <small v-if="errors.title" class="writ-error">{{ errors.title }}</small>
           </label>
 
           <label class="writ-field writ-wide">
             <span>任务描述</span>
-            <textarea v-model="form.description" rows="3"></textarea>
+            <textarea
+              v-model="form.description"
+              rows="3"
+              placeholder="例：在仓库中新增一个 hello world 文件，作为最短 MVP 演示任务。"
+            ></textarea>
             <small v-if="errors.description" class="writ-error">{{ errors.description }}</small>
           </label>
 
           <label class="writ-field writ-wide">
             <span>完成标准</span>
-            <textarea v-model="form.completionCriteria" rows="2"></textarea>
+            <textarea
+              v-model="form.completionCriteria"
+              rows="2"
+              placeholder='例：新增 hello.md（或 hello world 文件），内容包含 "Hello, Git-Guild!"，并通过 PR 合并。'
+            ></textarea>
             <small v-if="errors.completionCriteria" class="writ-error">{{ errors.completionCriteria }}</small>
           </label>
 
@@ -355,6 +385,8 @@ function unwrapItems(payload) {
   justify-content: center;
   align-items: flex-start;
   padding: clamp(24px, 6vh, 64px) 18px;
+  /* desk.webp 主色兜底：图片加载完成前先铺同色调底，避免背景突兀切换。 */
+  background-color: #241710;
   background-image: linear-gradient(rgba(8, 4, 2, 0.52), rgba(8, 4, 2, 0.52)),
     url('../../assets/desk.webp');
 }
@@ -431,6 +463,8 @@ function unwrapItems(payload) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  /* 顶端对齐：避免"目标仓库"格因多一行地址提示而拉高同行的"分类"选择框，导致两框不齐。 */
+  align-items: start;
 }
 .writ-field {
   display: grid;
@@ -481,6 +515,16 @@ function unwrapItems(payload) {
 }
 .writ-field textarea {
   resize: vertical;
+}
+/* 仓库/分类下拉在元数据到达前可见但禁用：轻微脉动，提示"正在载入"而非故障。 */
+.writ-field select:disabled {
+  color: rgba(91, 53, 29, 0.55);
+  cursor: progress;
+  animation: writ-loading-pulse 1.3s ease-in-out infinite;
+}
+@keyframes writ-loading-pulse {
+  0%, 100% { background: rgba(255, 244, 210, 0.4); }
+  50% { background: rgba(255, 244, 210, 0.66); }
 }
 
 .writ-tag-options {
@@ -611,33 +655,6 @@ function unwrapItems(payload) {
   margin-top: 20px;
 }
 
-.writ-skeleton {
-  display: grid;
-  gap: 14px;
-  margin-top: 8px;
-}
-.sk {
-  border-radius: 5px;
-  background: linear-gradient(
-    90deg,
-    rgba(122, 74, 24, 0.1),
-    rgba(122, 74, 24, 0.22),
-    rgba(122, 74, 24, 0.1)
-  );
-  background-size: 200% 100%;
-  animation: writ-shimmer 1.3s ease-in-out infinite;
-}
-.sk-row {
-  height: 40px;
-}
-@keyframes writ-shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
 
 @media (max-width: 640px) {
   .writ-panel {

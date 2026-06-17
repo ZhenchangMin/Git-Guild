@@ -46,7 +46,7 @@ class QuestAssignmentControllerTest {
                 "ACTIVE",
                 "task/quest-5001-assignment-7001-adventurer",
                 OffsetDateTime.parse("2026-06-02T10:30:00+08:00"),
-                new RepositoryBrief(1001L, "git-guild-demo", "main", "SYNCED"),
+                new RepositoryBrief(1001L, "git-guild-demo", "main", "SYNCED", "http://gitea.local:3000/spike-admin/git-guild-demo"),
                 new IssueBrief(3001L, "42", "接入真实 Gitea", "OPEN", "http://localhost:3000/issues/42"))));
 
         mockMvc.perform(get("/api/v1/users/me/quest-assignments")

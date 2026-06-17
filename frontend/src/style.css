@@ -1273,6 +1273,11 @@ h2 {
   transform: translate(0, -50%);
 }
 
+/* Home 逃生键：复用 back-orb 圆形/悬浮提示样式，固定在返回键正下方（22 + 36 + 8）。 */
+.home-orb {
+  top: 66px;
+}
+
 .session-action-stack {
   position: fixed;
   top: 22px;

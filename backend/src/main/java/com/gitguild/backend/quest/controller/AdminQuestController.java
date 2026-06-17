@@ -41,10 +41,11 @@ public class AdminQuestController {
     }
 
     @GetMapping("/admin/quests")
-    public ApiResponse<AdminQuestPageResponse> listPendingQuests(
+    public ApiResponse<AdminQuestPageResponse> listQuests(
+            @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ApiResponse.success(adminQuestService.listPendingQuests(page, size));
+        return ApiResponse.success(adminQuestService.listQuests(status, page, size));
     }
 
     @PostMapping("/quests/{questId}/admin-reviews")

@@ -1,8 +1,8 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 
 import { adminApi } from '../../api/adminApi'
-import { adminExceptions, exceptionActions, exceptionCategories } from '../../data/adminExceptions'
+import { exceptionActions, exceptionCategories } from '../../data/adminExceptions'
 
 const statusMeta = {
   UNRESOLVED: { label: '未解决', tone: 'danger' },
@@ -10,9 +10,11 @@ const statusMeta = {
   RESOLVED: { label: '已解决', tone: 'approved' },
 }
 
-const exceptions = ref(adminExceptions.map((item) => ({ ...item, logs: [...item.logs] })))
-const activeId = ref(exceptions.value[0]?.id ?? null)
+const exceptions = ref([])
+const activeId = ref(null)
 const categoryFilter = ref('ALL')
+const loading = ref(false)
+const loadError = ref('')
 
 const comment = ref('')
 const action = ref('')
@@ -25,6 +27,68 @@ const result = ref({
   title: '等待管理员处理',
   body: '从左侧选择一条异常，查看原因、影响与日志，选择处理动作并填写处理说明后执行。',
 })
+
+// 后端 ExceptionView → 视图模型（id/repository/detectedAt 适配模板既有字段名）。
+function normalize(view) {
+  return {
+    id: view.exceptionId,
+    category: view.category,
+    type: view.type,
+    title: view.title,
+    status: view.status,
+    repository: view.repositoryName ?? '—',
+    relatedQuest: view.relatedQuest ?? '—',
+    detectedAt: formatDateTime(view.detectedAt),
+    reason: view.reason,
+    impact: view.impact ?? '—',
+    suggestion: view.suggestion ?? '—',
+    retryable: view.retryable,
+    logs: Array.isArray(view.logs) ? [...view.logs] : [],
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) return '刚刚'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '刚刚'
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hh = String(date.getHours()).padStart(2, '0')
+  const mm = String(date.getMinutes()).padStart(2, '0')
+  return `${month}-${day} ${hh}:${mm}`
+}
+
+function readableError(error, fallback) {
+  if (error?.details) return `${fallback} ${error.details}`
+  if (error?.message) return `${fallback} ${error.message}`
+  return fallback
+}
+
+onMounted(loadExceptions)
+
+async function loadExceptions() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    const response = await adminApi.listExceptions()
+    const items = response?.data?.items ?? []
+    exceptions.value = items.map(normalize)
+    activeId.value = exceptions.value[0]?.id ?? null
+    if (active.value) action.value = exceptionActions[active.value.category]?.[0]?.value ?? ''
+    result.value = {
+      tone: exceptions.value.length ? 'idle' : 'approved',
+      title: exceptions.value.length ? '等待管理员处理' : '当前没有待处理异常',
+      body: exceptions.value.length
+        ? '从左侧选择一条异常，查看原因、影响与日志，选择处理动作并填写处理说明后执行。'
+        : '平台暂未检测到异常。仓库同步失败等事件会自动出现在这里。',
+    }
+  } catch (error) {
+    loadError.value = readableError(error, '异常队列读取失败。')
+    result.value = { tone: 'danger', title: '异常队列读取失败', body: loadError.value }
+  } finally {
+    loading.value = false
+  }
+}
 
 const filtered = computed(() =>
   categoryFilter.value === 'ALL'
@@ -54,6 +118,14 @@ function statusOf(item) {
   return statusMeta[item.status] ?? { label: item.status, tone: 'pending' }
 }
 
+// 用后端返回的最新 ExceptionView 就地替换列表中的对应项。
+function replaceFromView(view) {
+  const fresh = normalize(view)
+  const index = exceptions.value.findIndex((item) => item.id === fresh.id)
+  if (index >= 0) exceptions.value.splice(index, 1, fresh)
+  return fresh
+}
+
 function selectException(item) {
   activeId.value = item.id
   comment.value = ''
@@ -61,18 +133,9 @@ function selectException(item) {
   action.value = exceptionActions[item.category]?.[0]?.value ?? ''
   result.value = {
     tone: 'idle',
-    title: `${item.id} 已调阅`,
+    title: `异常 #${item.id} 已调阅`,
     body: `正在处理「${item.type}」。请选择处理动作并填写处理说明。`,
   }
-}
-
-// 初始化默认动作。
-if (active.value) action.value = exceptionActions[active.value.category]?.[0]?.value ?? ''
-
-function appendLog(item, line) {
-  const now = new Date()
-  const stamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-  item.logs = [...item.logs, `${stamp} ${line}`]
 }
 
 async function retrySync() {
@@ -80,14 +143,17 @@ async function retrySync() {
   if (!item || !item.retryable || submitting.value) return
   submitting.value = true
   try {
-    await adminApi.retryRepositoryException(item.id)
-    appendLog(item, 'retry triggered by admin · awaiting external response')
-    item.status = 'IN_REVIEW'
+    const response = await adminApi.retryException(item.id)
+    const fresh = replaceFromView(response.data)
     result.value = {
-      tone: 'return',
-      title: `${item.id} · 已发起重试`,
-      body: '已对外部接口发起重试，状态转为「需复核」。接口恢复前保留上一次成功同步的数据。',
+      tone: statusOf(fresh).tone,
+      title: `异常 #${fresh.id} · 已发起重试`,
+      body: fresh.status === 'RESOLVED'
+        ? '重试成功，仓库已重新同步，异常已闭环。'
+        : '已对外部接口发起重试但仍失败，状态转为「需复核」。接口恢复前保留上一次成功同步的数据。',
     }
+  } catch (error) {
+    result.value = { tone: 'danger', title: '重试失败', body: readableError(error, '发起重试失败。') }
   } finally {
     submitting.value = false
   }
@@ -112,17 +178,17 @@ async function submitResolve() {
 
   submitting.value = true
   try {
-    await adminApi.resolveException(item.id, { action: action.value, comment: trimmed })
+    const response = await adminApi.resolveException(item.id, { action: action.value, comment: trimmed })
+    const fresh = replaceFromView(response.data)
     const chosen = actionOptions.value.find((option) => option.value === action.value)
-    const resolved = action.value !== 'BLOCK' && action.value !== 'REQUEST_FIX' && action.value !== 'REQUEST_GRANT'
-    item.status = resolved ? 'RESOLVED' : 'IN_REVIEW'
-    appendLog(item, `resolved by admin · ${chosen?.label ?? action.value}`)
     result.value = {
-      tone: statusOf(item).tone,
-      title: `${item.id} · ${chosen?.label ?? '已处理'}`,
-      body: `${trimmed}（当前状态：${statusOf(item).label}）`,
+      tone: statusOf(fresh).tone,
+      title: `异常 #${fresh.id} · ${chosen?.label ?? '已处理'}`,
+      body: `${trimmed}（当前状态：${statusOf(fresh).label}）`,
     }
     comment.value = ''
+  } catch (error) {
+    result.value = { tone: 'danger', title: '处理失败', body: readableError(error, '提交处理失败。') }
   } finally {
     submitting.value = false
   }
@@ -171,12 +237,14 @@ async function submitResolve() {
           type="button"
           @click="selectException(item)"
         >
-          <span>{{ item.id }} · {{ item.detectedAt }}</span>
+          <span>#{{ item.id }} · {{ item.detectedAt }}</span>
           <strong>{{ item.type }} · {{ item.title }}</strong>
           <small>{{ item.repository }} · {{ item.relatedQuest }}</small>
           <em>{{ statusOf(item).label }}</em>
         </button>
-        <p v-if="filtered.length === 0" class="admin-empty-queue">该类型下没有异常记录。</p>
+        <p v-if="filtered.length === 0" class="admin-empty-queue">
+          {{ loading ? '正在读取异常队列...' : loadError || '该类型下没有异常记录。' }}
+        </p>
       </div>
     </aside>
 

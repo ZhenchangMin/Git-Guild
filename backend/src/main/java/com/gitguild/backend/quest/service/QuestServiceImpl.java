@@ -323,8 +323,8 @@ public class QuestServiceImpl implements QuestService {
                 quest.getDifficulty(),
                 quest.getRewardXp(),
                 techStack,
-                new RepositoryBrief(repo.getRepositoryId(), repo.getName(), repo.getDefaultBranch(), repo.getSyncStatus()),
-                new QuestResponses.IssueBrief(issue.getIssueId(), issue.getExternalIssueId(), issue.getTitle(), issue.getStatus(), issue.getExternalUrl()),
+                new RepositoryBrief(repo.getRepositoryId(), repo.getName(), repo.getDefaultBranch(), repo.getSyncStatus(), repoWebUrl(repo)),
+                issueBrief(issue),
                 prBrief);
     }
 
@@ -422,7 +422,8 @@ public class QuestServiceImpl implements QuestService {
                         quest.getRepository().getRepositoryId(),
                         quest.getRepository().getName(),
                         quest.getRepository().getDefaultBranch(),
-                        quest.getRepository().getSyncStatus()),
+                        quest.getRepository().getSyncStatus(),
+                        repoWebUrl(quest.getRepository())),
                 quest.getCreatedAt());
     }
 
@@ -445,8 +446,8 @@ public class QuestServiceImpl implements QuestService {
                 quest.getRewardXp(),
                 quest.getStatus(),
                 new QuestResponses.UserBrief(quest.getPublisher().getUserId(), quest.getPublisher().getUsername()),
-                new QuestResponses.RepositoryBrief(quest.getRepository().getRepositoryId(), quest.getRepository().getName(), quest.getRepository().getDefaultBranch(), quest.getRepository().getSyncStatus()),
-                new QuestResponses.IssueBrief(quest.getIssue().getIssueId(), quest.getIssue().getExternalIssueId(), quest.getIssue().getTitle(), quest.getIssue().getStatus(), quest.getIssue().getExternalUrl()),
+                new QuestResponses.RepositoryBrief(quest.getRepository().getRepositoryId(), quest.getRepository().getName(), quest.getRepository().getDefaultBranch(), quest.getRepository().getSyncStatus(), repoWebUrl(quest.getRepository())),
+                issueBrief(quest.getIssue()),
                 new QuestResponses.CategoryBrief(quest.getCategory().getCategoryId(), quest.getCategory().getName()),
                 tagResponses(quest),
                 assignment,
@@ -459,6 +460,15 @@ public class QuestServiceImpl implements QuestService {
                 .sorted(Comparator.comparing(QuestTag::getTagId))
                 .map(tag -> new QuestResponses.TagBrief(tag.getTagId(), tag.getName(), tag.getColor()))
                 .toList();
+    }
+
+    // issue 是可选关联（issue_id 可空）：未关联 Issue 的委托返回 null，避免裸解引用 NPE → 500。
+    private QuestResponses.IssueBrief issueBrief(CodeIssue issue) {
+        if (issue == null) {
+            return null;
+        }
+        return new QuestResponses.IssueBrief(issue.getIssueId(), issue.getExternalIssueId(),
+                issue.getTitle(), issue.getStatus(), issue.getExternalUrl());
     }
 
     private String toJson(List<String> values) {
@@ -547,6 +557,24 @@ public class QuestServiceImpl implements QuestService {
      * 构造带 admin 凭据的克隆地址，供接取者本地直接 clone + push（当前为单 admin Gitea 模型）。
      * 形如 {@code http://<admin>:<token>@host/owner/repo.git}；token 缺失时退回明文 sourceUrl。
      */
+    /**
+     * 仓库的对外 Gitea 网页地址（浏览器可点开）。把内网 base-url 前缀替换为 public-base-url；
+     * source_url 非内网前缀或缺失时原样返回。
+     */
+    private String repoWebUrl(CodeRepository repository) {
+        String source = repository == null ? null : repository.getSourceUrl();
+        if (source == null || source.isBlank()) {
+            return null;
+        }
+        String internal = giteaProperties.baseUrl();
+        String external = giteaProperties.publicBaseUrl();
+        if (internal != null && external != null && source.startsWith(internal)) {
+            String base = external.endsWith("/") ? external.substring(0, external.length() - 1) : external;
+            return base + source.substring(internal.length());
+        }
+        return source;
+    }
+
     private String buildCredentialedCloneUrl(Quest quest) {
         CodeRepository repository = quest.getRepository();
         String sourceUrl = repository != null ? repository.getSourceUrl() : null;
@@ -585,13 +613,9 @@ public class QuestServiceImpl implements QuestService {
                         quest.getRepository().getRepositoryId(),
                         quest.getRepository().getName(),
                         quest.getRepository().getDefaultBranch(),
-                        quest.getRepository().getSyncStatus()),
-                new QuestResponses.IssueBrief(
-                        quest.getIssue().getIssueId(),
-                        quest.getIssue().getExternalIssueId(),
-                        quest.getIssue().getTitle(),
-                        quest.getIssue().getStatus(),
-                        quest.getIssue().getExternalUrl()));
+                        quest.getRepository().getSyncStatus(),
+                        repoWebUrl(quest.getRepository())),
+                issueBrief(quest.getIssue()));
     }
 
 }

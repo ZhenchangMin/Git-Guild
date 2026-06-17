@@ -144,7 +144,8 @@ public class GiteaAdapterImpl implements GiteaAdapter {
     }
 
     @Override
-    public RepositoryInfo migrateRepository(String cloneAddr, String repoName, String description, boolean withMetadata) {
+    public RepositoryInfo migrateRepository(
+            String cloneAddr, String repoName, String description, boolean withMetadata, String authToken) {
         String owner = resolveTokenOwner();
         // 幂等：目标仓库已存在则直接复用，避免重复迁移与 409
         RepositoryInfo existing = getRepositoryOrNull(owner, repoName);
@@ -152,17 +153,23 @@ public class GiteaAdapterImpl implements GiteaAdapter {
             return existing;
         }
 
+        String service = detectService(cloneAddr);
         Map<String, Object> reqBody = new java.util.HashMap<>();
         reqBody.put("clone_addr", cloneAddr);
         reqBody.put("repo_owner", owner);
         reqBody.put("repo_name", repoName);
         reqBody.put("mirror", false);
         reqBody.put("private", false);
-        reqBody.put("service", detectService(cloneAddr));
+        reqBody.put("service", service);
         reqBody.put("issues", withMetadata);
         reqBody.put("pull_requests", withMetadata);
         reqBody.put("labels", withMetadata);
         reqBody.put("milestones", withMetadata);
+        // 仅 GitHub 源带鉴权：用 token 走 GitHub 认证 API（5000 次/小时），避免匿名限流卡死 Issue 迁移。
+        // 其它源（gitlab/gitea/裸 git）不附带，以免把 GitHub token 误发给无关主机。
+        if ("github".equals(service) && authToken != null && !authToken.isBlank()) {
+            reqBody.put("auth_token", authToken);
+        }
         if (description != null && !description.isBlank()) {
             reqBody.put("description", description);
         }
@@ -288,6 +295,22 @@ public class GiteaAdapterImpl implements GiteaAdapter {
                 .retrieve()
                 .toBodilessEntity(), "repo=" + owner + "/" + repo + " merge pull #" + prNumber);
         return getPullRequest(owner, repo, prNumber);
+    }
+
+    @Override
+    public void deleteRepository(String owner, String repo) {
+        try {
+            execute(() -> client.delete()
+                    .uri("/repos/{owner}/{repo}", owner, repo)
+                    .retrieve()
+                    .toBodilessEntity(), "repo=" + owner + "/" + repo + " delete");
+        } catch (BusinessException e) {
+            // 已不存在视为删除成功（幂等）；其余错误上抛，调用方回滚事务
+            if ("CODE_HOST_RESOURCE_NOT_FOUND".equals(e.getCode())) {
+                return;
+            }
+            throw e;
+        }
     }
 
     /**

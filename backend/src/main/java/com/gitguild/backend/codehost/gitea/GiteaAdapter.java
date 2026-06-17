@@ -106,9 +106,13 @@ public interface GiteaAdapter {
      * @param repoName     迁入平台后的仓库名（平台内唯一，建议确定性派生）
      * @param description  仓库描述（可选）
      * @param withMetadata 是否一并迁入 Issue / PR / Label / Milestone（仅对可识别的源平台有效）
+     * @param authToken    源平台的鉴权 token（可选）：迁移 GitHub 仓库的 Issue 等元数据时必须带上，
+     *                     否则 Gitea 匿名访问 GitHub API 会触发 60 次/小时限流，导致迁移卡死、
+     *                     Issue 索引损坏。仅当源平台为 GitHub 时生效，其余源忽略。
      * @return 迁入后的平台仓库元数据，含 id、html_url、default_branch
      */
-    RepositoryInfo migrateRepository(String cloneAddr, String repoName, String description, boolean withMetadata);
+    RepositoryInfo migrateRepository(
+            String cloneAddr, String repoName, String description, boolean withMetadata, String authToken);
 
     /**
      * 在指定分支创建一个文件提交（Issue #13）。
@@ -126,4 +130,18 @@ public interface GiteaAdapter {
      * 合并指定 PR，供课程作业 MVP 审核闭环代理执行。
      */
     PrInfo mergePullRequest(String owner, String repo, int prNumber);
+
+    /**
+     * 删除平台 Gitea 上的仓库（对应 {@code DELETE /repos/{owner}/{repo}}）。
+     *
+     * <p>供「委托人删除已导入仓库」级联清理使用：先在平台库删除业务数据，再删掉迁入的 Gitea 副本。
+     *
+     * <p><b>幂等：</b>目标仓库已不存在（Gitea 返回 404）时静默返回，不抛异常——便于重试与
+     * 「DB 记录在、Gitea 副本已被手动删」的兜底。其余错误（401/5xx/网络）仍抛
+     * {@link com.gitguild.backend.common.BusinessException}，调用方据此回滚事务。
+     *
+     * @param owner Gitea 仓库 owner
+     * @param repo  Gitea 仓库名
+     */
+    void deleteRepository(String owner, String repo);
 }

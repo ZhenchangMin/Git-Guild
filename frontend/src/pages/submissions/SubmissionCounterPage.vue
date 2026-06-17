@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import submissionCounterImg from '../../assets/submission-counter-clerk-v0.webp'
+import HomeOrb from '../../components/HomeOrb.vue'
 import SubmissionCounter from '../../components/SubmissionCounter.vue'
 import { sessionStore } from '../../stores/sessionStore'
 
@@ -100,8 +101,14 @@ const backLabel = computed(() =>
     : '返回公会大厅',
 )
 
+// 有站内历史就弹出（回到真正的来路），避免 push 到工作台后与工作台的 back() 来回 ping-pong；
+// 无历史（深链直入）时才兜底 push 到角色对应的工作台 / 大厅。
 function navigateBack() {
-  router.push(backTarget.value)
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push(backTarget.value)
+  }
 }
 
 function formatReceiptTime(date) {
@@ -117,6 +124,7 @@ function formatReceiptTime(date) {
       class="scene work-scene submission-mode"
       :style="{ backgroundImage: `url(${submissionCounterImg})` }"
     >
+      <HomeOrb />
       <button class="back-orb" type="button" :aria-label="backLabel" @click="navigateBack">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />

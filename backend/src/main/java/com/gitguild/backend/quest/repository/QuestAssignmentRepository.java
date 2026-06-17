@@ -7,6 +7,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface QuestAssignmentRepository extends JpaRepository<QuestAssignment, Long> {
 
@@ -24,4 +26,19 @@ public interface QuestAssignmentRepository extends JpaRepository<QuestAssignment
      * 查 Adventurer 的所有 ACTIVE 接取，用于推荐算法候选集过滤——排除已接取的 Quest。
      */
     List<QuestAssignment> findByAssigneeUserIdAndStatus(Long assigneeId, AssignmentStatus status);
+
+    /** 指定 Quest 集合下的全部接取记录，供仓库级联删除清理使用。 */
+    List<QuestAssignment> findByQuestQuestIdIn(Collection<Long> questIds);
+
+    @Query("""
+            select a
+            from QuestAssignment a
+            join fetch a.quest q
+            where a.assignee.userId = :assigneeId
+              and a.status = :status
+            order by a.acceptedAt desc
+            """)
+    List<QuestAssignment> findByAssigneeUserIdAndStatusWithQuestOrderByAcceptedAtDesc(
+            @Param("assigneeId") Long assigneeId,
+            @Param("status") AssignmentStatus status);
 }

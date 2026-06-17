@@ -201,7 +201,22 @@ async function handlePrimaryAction() {
   emit('open-workbench')
 }
 
+// “查看仓库”跳转到平台 Gitea 仓库页（新标签）；缺地址时回退到工作台。
+function viewRepository() {
+  const url = repository.value.webUrl
+  if (url) {
+    window.open(url, '_blank', 'noopener')
+    return
+  }
+  emit('open-workbench')
+}
+
 function handleSecondaryAction() {
+  if (localWorkflowState.value === 'available') {
+    viewRepository()
+    return
+  }
+
   if (localWorkflowState.value === 'in-progress') {
     inlineNotice.value = '将进入提交柜台登记该任务成果。'
     emit('open-submission', props.quest.id)
@@ -344,7 +359,7 @@ function showIssueHint() {
             </div>
           </dl>
           <div class="side-actions">
-            <button class="primary-action" type="button" @click="emit('open-workbench')">查看仓库</button>
+            <button class="primary-action" type="button" @click="viewRepository">查看仓库</button>
             <button class="quiet-action" type="button" @click="showIssueHint">查看 Issue</button>
           </div>
         </section>

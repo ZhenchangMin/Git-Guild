@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import questBoardImg from '../../assets/quest board.webp'
+import HomeOrb from '../../components/HomeOrb.vue'
 import QuestDetail from '../../components/QuestDetail.vue'
 import { sessionStore } from '../../stores/sessionStore'
 
@@ -108,6 +109,7 @@ function normalizeQuestDetail(quest) {
       name: quest.repository?.name ?? '未关联仓库',
       branch: quest.repository?.defaultBranch ?? '未提供',
       syncStatus: quest.repository?.syncStatus ?? '未知',
+      webUrl: quest.repository?.webUrl ?? null,
     },
     issue: {
       issueId: quest.issue?.issueId ?? null,
@@ -144,8 +146,13 @@ async function loadQuestDetail() {
   }
 }
 
+// 有站内历史就弹回真正的来路（任务板 / 工作台等），无历史（深链直入）时兜底到任务板。
 function goBack() {
-  router.push({ name: 'quest-board' })
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push({ name: 'quest-board' })
+  }
 }
 
 function openWorkbench() {
@@ -170,6 +177,7 @@ onMounted(loadQuestDetail)
 <template>
   <main class="app-shell">
     <section class="scene quest-detail-mode" :style="{ backgroundImage: `url(${questBoardImg})` }">
+      <HomeOrb />
       <button class="back-orb" type="button" aria-label="返回上一页" @click="goBack">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />

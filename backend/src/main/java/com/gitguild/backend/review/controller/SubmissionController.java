@@ -1,12 +1,14 @@
 package com.gitguild.backend.review.controller;
 
 import com.gitguild.backend.common.ApiResponse;
+import com.gitguild.backend.review.domain.SubmissionStatus;
 import com.gitguild.backend.review.dto.CreateSubmissionRequest;
 import com.gitguild.backend.review.dto.ReviewSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.PullRequestBrief;
 import com.gitguild.backend.review.dto.SubmissionResponses.ReviewRecordResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionDetailResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionListItemResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
 import com.gitguild.backend.review.service.ReviewService;
 import com.gitguild.backend.review.service.SubmissionService;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -33,6 +36,15 @@ public class SubmissionController {
     public SubmissionController(SubmissionService submissionService, ReviewService reviewService) {
         this.submissionService = submissionService;
         this.reviewService = reviewService;
+    }
+
+    @GetMapping
+    public ApiResponse<List<SubmissionListItemResponse>> listSubmissions(
+            Authentication authentication,
+            @RequestParam(required = false) SubmissionStatus status) {
+        return ApiResponse.success(submissionService.listSubmissions(
+                SecurityPrincipalUtils.currentUserId(authentication),
+                status));
     }
 
     @PostMapping

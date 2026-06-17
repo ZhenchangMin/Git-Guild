@@ -1,6 +1,7 @@
 export const roleNavigation = {
   VISITOR: [
     { label: '悬赏任务板', routeName: 'quest-board' },
+    { label: '艾丽丝', routeName: 'front-desk' },
     { label: '帮助说明', routeName: 'help' },
   ],
   ADVENTURER: [

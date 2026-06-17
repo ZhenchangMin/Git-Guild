@@ -74,6 +74,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/quest-categories", "/api/v1/quest-tags").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/repositories/*/guide").permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/assistant/chat").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/code-host/webhooks/*").permitAll()
                         // Swagger / OpenAPI 文档允许匿名访问，方便开发阶段调试接口。
                         .requestMatchers("/api-docs/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()

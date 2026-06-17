@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import workbenchImg from '../../assets/workbench.webp'
+import HomeOrb from '../../components/HomeOrb.vue'
 import MaintainerReviewActions from '../../components/MaintainerReviewActions.vue'
 import MaintainerReviewDetail from '../../components/MaintainerReviewDetail.vue'
 import MaintainerReviewQueue from '../../components/MaintainerReviewQueue.vue'
@@ -167,8 +168,14 @@ async function loadReviewQueue() {
   }
 }
 
+// 返回上一页：有站内历史就弹出（通常是事务所），避免用 push 反复压栈造成
+// review ↔ maintainer 历史来回 ping-pong 死循环；无历史（深链）时兜底回事务所。
 function backToWorkbench() {
-  router.push({ name: 'maintainer-workbench' })
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push({ name: 'maintainer-workbench' })
+  }
 }
 
 function selectReview(reviewId) {
@@ -319,6 +326,7 @@ onMounted(loadReviewQueue)
       class="scene work-scene maintainer-review-scene"
       :style="{ backgroundImage: `url(${workbenchImg})` }"
     >
+      <HomeOrb />
       <button class="back-orb" type="button" aria-label="返回委托人工作台" @click="backToWorkbench">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />

@@ -84,6 +84,15 @@ public final class SubmissionResponses {
             List<ReviewRecordResponse> reviewRecords) {
     }
 
+    public record SubmissionListItemResponse(
+            Long submissionId,
+            QuestBrief quest,
+            PullRequestBrief pullRequest,
+            String description,
+            SubmissionStatus status,
+            OffsetDateTime submittedAt) {
+    }
+
     public record SubmissionReviewQueueItemResponse(
             Long submissionId,
             QuestBrief quest,

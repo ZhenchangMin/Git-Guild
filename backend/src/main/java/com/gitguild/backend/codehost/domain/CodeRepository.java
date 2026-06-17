@@ -159,4 +159,21 @@ public class CodeRepository {
         this.syncErrorMessage = null;
         this.lastSyncedAt = OffsetDateTime.now();
     }
+
+    /** 标记一次同步失败：保留上一次 {@code lastSyncedAt} 快照，仅落错误信息。 */
+    public void markSyncFailed(String errorMessage) {
+        this.syncStatus = "FAILED";
+        if (errorMessage != null && errorMessage.length() > 512) {
+            errorMessage = errorMessage.substring(0, 512);
+        }
+        this.syncErrorMessage = errorMessage;
+    }
+
+    public OffsetDateTime getLastSyncedAt() {
+        return lastSyncedAt;
+    }
+
+    public String getSyncErrorMessage() {
+        return syncErrorMessage;
+    }
 }

@@ -29,6 +29,12 @@ public interface QuestRepository extends JpaRepository<Quest, Long>, JpaSpecific
      */
     List<Quest> findByStatusIn(Collection<QuestStatus> statuses);
 
+    /** 分页版：管理员控制台「全部」视图按状态集合分页（待审核/已上架/已退回/已下架，排除 DRAFT）。 */
+    Page<Quest> findByStatusIn(Collection<QuestStatus> statuses, Pageable pageable);
+
     /** 当前维护者发布的全部 Quest（含所有状态），供「我发布的委托」视图按创建时间倒序展示。 */
     List<Quest> findByPublisherUserIdOrderByCreatedAtDesc(Long publisherId);
+
+    /** 某仓库下的全部 Quest，供仓库级联删除按 FK 安全顺序清理使用。 */
+    List<Quest> findByRepositoryRepositoryId(Long repositoryId);
 }

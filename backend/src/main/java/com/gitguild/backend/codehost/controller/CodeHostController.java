@@ -12,6 +12,7 @@ import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
 import com.gitguild.backend.codehost.service.RepositoryService;
+import com.gitguild.backend.codehost.service.RepositorySyncService;
 import com.gitguild.backend.common.ApiResponse;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.security.SecurityPrincipalUtils;
@@ -33,6 +34,7 @@ public class CodeHostController {
 
     private final GiteaAdapter giteaAdapter;
     private final RepositoryService repositoryService;
+    private final RepositorySyncService repositorySyncService;
     private final CodeRepositoryRepository repositoryRepository;
     private final CodeIssueRepository issueRepository;
     private final CodePullRequestRepository pullRequestRepository;
@@ -40,11 +42,13 @@ public class CodeHostController {
     public CodeHostController(
             GiteaAdapter giteaAdapter,
             RepositoryService repositoryService,
+            RepositorySyncService repositorySyncService,
             CodeRepositoryRepository repositoryRepository,
             CodeIssueRepository issueRepository,
             CodePullRequestRepository pullRequestRepository) {
         this.giteaAdapter = giteaAdapter;
         this.repositoryService = repositoryService;
+        this.repositorySyncService = repositorySyncService;
         this.repositoryRepository = repositoryRepository;
         this.issueRepository = issueRepository;
         this.pullRequestRepository = pullRequestRepository;
@@ -70,26 +74,9 @@ public class CodeHostController {
 
     @PostMapping("/repositories/{repositoryId}/sync")
     public ApiResponse<RepositoryResponse> syncRepository(@PathVariable Long repositoryId) {
-        CodeRepository repository = findRepository(repositoryId);
-        syncIssues(repository);
-        repository.markSynced();
-        return ApiResponse.success(RepositoryResponse.from(repositoryRepository.save(repository)));
-    }
-
-    /**
-     * 从 Gitea 拉取仓库 Issue 并 upsert 到本地（按 external_issue_id 幂等）。
-     */
-    private void syncIssues(CodeRepository repository) {
-        GiteaRepoCoordinates coords = GiteaRepoCoordinates.parse(repository.getSourceUrl());
-        for (com.gitguild.backend.codehost.gitea.dto.IssueInfo remoteIssue : giteaAdapter.listIssues(coords.owner(), coords.repo())) {
-            String externalIssueId = String.valueOf(remoteIssue.number());
-            String status = remoteIssue.state() == null ? "OPEN" : remoteIssue.state().trim().toUpperCase();
-            CodeIssue issue = issueRepository
-                    .findByRepositoryRepositoryIdAndExternalIssueId(repository.getRepositoryId(), externalIssueId)
-                    .orElseGet(() -> new CodeIssue(repository, externalIssueId, remoteIssue.title(), status));
-            issue.updateFromSync(remoteIssue.title(), status, remoteIssue.htmlUrl());
-            issueRepository.save(issue);
-        }
+        // 同步逻辑下沉到 RepositorySyncService：与异常中心「重试」共用一套实现，失败自动登记异常。
+        CodeRepository repository = repositorySyncService.syncRepository(repositoryId);
+        return ApiResponse.success(RepositoryResponse.from(repository));
     }
 
     @GetMapping("/repositories/{repositoryId}/issues")

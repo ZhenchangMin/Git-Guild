@@ -28,6 +28,7 @@ import com.gitguild.backend.review.domain.Submission;
 import com.gitguild.backend.review.domain.SubmissionStatus;
 import com.gitguild.backend.review.dto.CreateSubmissionRequest;
 import com.gitguild.backend.review.dto.SubmissionResponses.CreateSubmissionResponse;
+import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionListItemResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
 import com.gitguild.backend.review.repository.ReviewRecordRepository;
 import com.gitguild.backend.review.repository.SubmissionRepository;
@@ -206,6 +207,34 @@ class SubmissionServiceImplTest {
 
         verify(submissionRepository, never()).save(any());
         verify(questRepository, never()).save(any());
+    }
+
+    @Test
+    void listSubmissionsShouldReturnCurrentSubmitterSubmissionsFilteredByStatus() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User submitter = user(3001L, UserRole.BEGINNER);
+        CodeRepository repository = repository(maintainer);
+        Quest quest = quest(maintainer, repository, QuestStatus.IN_REVIEW);
+        CodePullRequest pullRequest = pullRequest(repository);
+        Submission submission = new Submission(quest, submitter, pullRequest, "Implemented the feature.");
+        submission.setSubmissionId(9001L);
+
+        when(userRepository.findById(3001L)).thenReturn(Optional.of(submitter));
+        when(submissionRepository.findBySubmitterUserIdAndOptionalStatusWithQuestOrderBySubmittedAtDesc(
+                3001L,
+                SubmissionStatus.PENDING_REVIEW))
+                .thenReturn(List.of(submission));
+
+        List<SubmissionListItemResponse> submissions = submissionService.listSubmissions(
+                3001L,
+                SubmissionStatus.PENDING_REVIEW);
+
+        assertThat(submissions).hasSize(1);
+        assertThat(submissions.get(0).submissionId()).isEqualTo(9001L);
+        assertThat(submissions.get(0).quest().questId()).isEqualTo(5001L);
+        assertThat(submissions.get(0).pullRequest().pullRequestId()).isEqualTo(8001L);
+        assertThat(submissions.get(0).status()).isEqualTo(SubmissionStatus.PENDING_REVIEW);
+        verify(pullRequestSyncService, never()).syncRepositoryPullRequests(any());
     }
 
     @Test

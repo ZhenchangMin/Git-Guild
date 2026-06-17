@@ -39,4 +39,15 @@ public interface RepositoryService {
      * @param currentUserId Git-Guild 用户 ID
      */
     List<CodeRepository> listRepositories(Long currentUserId);
+
+    /**
+     * 删除一个已接入的仓库，并级联清理其牵连的全部业务数据（委托、提交、审核、XP、贡献、Issue、PR）
+     * 与平台 Gitea 副本。
+     *
+     * <p>仅 Guild Master / Admin 可调用。不存在的仓库抛 {@code REPOSITORY_NOT_FOUND}。
+     *
+     * @param currentUserId Git-Guild 调用者用户 ID
+     * @param repositoryId  待删除仓库 ID
+     */
+    void deleteRepository(Long currentUserId, Long repositoryId);
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class RepositoryServiceImplTest {
@@ -35,11 +37,15 @@ class RepositoryServiceImplTest {
     @Mock private GiteaAdapter giteaAdapter;
     @Mock private CodeRepositoryRepository codeRepositoryRepository;
     @Mock private UserRepository userRepository;
-    private final GiteaProperties giteaProperties = new GiteaProperties("http://localhost:3000", "", "spike-admin");
+    @Mock private RepositoryCascadeDeleter cascadeDeleter;
+    @Mock private MigrationVerifier migrationVerifier;
+    private final GiteaProperties giteaProperties = new GiteaProperties("http://localhost:3000", "", "spike-admin", null);
+
+    private static final String MIGRATION_TOKEN = "gh-migration-token";
 
     private RepositoryServiceImpl service() {
         return new RepositoryServiceImpl(giteaAdapter, giteaProperties,
-                codeRepositoryRepository, userRepository);
+                codeRepositoryRepository, userRepository, cascadeDeleter, migrationVerifier, MIGRATION_TOKEN);
     }
 
     @Test
@@ -92,12 +98,14 @@ class RepositoryServiceImplTest {
                 "spike-admin/ZhenchangMin-Operating-System", "main", false, platformUrl);
 
         when(giteaAdapter.migrateRepository(eq(externalUrl),
-                eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true)))
+                eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true), eq(MIGRATION_TOKEN)))
                 .thenReturn(info);
         when(codeRepositoryRepository
                 .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc("GITEA", platformUrl))
                 .thenReturn(Optional.empty());
         when(codeRepositoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // 迁移校验放行（passthrough）：本用例只验证外部源被迁入并登记
+        when(migrationVerifier.verifyMigrated(any())).thenAnswer(inv -> inv.getArgument(0));
 
         CodeRepository result = service().importRepository(42L, externalUrl, "OS 课程仓库", "GITEA");
 
@@ -107,7 +115,7 @@ class RepositoryServiceImplTest {
         assertThat(result.getDefaultBranch()).isEqualTo("main");
         assertThat(result.getExternalRepositoryId()).isEqualTo("9");
         verify(giteaAdapter).migrateRepository(eq(externalUrl),
-                eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true));
+                eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true), eq(MIGRATION_TOKEN));
     }
 
     @Test
@@ -126,7 +134,7 @@ class RepositoryServiceImplTest {
         // 源就在平台自己的 Gitea 上：直接登记，名称由地址推断，不触发迁移
         assertThat(result.getSourceUrl()).isEqualTo(internalUrl);
         assertThat(result.getName()).isEqualTo("demo-repo");
-        verify(giteaAdapter, never()).migrateRepository(anyString(), anyString(), any(), anyBoolean());
+        verify(giteaAdapter, never()).migrateRepository(anyString(), anyString(), any(), anyBoolean(), any());
     }
 
     @Test
@@ -138,10 +146,75 @@ class RepositoryServiceImplTest {
     }
 
     @Test
-    void listReturnsOwnerRepositories() {
+    void listReturnsOwnedRepositoriesForNonPrivilegedRole() {
+        User u = mockUser(2001L, UserRole.BEGINNER);
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(u));
         when(codeRepositoryRepository.findByOwnerUserId(2001L)).thenReturn(List.of());
 
         assertThat(service().listRepositories(2001L)).isEmpty();
+        verify(codeRepositoryRepository, never()).findAll(any(Sort.class));
+    }
+
+    @Test
+    void listReturnsOwnedRepositoriesForMaintainer() {
+        User u = mockUser(7001L, UserRole.MAINTAINER);
+        when(userRepository.findById(7001L)).thenReturn(Optional.of(u));
+        when(codeRepositoryRepository.findByOwnerUserId(7001L)).thenReturn(List.of());
+
+        // 维护者按导入者隔离：只看自己导入的仓库，不纵览平台全部
+        assertThat(service().listRepositories(7001L)).isEmpty();
+        verify(codeRepositoryRepository).findByOwnerUserId(7001L);
+        verify(codeRepositoryRepository, never()).findAll(any(Sort.class));
+    }
+
+    @Test
+    void listReturnsAllRepositoriesForAdmin() {
+        User u = mockUser(1L, UserRole.ADMIN);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(u));
+        when(codeRepositoryRepository.findAll(any(Sort.class))).thenReturn(List.of());
+
+        // 仅 Admin 作为平台运营方纵览全部仓库
+        assertThat(service().listRepositories(1L)).isEmpty();
+        verify(codeRepositoryRepository).findAll(any(Sort.class));
+        verify(codeRepositoryRepository, never()).findByOwnerUserId(anyLong());
+    }
+
+    @Test
+    void deleteRepositoryByMaintainerInvokesCascade() {
+        User u = mockUser(2001L, UserRole.MAINTAINER);
+        CodeRepository repo = new CodeRepository(u, "demo-repo", "GITEA",
+                "http://localhost:3000/spike-admin/demo-repo");
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(u));
+        when(codeRepositoryRepository.findById(55L)).thenReturn(Optional.of(repo));
+
+        service().deleteRepository(2001L, 55L);
+
+        verify(cascadeDeleter).deleteCascade(repo);
+    }
+
+    @Test
+    void deleteRepositoryRejectsNonPrivilegedRole() {
+        User u = mockUser(3001L, UserRole.BEGINNER);
+        when(userRepository.findById(3001L)).thenReturn(Optional.of(u));
+
+        assertThatThrownBy(() -> service().deleteRepository(3001L, 55L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("FORBIDDEN");
+        verify(cascadeDeleter, never()).deleteCascade(any());
+    }
+
+    @Test
+    void deleteRepositoryNotFound() {
+        User u = mockUser(2001L, UserRole.MAINTAINER);
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(u));
+        when(codeRepositoryRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().deleteRepository(2001L, 999L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("REPOSITORY_NOT_FOUND");
+        verify(cascadeDeleter, never()).deleteCascade(any());
     }
 
     private User mockUser(Long id, UserRole role) {

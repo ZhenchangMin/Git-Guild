@@ -3,10 +3,12 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import deskImg from '../../assets/desk.webp'
+import HomeOrb from '../../components/HomeOrb.vue'
 import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
 import { submissionApi } from '../../api/submissionApi'
 import { sessionStore } from '../../stores/sessionStore'
+import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
 
 const router = useRouter()
 
@@ -18,6 +20,8 @@ const maintainerName = computed(
 const pendingReviews = ref(null)
 const repos = ref([])
 const reposLoading = ref(true)
+// 正在删除的仓库 ID（用于行内按钮禁用/文案）；null = 无进行中删除。
+const deletingRepoId = ref(null)
 
 // 我发布的委托（含所有状态，让维护者看到 DRAFT/待审核 等"未上架"的委托）。
 const myQuests = ref([])
@@ -37,8 +41,13 @@ function questStatus(status) {
   return QUEST_STATUS[status] ?? { label: status || '未知', tone: 'draft' }
 }
 
-function goHall() {
-  router.push({ name: 'hall' })
+// 返回上一页（保留用户来路）；无站内历史（直接深链进入）时兜底回大厅。
+function goBack() {
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push({ name: 'hall' })
+  }
 }
 function goPublish() {
   router.push({ name: 'maintainer-publish' })
@@ -53,8 +62,53 @@ function goRepoSync() {
   router.push({ name: 'repository-sync' })
 }
 function openRepo(repo) {
-  const url = repo.sourceUrl || repo.giteaUrl
+  const url = toBrowsableGiteaUrl(repo.sourceUrl || repo.giteaUrl)
   if (url) window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+async function loadRepos() {
+  reposLoading.value = true
+  try {
+    const res = await repositoryApi.myRepositories()
+    const data = res?.data
+    repos.value = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
+  } catch {
+    repos.value = []
+  } finally {
+    reposLoading.value = false
+  }
+}
+
+// 删除已接入仓库：二次确认后调用后端级联删除，成功则刷新列表与「我发布的委托」。
+async function deleteRepo(repo) {
+  if (deletingRepoId.value) return
+  const confirmed = window.confirm(
+    `确定删除仓库「${repo.name}」吗？\n\n` +
+      '该仓库下的所有委托、提交、审核记录及平台 Gitea 副本都会被一并删除，且不可恢复。',
+  )
+  if (!confirmed) return
+
+  deletingRepoId.value = repo.repositoryId
+  try {
+    await repositoryApi.remove(repo.repositoryId)
+    await Promise.all([loadRepos(), loadMyQuests()])
+  } catch (err) {
+    window.alert(err?.message || '删除失败，请稍后重试。')
+  } finally {
+    deletingRepoId.value = null
+  }
+}
+
+async function loadMyQuests() {
+  myQuestsLoading.value = true
+  try {
+    const res = await questApi.myPublished()
+    myQuests.value = Array.isArray(res?.data) ? res.data : []
+  } catch {
+    myQuests.value = []
+  } finally {
+    myQuestsLoading.value = false
+  }
 }
 
 function isPendingReviewSubmission(item) {
@@ -70,35 +124,19 @@ onMounted(async () => {
     pendingReviews.value = null
   }
 
-  try {
-    const res = await repositoryApi.myRepositories()
-    const data = res?.data
-    repos.value = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
-  } catch {
-    repos.value = []
-  } finally {
-    reposLoading.value = false
-  }
-
-  try {
-    const res = await questApi.myPublished()
-    myQuests.value = Array.isArray(res?.data) ? res.data : []
-  } catch {
-    myQuests.value = []
-  } finally {
-    myQuestsLoading.value = false
-  }
+  await Promise.all([loadRepos(), loadMyQuests()])
 })
 </script>
 
 <template>
   <main class="app-shell">
     <section class="scene office-scene" :style="{ backgroundImage: `url(${deskImg})` }">
-      <button class="back-orb" type="button" aria-label="返回公会大厅" @click="goHall">
+      <HomeOrb />
+      <button class="back-orb" type="button" aria-label="返回上一页" @click="goBack">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
         </svg>
-        <span>返回公会大厅</span>
+        <span>返回</span>
       </button>
 
       <div class="office-hall">
@@ -195,16 +233,26 @@ onMounted(async () => {
             <li v-for="r in repos" :key="r.repositoryId" class="office-repo-row">
               <span class="office-repo-name">{{ r.name }}</span>
               <span class="office-repo-meta">
-                {{ r.defaultBranch || 'main' }} · {{ r.syncStatus || 'SYNCED' }}
+                {{ r.defaultBranch || 'main' }}
               </span>
-              <button
-                v-if="r.sourceUrl || r.giteaUrl"
-                class="office-link"
-                type="button"
-                @click="openRepo(r)"
-              >
-                在 Gitea 打开 ↗
-              </button>
+              <span class="office-repo-actions">
+                <button
+                  v-if="r.sourceUrl || r.giteaUrl"
+                  class="office-link"
+                  type="button"
+                  @click="openRepo(r)"
+                >
+                  在 Gitea 打开 ↗
+                </button>
+                <button
+                  class="office-link office-link-danger"
+                  type="button"
+                  :disabled="deletingRepoId === r.repositoryId"
+                  @click="deleteRepo(r)"
+                >
+                  {{ deletingRepoId === r.repositoryId ? '删除中…' : '删除' }}
+                </button>
+              </span>
             </li>
           </ul>
         </section>
@@ -219,6 +267,9 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   padding: clamp(24px, 6vh, 72px) 18px;
+  /* desk.webp 的暖棕主色兜底：图片下载完成前先铺同色调底，避免「近黑 → 暖色木桌」的突兀切换。 */
+  background-color: #241710;
+  background-repeat: no-repeat;
 }
 
 .office-hall {
@@ -473,6 +524,23 @@ onMounted(async () => {
 }
 .office-link:hover {
   color: #ffe1a6;
+}
+.office-repo-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  white-space: nowrap;
+}
+.office-link-danger {
+  color: #f0a48c;
+}
+.office-link-danger:hover {
+  color: #ff8f6f;
+}
+.office-link-danger:disabled {
+  color: rgba(240, 164, 140, 0.45);
+  cursor: progress;
+  text-decoration: none;
 }
 .office-repos-empty {
   margin: 0;

@@ -47,11 +47,34 @@ server:
 
 gitea:
   base-url: ${GITEA_BASE_URL:http://localhost:3000}
+  # 对外可访问的 Gitea 基址（浏览器用）。后端走内网 base-url 调 API，但仓库/Issue 链接要给用户能点开的外网地址。
+  # 未配置时回退到 base-url。生产示例：GITEA_PUBLIC_BASE_URL=http://47.236.0.207:3000
+  public-base-url: ${GITEA_PUBLIC_BASE_URL:}
   # 默认值 = 随仓库分发的本地演示快照（seed/gitea-data.tar.gz）里 spike-admin 的 token，
   # 所以队友无需 .env 即可直接 `mvnw spring-boot:run` 跑通演示。生产用 GITEA_TOKEN 覆盖。
   # ⚠️ 该 token 仅对本地一次性 Gitea 有效，等同演示弱凭据，非生产凭据。
   token: ${GITEA_TOKEN:38f08180132021c3ebe7d777c6931b664997fd89}
   admin-username: ${GITEA_ADMIN_USERNAME:spike-admin}
+  # 迁移外部 GitHub 仓库时用于拉取 Issue 等元数据的鉴权 token。
+  # 留空则匿名迁移：GitHub 匿名 API 限流 60 次/小时，Issue 较多时会卡死并损坏索引；
+  # 配置一个 GitHub PAT（公开仓库无需任何 scope 即可享 5000 次/小时）后 Issue 才能稳定迁入。
+  # 生产示例：GITHUB_TOKEN=ghp_xxx（放在 gitguild.env，勿提交进仓库）。
+  migration-token: ${GITHUB_TOKEN:}
+
+assistant:
+  ai:
+    enabled: ${ASSISTANT_AI_ENABLED:false}
+    provider: ${ASSISTANT_AI_PROVIDER:openai-compatible}
+    # OpenAI-compatible API root, usually ending with /v1.
+    base-url: ${ASSISTANT_AI_BASE_URL:}
+    api-key: ${ASSISTANT_AI_API_KEY:}
+    model: ${ASSISTANT_AI_MODEL:}
+    timeout-ms: ${ASSISTANT_AI_TIMEOUT_MS:8000}
+    max-prompt-chars: ${ASSISTANT_AI_MAX_PROMPT_CHARS:4000}
+  rate-limit:
+    enabled: ${ASSISTANT_RATE_LIMIT_ENABLED:true}
+    max-requests: ${ASSISTANT_RATE_LIMIT_MAX_REQUESTS:10}
+    window-seconds: ${ASSISTANT_RATE_LIMIT_WINDOW_SECONDS:60}
 
 jwt:
   # 开发环境默认值仅用于本地启动；生产环境必须通过 JWT_SECRET 提供至少 32 字节的随机密钥。
@@ -100,3 +123,18 @@ jwt:
   # 生产环境不提供默认值，避免误用开发密钥。
   secret: ${JWT_SECRET}
   expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+assistant:
+  ai:
+    enabled: ${ASSISTANT_AI_ENABLED:false}
+    provider: ${ASSISTANT_AI_PROVIDER:openai-compatible}
+    # OpenAI-compatible API root, usually ending with /v1.
+    base-url: ${ASSISTANT_AI_BASE_URL:}
+    api-key: ${ASSISTANT_AI_API_KEY:}
+    model: ${ASSISTANT_AI_MODEL:}
+    timeout-ms: ${ASSISTANT_AI_TIMEOUT_MS:8000}
+    max-prompt-chars: ${ASSISTANT_AI_MAX_PROMPT_CHARS:4000}
+  rate-limit:
+    enabled: ${ASSISTANT_RATE_LIMIT_ENABLED:true}
+    max-requests: ${ASSISTANT_RATE_LIMIT_MAX_REQUESTS:10}
+    window-seconds: ${ASSISTANT_RATE_LIMIT_WINDOW_SECONDS:60}

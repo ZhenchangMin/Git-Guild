@@ -72,7 +72,7 @@ async function loadAdminQuests() {
       title: applications.value.length ? '等待管理员审核' : '暂无待审核委托',
       body: applications.value.length
         ? '从左侧队列选择任务发布申请，核对清晰度、合规性、Issue 关联与完成标准，填写审核原因后再做决定。'
-        : '真实后端当前没有 PENDING_ADMIN_REVIEW 状态的任务。请先用委托人账号发布并提交审核。',
+        : '真实后端当前没有可处理的任务（待审核 / 已上架 / 已退回 / 已下架）。请先用委托人账号发布并提交审核。',
     }
   } catch (error) {
     loadError.value = readableError(error, '管理员审核队列读取失败。')
@@ -221,7 +221,7 @@ const queueStats = computed(() => {
   return [
     { label: '待审核', value: counts.PENDING_ADMIN_REVIEW ?? 0, tone: 'pending' },
     { label: '已上架', value: counts.PUBLISHED ?? 0, tone: 'approved' },
-    { label: '已退回', value: counts.DRAFT ?? 0, tone: 'return' },
+    { label: '已退回', value: (counts.REJECTED ?? 0) + (counts.DRAFT ?? 0), tone: 'return' },
     { label: '已下架', value: counts.CLOSED ?? 0, tone: 'danger' },
   ]
 })

@@ -18,6 +18,7 @@ import com.gitguild.backend.review.dto.SubmissionResponses.ReviewRecordResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.PullRequestBrief;
 import com.gitguild.backend.review.dto.SubmissionResponses.QuestBrief;
 import com.gitguild.backend.review.dto.SubmissionResponses.RepositoryBrief;
+import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionListItemResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.SubmissionReviewQueueItemResponse;
 import com.gitguild.backend.review.dto.SubmissionResponses.UserBrief;
 import com.gitguild.backend.review.domain.ReviewDecision;
@@ -86,6 +87,34 @@ class SubmissionControllerTest {
         verify(submissionService).createSubmission(eq(3001L), requestCaptor.capture());
         assertThat(requestCaptor.getValue().getQuestId()).isEqualTo(5001L);
         assertThat(requestCaptor.getValue().getPullRequestId()).isEqualTo(8001L);
+    }
+
+    @Test
+    void listSubmissionsShouldReturnCurrentUserSubmissionsWithOptionalStatus() throws Exception {
+        when(submissionService.listSubmissions(3001L, SubmissionStatus.PENDING_REVIEW))
+                .thenReturn(List.of(new SubmissionListItemResponse(
+                        9001L,
+                        new QuestBrief(5001L, "Implement submission API", QuestStatus.IN_REVIEW),
+                        new PullRequestBrief(8001L, "7", "Implement submission API", "feature/submission", "main", "OPEN", "http://localhost:3000/pulls/7"),
+                        "Implemented the requested backend feature.",
+                        SubmissionStatus.PENDING_REVIEW,
+                        OffsetDateTime.parse("2026-05-29T11:00:00+08:00"))));
+
+        TestingAuthenticationToken authentication = new TestingAuthenticationToken(
+                new CurrentUserPrincipal(3001L, List.of("ROLE_BEGINNER"), 0),
+                null);
+
+        mockMvc.perform(get("/api/v1/submissions")
+                        .param("status", "PENDING_REVIEW")
+                        .principal(authentication))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data[0].submissionId").value(9001))
+                .andExpect(jsonPath("$.data[0].quest.questId").value(5001))
+                .andExpect(jsonPath("$.data[0].pullRequest.externalPrId").value("7"))
+                .andExpect(jsonPath("$.data[0].status").value("PENDING_REVIEW"));
+
+        verify(submissionService).listSubmissions(3001L, SubmissionStatus.PENDING_REVIEW);
     }
 
     @Test

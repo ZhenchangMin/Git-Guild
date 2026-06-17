@@ -14,7 +14,7 @@ public final class QuestResponses {
     public record UserBrief(Long userId, String username) {
     }
 
-    public record RepositoryBrief(Long repositoryId, String name, String defaultBranch, String syncStatus) {
+    public record RepositoryBrief(Long repositoryId, String name, String defaultBranch, String syncStatus, String webUrl) {
     }
 
     public record IssueBrief(Long issueId, String externalIssueId, String title, String status, String externalUrl) {
