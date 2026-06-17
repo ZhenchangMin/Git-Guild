@@ -557,6 +557,7 @@ onBeforeUnmount(stopCreep)
         @click.self="closeDuplicate"
       >
         <div class="duplicate-card">
+          <button class="duplicate-close" type="button" aria-label="关闭" @click="closeDuplicate">×</button>
           <span class="duplicate-icon" aria-hidden="true">✓</span>
           <p class="kicker">Already Imported</p>
           <h2 id="duplicate-title">仓库已导入过</h2>
@@ -564,7 +565,6 @@ onBeforeUnmount(stopCreep)
             <strong>{{ lastRepository?.name ?? '该仓库' }}</strong> 已在平台登记，无需重复导入。可直接使用已有副本。
           </p>
           <div class="duplicate-actions">
-            <button class="quiet-action" type="button" @click="closeDuplicate">返回</button>
             <button
               v-if="lastRepository?.sourceUrl"
               class="quiet-action"
@@ -1015,6 +1015,7 @@ onBeforeUnmount(stopCreep)
   backdrop-filter: blur(4px);
 }
 .duplicate-card {
+  position: relative;
   width: min(400px, 92vw);
   padding: 30px 26px 24px;
   border: 1px solid rgba(238, 184, 91, 0.62);
@@ -1025,6 +1026,25 @@ onBeforeUnmount(stopCreep)
     linear-gradient(180deg, rgba(38, 20, 8, 0.96), rgba(20, 10, 4, 0.96)),
     radial-gradient(circle at 50% 0%, rgba(238, 184, 91, 0.22), transparent 52%);
   box-shadow: 0 26px 70px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 220, 140, 0.16);
+}
+.duplicate-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  color: rgba(255, 220, 150, 0.72);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  background: transparent;
+  transition: background 150ms ease, color 150ms ease;
+}
+.duplicate-close:hover {
+  color: #ffe7b5;
+  background: rgba(238, 184, 91, 0.18);
 }
 .duplicate-icon {
   display: grid;
