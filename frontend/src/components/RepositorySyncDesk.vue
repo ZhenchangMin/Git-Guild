@@ -360,6 +360,13 @@ function openInGitea() {
   if (url) window.open(url, '_blank', 'noopener')
 }
 
+// 关闭「已导入过」弹窗，回到初始填写态
+function closeDuplicate() {
+  stage.value = 'ready'
+  lastRepository.value = null
+  repositoryIssues.value = []
+}
+
 onBeforeUnmount(stopCreep)
 </script>
 
@@ -486,7 +493,7 @@ onBeforeUnmount(stopCreep)
         </dl>
       </section>
 
-      <div v-if="stage === 'imported' || stage === 'duplicate'" class="next-step">
+      <div v-if="stage === 'imported'" class="next-step">
         <div class="next-step-buttons">
           <button
             v-if="lastRepository?.sourceUrl"
@@ -499,9 +506,7 @@ onBeforeUnmount(stopCreep)
             <span class="cta-publish-arrow" aria-hidden="true">→</span>
           </button>
         </div>
-        <span class="next-step-hint">
-          {{ stage === 'duplicate' ? '仓库已导入过 · 可直接使用已有副本' : '仓库已接入 · 下一步起草并发布委托' }}
-        </span>
+        <span class="next-step-hint">仓库已接入 · 下一步起草并发布委托</span>
       </div>
 
     </form>
@@ -537,6 +542,36 @@ onBeforeUnmount(stopCreep)
             <button class="primary-action" type="button" :disabled="loading" @click="retryFromFailure">
               重新导入
             </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <transition name="failure-pop">
+      <div
+        v-if="stage === 'duplicate'"
+        class="import-duplicate-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="duplicate-title"
+        @click.self="closeDuplicate"
+      >
+        <div class="duplicate-card">
+          <span class="duplicate-icon" aria-hidden="true">✓</span>
+          <p class="kicker">Already Imported</p>
+          <h2 id="duplicate-title">仓库已导入过</h2>
+          <p class="duplicate-reason">
+            <strong>{{ lastRepository?.name ?? '该仓库' }}</strong> 已在平台登记，无需重复导入。可直接使用已有副本。
+          </p>
+          <div class="duplicate-actions">
+            <button class="quiet-action" type="button" @click="closeDuplicate">返回</button>
+            <button
+              v-if="lastRepository?.sourceUrl"
+              class="quiet-action"
+              type="button"
+              @click="openInGitea"
+            >在 Gitea 打开 ↗</button>
+            <button class="primary-action" type="button" @click="goPublish">去发布委托 →</button>
           </div>
         </div>
       </div>
@@ -966,6 +1001,70 @@ onBeforeUnmount(stopCreep)
   text-align: center;
   color: rgba(255, 231, 183, 0.6);
   font-size: 0.74rem;
+}
+
+/* ── 已导入过弹窗（金色调） ──────────────────────────────── */
+.import-duplicate-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at 50% 35%, rgba(40, 20, 4, 0.6), rgba(6, 3, 2, 0.8));
+  backdrop-filter: blur(4px);
+}
+.duplicate-card {
+  width: min(400px, 92vw);
+  padding: 30px 26px 24px;
+  border: 1px solid rgba(238, 184, 91, 0.62);
+  border-radius: 16px;
+  color: #ffe7b5;
+  text-align: center;
+  background:
+    linear-gradient(180deg, rgba(38, 20, 8, 0.96), rgba(20, 10, 4, 0.96)),
+    radial-gradient(circle at 50% 0%, rgba(238, 184, 91, 0.22), transparent 52%);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 220, 140, 0.16);
+}
+.duplicate-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  color: #3a1f0c;
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: radial-gradient(circle at 50% 30%, #ffe6a6, #d89a32);
+  box-shadow: 0 0 0 6px rgba(238, 184, 91, 0.16), 0 8px 20px rgba(160, 100, 18, 0.42);
+}
+.duplicate-card .kicker {
+  margin-bottom: 4px;
+  color: rgba(255, 220, 150, 0.8);
+}
+.duplicate-card h2 {
+  margin: 2px 0 12px;
+  color: #ffe4a0;
+  font-family: var(--font-display);
+  font-size: 1.32rem;
+}
+.duplicate-reason {
+  margin: 0 0 22px;
+  color: rgba(255, 231, 183, 0.88);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+.duplicate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.duplicate-actions .quiet-action,
+.duplicate-actions .primary-action {
+  min-height: 38px;
+  padding-inline: 16px;
 }
 
 /* ── 导入失败弹窗 ─────────────────────────────────────────── */
