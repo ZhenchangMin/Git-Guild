@@ -41,6 +41,43 @@ function questStatus(status) {
   return QUEST_STATUS[status] ?? { label: status || '未知', tone: 'draft' }
 }
 
+// 已驳回委托的驳回原因弹窗状态。
+// { quest, loading, reason, error } — null 表示弹窗关闭。
+const rejectionModal = ref(null)
+
+function isRejected(status) {
+  return status === 'REJECTED' || status === 'CLOSED'
+}
+
+// 点击「已驳回」徽标：打开弹窗并拉取该委托最近一条管理员审核意见。
+async function openRejection(quest) {
+  rejectionModal.value = { quest, loading: true, reason: '', error: '' }
+  try {
+    const res = await questApi.reviews(quest.questId)
+    const records = Array.isArray(res?.data) ? res.data : []
+    // 取最近一条驳回/关闭决策的原因；接口已按时间倒序返回。
+    const latest = records.find((r) => r.decision && r.reason) ?? records[0]
+    if (!rejectionModal.value) return
+    rejectionModal.value.reason = latest?.reason ?? ''
+    rejectionModal.value.loading = false
+  } catch (error) {
+    if (!rejectionModal.value) return
+    rejectionModal.value.error = error?.message ?? '驳回原因读取失败，请稍后再试。'
+    rejectionModal.value.loading = false
+  }
+}
+
+function closeRejection() {
+  rejectionModal.value = null
+}
+
+// 重新发布委托：关闭弹窗并前往发布页（带上原仓库，便于复用）。
+function republishFromRejection() {
+  const repoId = rejectionModal.value?.quest?.repository?.repositoryId
+  closeRejection()
+  router.push(repoId ? { name: 'maintainer-publish', query: { repoId } } : { name: 'maintainer-publish' })
+}
+
 // 返回上一页（保留用户来路）；无站内历史（直接深链进入）时兜底回大厅。
 function goBack() {
   if (window.history.state?.back) {
@@ -210,7 +247,18 @@ onMounted(async () => {
             <li v-for="q in myQuests" :key="q.questId" class="office-quest-row">
               <span class="office-quest-title">{{ q.title }}</span>
               <span class="office-quest-repo">{{ q.repository?.name || '—' }}</span>
-              <span class="office-quest-badge" :class="questStatus(q.status).tone">
+              <button
+                v-if="isRejected(q.status)"
+                type="button"
+                class="office-quest-badge is-clickable"
+                :class="questStatus(q.status).tone"
+                title="点击查看被驳回的原因"
+                @click="openRejection(q)"
+              >
+                {{ questStatus(q.status).label }}
+                <span class="office-quest-badge-peek" aria-hidden="true">查看原因 ›</span>
+              </button>
+              <span v-else class="office-quest-badge" :class="questStatus(q.status).tone">
                 {{ questStatus(q.status).label }}
               </span>
             </li>
@@ -267,6 +315,38 @@ onMounted(async () => {
         </section>
       </div>
     </section>
+
+    <!-- 已驳回委托：查看驳回原因弹窗。返回工作台只关闭弹窗，不跳转。 -->
+    <transition name="reject-pop">
+      <div
+        v-if="rejectionModal"
+        class="reject-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="reject-title"
+        @click.self="closeRejection"
+      >
+        <div class="reject-card">
+          <button class="reject-close" type="button" aria-label="关闭" @click="closeRejection">×</button>
+          <span class="reject-icon" aria-hidden="true">⊘</span>
+          <p class="kicker">Commission Returned</p>
+          <h2 id="reject-title">委托被驳回</h2>
+          <p class="reject-quest-title">{{ rejectionModal.quest?.title }}</p>
+
+          <div class="reject-reason-box">
+            <p v-if="rejectionModal.loading" class="reject-reason muted">正在读取驳回原因…</p>
+            <p v-else-if="rejectionModal.error" class="reject-reason danger">{{ rejectionModal.error }}</p>
+            <p v-else-if="rejectionModal.reason" class="reject-reason">{{ rejectionModal.reason }}</p>
+            <p v-else class="reject-reason muted">管理员未留下具体说明。</p>
+          </div>
+
+          <div class="reject-actions">
+            <button class="quiet-action" type="button" @click="closeRejection">返回工作台</button>
+            <button class="primary-action" type="button" @click="republishFromRejection">重新发布委托 →</button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </main>
 </template>
 
@@ -470,6 +550,145 @@ onMounted(async () => {
   color: #f0a890;
   background: rgba(110, 42, 36, 0.3);
   border-color: rgba(220, 130, 110, 0.4);
+}
+
+/* 可点击的「已驳回」徽标：悬停时浮现「查看原因 ›」并加深底色，暗示可交互。 */
+.office-quest-badge.is-clickable {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+.office-quest-badge.is-clickable:hover,
+.office-quest-badge.is-clickable:focus-visible {
+  background: rgba(150, 56, 48, 0.42);
+  border-color: rgba(240, 150, 128, 0.6);
+  box-shadow: 0 0 0 4px rgba(220, 130, 110, 0.12);
+  outline: none;
+}
+.office-quest-badge-peek {
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  transition: max-width 200ms ease, opacity 150ms ease, margin-left 200ms ease;
+}
+.office-quest-badge.is-clickable:hover .office-quest-badge-peek,
+.office-quest-badge.is-clickable:focus-visible .office-quest-badge-peek {
+  max-width: 88px;
+  margin-left: 6px;
+  opacity: 0.92;
+}
+
+/* ── 驳回原因弹窗 ───────────────────────────────────────── */
+.reject-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 5, 3, 0.62);
+  backdrop-filter: blur(2px);
+}
+.reject-card {
+  position: relative;
+  width: min(460px, 100%);
+  padding: 34px 30px 26px;
+  text-align: center;
+  border: 1px solid rgba(220, 130, 110, 0.42);
+  border-radius: 14px;
+  color: #ffe9c4;
+  background: linear-gradient(168deg, rgba(60, 26, 20, 0.96), rgba(28, 14, 9, 0.98));
+  box-shadow: 0 26px 64px rgba(0, 0, 0, 0.55);
+}
+.reject-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 200, 184, 0.7);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.reject-close:hover {
+  background: rgba(220, 130, 110, 0.18);
+  color: #ffd0c2;
+}
+.reject-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: rgba(150, 56, 48, 0.34);
+  color: #f3a691;
+  font-size: 1.5rem;
+}
+.reject-card h2 {
+  margin: 8px 0 4px;
+  font-family: var(--font-display);
+  color: #ffe1d6;
+}
+.reject-quest-title {
+  margin: 0 0 16px;
+  color: rgba(255, 230, 190, 0.7);
+  font-size: 0.92rem;
+}
+.reject-reason-box {
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid rgba(220, 130, 110, 0.28);
+  border-radius: 10px;
+  background: rgba(15, 8, 5, 0.5);
+}
+.reject-reason {
+  margin: 0;
+  font-size: 0.94rem;
+  line-height: 1.7;
+  color: #ffe3d2;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.reject-reason.muted {
+  color: rgba(255, 220, 200, 0.55);
+}
+.reject-reason.danger {
+  color: #ff9f86;
+}
+.reject-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+.reject-pop-enter-active,
+.reject-pop-leave-active {
+  transition: opacity 180ms ease;
+}
+.reject-pop-enter-active .reject-card,
+.reject-pop-leave-active .reject-card {
+  transition: transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 180ms ease;
+}
+.reject-pop-enter-from,
+.reject-pop-leave-to {
+  opacity: 0;
+}
+.reject-pop-enter-from .reject-card,
+.reject-pop-leave-to .reject-card {
+  transform: translateY(12px) scale(0.96);
+  opacity: 0;
 }
 
 /* ── 受托仓库 ───────────────────────────────────────────── */

@@ -33,6 +33,7 @@ import com.gitguild.backend.quest.dto.QuestResponses.QuestSummaryResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.RepositoryBrief;
 import com.gitguild.backend.quest.dto.QuestResponses.SubmitQuestResponse;
 import com.gitguild.backend.quest.dto.QuestSearchCriteria;
+import com.gitguild.backend.quest.repository.AdminReviewRecordRepository;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestCategoryRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
@@ -95,6 +96,7 @@ public class QuestServiceImpl implements QuestService {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
     private final GiteaProperties giteaProperties;
+    private final AdminReviewRecordRepository adminReviewRecordRepository;
 
     public QuestServiceImpl(
             QuestRepository questRepository,
@@ -108,7 +110,8 @@ public class QuestServiceImpl implements QuestService {
             CodePullRequestRepository pullRequestRepository,
             UserRepository userRepository,
             ObjectMapper objectMapper,
-            GiteaProperties giteaProperties) {
+            GiteaProperties giteaProperties,
+            AdminReviewRecordRepository adminReviewRecordRepository) {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.categoryRepository = categoryRepository;
@@ -121,6 +124,7 @@ public class QuestServiceImpl implements QuestService {
         this.userRepository = userRepository;
         this.objectMapper = objectMapper;
         this.giteaProperties = giteaProperties;
+        this.adminReviewRecordRepository = adminReviewRecordRepository;
     }
 
     @Override
@@ -222,6 +226,30 @@ public class QuestServiceImpl implements QuestService {
     public List<QuestSummaryResponse> listMyPublishedQuests(Long publisherId) {
         return questRepository.findByPublisherUserIdOrderByCreatedAtDesc(publisherId).stream()
                 .map(this::toSummary)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<QuestResponses.AdminReviewResponse> listQuestReviews(Long questId, Long currentUserId) {
+        Quest quest = findQuest(questId);
+        User user = findUser(currentUserId);
+        boolean isAdmin = user.getRole() == UserRole.ADMIN;
+        boolean isPublisher = quest.getPublisher().getUserId().equals(currentUserId);
+        if (!isAdmin && !isPublisher) {
+            throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN, "当前用户无权限", "只有发布者或管理员可以查看审核记录");
+        }
+        // 发布者只能看到「对发布者可见」的审核意见；管理员可见全部。
+        return adminReviewRecordRepository.findByQuestQuestIdOrderByReviewedAtDesc(questId).stream()
+                .filter(record -> isAdmin || record.isVisibleToPublisher())
+                .map(record -> new QuestResponses.AdminReviewResponse(
+                        record.getAdminReviewId(),
+                        questId,
+                        record.getAdmin().getUserId(),
+                        record.getDecision(),
+                        record.getReason(),
+                        quest.getStatus(),
+                        record.getReviewedAt()))
                 .toList();
     }
 

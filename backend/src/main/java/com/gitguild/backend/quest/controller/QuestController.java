@@ -6,6 +6,7 @@ import com.gitguild.backend.security.SecurityPrincipalUtils;
 import com.gitguild.backend.quest.domain.Difficulty;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.dto.CreateQuestRequest;
+import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.AssignmentResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.QuestDetailResponse;
@@ -119,6 +120,15 @@ public class QuestController {
     public ApiResponse<List<QuestSummaryResponse>> getMyPublishedQuests(Authentication authentication) {
         return ApiResponse.success(questService.listMyPublishedQuests(
                 SecurityPrincipalUtils.currentUserId(authentication)));
+    }
+
+    /** 某委托的 Admin 审核记录（含驳回原因）。仅发布者或管理员可查。 */
+    @GetMapping("/{questId}/admin-reviews")
+    public ApiResponse<List<AdminReviewResponse>> getQuestReviews(
+            @PathVariable Long questId,
+            Authentication authentication) {
+        return ApiResponse.success(questService.listQuestReviews(
+                questId, SecurityPrincipalUtils.currentUserId(authentication)));
     }
 
     private Long optionalUserId(Authentication authentication) {
