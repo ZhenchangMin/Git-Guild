@@ -424,6 +424,11 @@ function navigate(routeName) {
   router.push({ name: routeName })
 }
 
+// 带上来源标记，使委托板的返回按钮能回到前台而非默认的公会大厅。
+function goQuestBoard() {
+  router.push({ name: 'quest-board', query: { from: 'front-desk' } })
+}
+
 function backToHall() {
   router.push({ name: 'hall' })
 }
@@ -464,7 +469,7 @@ function backToHall() {
           v-if="primaryShortcut.routeName !== 'quest-board'"
           class="desk-status-cta desk-status-cta--alt"
           type="button"
-          @click="navigate('quest-board')"
+          @click="goQuestBoard"
         >
           <span class="desk-cta-glyph" aria-hidden="true">❖</span>委托板
         </button>

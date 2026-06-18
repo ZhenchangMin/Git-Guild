@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import questBoardImg from '../../assets/quest board.webp'
@@ -8,6 +8,7 @@ import { questFilterGroups } from '../../data/questBoard'
 import { sessionStore } from '../../stores/sessionStore'
 
 const router = useRouter()
+const route = useRoute()
 const questSearch = ref('')
 const questPage = ref(1)
 const questPageSize = 18
@@ -429,9 +430,18 @@ function openQuestDetail(questId, intent = 'view') {
 // Visitors never had a hall to come from — the board is their entry point. Send
 // them back to the login gate instead, mirroring the accept-quest flow.
 const isVisitor = computed(() => sessionStore.role === 'VISITOR')
-const backLabel = computed(() => (isVisitor.value ? '返回登录' : '返回公会大厅'))
+// 从前台进入时，返回应回到前台而非默认的公会大厅（来源由 query.from 标记）。
+const fromFrontDesk = computed(() => route.query.from === 'front-desk')
+const backLabel = computed(() => {
+  if (fromFrontDesk.value) return '返回前台'
+  return isVisitor.value ? '返回登录' : '返回公会大厅'
+})
 
 function goBack() {
+  if (fromFrontDesk.value) {
+    router.push({ name: 'front-desk' })
+    return
+  }
   if (isVisitor.value) {
     router.push({ name: 'login' })
     return
