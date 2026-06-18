@@ -356,7 +356,7 @@ async function ensureRealTaskBranch(questId) {
     const res = await questApi.ensureTaskBranch(questId)
     const branch = res?.data?.taskBranch || ''
     realTaskBranch.value = branch
-    taskCloneUrlAuth.value = res?.data?.cloneUrl || ''
+    taskCloneUrlAuth.value = toBrowsableGiteaUrl(res?.data?.cloneUrl || '')
     if (branch && selectedTask.value) selectedTask.value.branch = branch
   } catch (error) {
     realTaskBranch.value = ''
@@ -396,14 +396,39 @@ watch(
   { immediate: true },
 )
 
+// 非 HTTPS / 非 localhost 时 navigator.clipboard 不可用（不是安全上下文），需要
+// document.execCommand('copy') 兜底，否则线上 http:// 部署点「复制」会悄悄什么都不做。
+function copyViaFallback(text) {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  document.body.removeChild(textarea)
+  return ok
+}
+
 async function copyText(text, label = '内容') {
   if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch {
-    // clipboard 不可用时静默；用户仍可手动选中复制
+  let ok = false
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      ok = true
+    } catch {
+      ok = copyViaFallback(text)
+    }
+  } else {
+    ok = copyViaFallback(text)
   }
-  copiedHint.value = label
+  copiedHint.value = ok ? `${label} 已复制` : `${label} 复制失败，请手动选中复制`
   window.clearTimeout(copiedTimer)
   copiedTimer = window.setTimeout(() => (copiedHint.value = ''), 1600)
 }
@@ -1827,7 +1852,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
               </button>
               <button class="primary-action" type="button" @click="goSubmissionCounter">去提交柜台</button>
             </div>
-            <p v-if="copiedHint" class="copied-hint" role="status">{{ copiedHint }} 已复制到剪贴板</p>
+            <p v-if="copiedHint" class="copied-hint" role="status">{{ copiedHint }}</p>
           </article>
         </div>
       </section>
