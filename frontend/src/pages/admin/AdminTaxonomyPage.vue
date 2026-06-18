@@ -123,6 +123,22 @@ async function toggleCategory(category) {
   }
 }
 
+// 删除分类：被任务引用的不能删（与停用规则一致），避免委托指向已消失的分类。
+async function removeCategory(category) {
+  if (category.questCount > 0) {
+    notice('category', 'danger', `「${category.name}」被 ${category.questCount} 个任务引用，无法删除。`)
+    return
+  }
+  if (!window.confirm(`确定删除分类「${category.name}」？该操作不可撤销。`)) return
+  try {
+    await adminApi.deleteCategory(category.categoryId)
+    categories.value = categories.value.filter((c) => c.categoryId !== category.categoryId)
+    notice('category', 'return', `任务分类已删除：${category.name}`)
+  } catch (error) {
+    notice('category', 'danger', readableError(error, '删除分类失败。'))
+  }
+}
+
 async function addTag() {
   const name = newTag.value.name.trim()
   if (name.length < 1) {
@@ -142,6 +158,22 @@ async function addTag() {
     notice('tag', 'approved', `任务标签已创建：${created.name ?? name}`)
   } catch (error) {
     notice('tag', 'danger', readableError(error, '创建标签失败。'))
+  }
+}
+
+// 删除标签：被任务引用的不能删（与停用规则一致）。
+async function removeTag(tag) {
+  if (tag.questCount > 0) {
+    notice('tag', 'danger', `「${tag.name}」被 ${tag.questCount} 个任务引用，无法删除。`)
+    return
+  }
+  if (!window.confirm(`确定删除标签「${tag.name}」？该操作不可撤销。`)) return
+  try {
+    await adminApi.deleteTag(tag.tagId)
+    tags.value = tags.value.filter((t) => t.tagId !== tag.tagId)
+    notice('tag', 'return', `任务标签已删除：${tag.name}`)
+  } catch (error) {
+    notice('tag', 'danger', readableError(error, '删除标签失败。'))
   }
 }
 
@@ -200,6 +232,16 @@ async function toggleTag(tag) {
             @click="toggleCategory(category)"
           >
             {{ category.enabled ? '启用中' : '已停用' }}
+          </button>
+          <button
+            type="button"
+            class="admin-tax-delete"
+            :disabled="category.questCount > 0"
+            :title="category.questCount > 0 ? '被任务引用，无法删除' : '删除分类'"
+            aria-label="删除分类"
+            @click="removeCategory(category)"
+          >
+            🗑
           </button>
         </li>
       </ul>
@@ -262,6 +304,16 @@ async function toggleTag(tag) {
             @click="toggleTag(tag)"
           >
             {{ tag.enabled ? '启用中' : '已停用' }}
+          </button>
+          <button
+            type="button"
+            class="admin-tax-delete"
+            :disabled="tag.questCount > 0"
+            :title="tag.questCount > 0 ? '被任务引用，无法删除' : '删除标签'"
+            aria-label="删除标签"
+            @click="removeTag(tag)"
+          >
+            🗑
           </button>
         </li>
       </ul>

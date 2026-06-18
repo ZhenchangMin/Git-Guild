@@ -168,14 +168,11 @@ const hasQuestSearch = computed(() => questSearch.value.trim().length > 0)
 
 const visibleQuestFilterGroups = computed(() => {
   const dynamicValues = {
-    category: [
-      ...taxonomyFilterOptions.value.category,
-      ...questSource.value.map((quest) => quest.category),
-    ],
-    tag: [
-      ...taxonomyFilterOptions.value.tag,
-      ...questSource.value.flatMap((quest) => quest.tags ?? []),
-    ],
+    // 分类 / 标签只取 taxonomy 接口（与 admin 平台配置同源），
+    // 不再混入委托自带的 category/tags——后者含推荐兜底「推荐」与推荐理由，
+    // 会冒出 admin 里并不存在的“假”筛选项，导致两处不一致。
+    category: [...taxonomyFilterOptions.value.category],
+    tag: [...taxonomyFilterOptions.value.tag],
     difficulty: questSource.value.map((quest) => quest.difficulty),
     stack: questSource.value.flatMap((quest) => quest.techStack ?? []),
     status: questSource.value.map((quest) => quest.status),

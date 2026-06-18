@@ -168,6 +168,15 @@ onMounted(async () => {
             <span class="office-portal-arrow" aria-hidden="true">→</span>
           </button>
 
+          <button class="office-portal" type="button" @click="goRepoSync">
+            <span class="office-portal-glyph" aria-hidden="true">⤓</span>
+            <span class="office-portal-body">
+              <strong>导入仓库</strong>
+              <small>从 GitHub / Gitee 等导入或同步受托仓库，作为发布委托的来源。</small>
+            </span>
+            <span class="office-portal-arrow" aria-hidden="true">→</span>
+          </button>
+
           <button class="office-portal office-portal-adventure" type="button" @click="goAdventureWorkbench">
             <span class="office-portal-glyph" aria-hidden="true">◆</span>
             <span class="office-portal-body">
@@ -330,9 +339,7 @@ onMounted(async () => {
 .office-portal:active {
   transform: translateY(0) scale(0.99);
 }
-.office-portal-adventure {
-  grid-column: 1 / -1;
-}
+/* 四个入口排成 2×2 网格，「完成委托」不再独占整行。 */
 .office-portal-glyph {
   position: relative;
   display: grid;
@@ -445,9 +452,9 @@ onMounted(async () => {
   border-color: rgba(240, 184, 104, 0.4);
 }
 .office-quest-badge.published {
-  color: #b7d6ff;
-  background: rgba(40, 80, 140, 0.3);
-  border-color: rgba(120, 170, 240, 0.4);
+  color: #d6f0b6;
+  background: rgba(67, 97, 58, 0.42);
+  border-color: rgba(119, 160, 91, 0.5);
 }
 .office-quest-badge.active {
   color: #cfe6ad;

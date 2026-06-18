@@ -2695,6 +2695,32 @@ h2 {
   background: rgba(28, 16, 8, 0.5);
 }
 
+.admin-tax-delete {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: 1px solid rgba(200, 75, 75, 0.4);
+  border-radius: 7px;
+  background: rgba(60, 20, 16, 0.4);
+  color: rgba(255, 190, 178, 0.92);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+
+.admin-tax-delete:hover:not(:disabled) {
+  border-color: rgba(214, 92, 84, 0.78);
+  background: rgba(120, 36, 28, 0.55);
+}
+
+.admin-tax-delete:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
 .admin-difficulty-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

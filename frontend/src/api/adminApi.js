@@ -49,6 +49,9 @@ export const adminApi = {
   updateCategory(categoryId, payload) {
     return request(`/quest-categories/${categoryId}`, { method: 'PATCH', body: payload })
   },
+  deleteCategory(categoryId) {
+    return request(`/quest-categories/${categoryId}`, { method: 'DELETE' })
+  },
   listTags(params) {
     return request(`/quest-tags${toQuery(params)}`)
   },
@@ -57,6 +60,9 @@ export const adminApi = {
   },
   updateTag(tagId, payload) {
     return request(`/quest-tags/${tagId}`, { method: 'PATCH', body: payload })
+  },
+  deleteTag(tagId) {
+    return request(`/quest-tags/${tagId}`, { method: 'DELETE' })
   },
 }
 

@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -77,6 +78,20 @@ public class QuestTaxonomyController {
                 CategoryResponse.from(saved, (int) questRepository.countByCategory_CategoryId(saved.getCategoryId())));
     }
 
+    @DeleteMapping("/quest-categories/{categoryId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Void> deleteCategory(@PathVariable Long categoryId) {
+        QuestCategory category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> notFound("CATEGORY_NOT_FOUND", "任务分类不存在"));
+        long used = questRepository.countByCategory_CategoryId(categoryId);
+        if (used > 0) {
+            throw new BusinessException(
+                    "CATEGORY_IN_USE", HttpStatus.CONFLICT, "分类正被任务引用，无法删除", "questCount=" + used);
+        }
+        categoryRepository.delete(category);
+        return ApiResponse.success();
+    }
+
     @GetMapping("/quest-tags")
     public ApiResponse<TagPageResponse> listTags(
             @RequestParam(required = false) String keyword,
@@ -114,6 +129,20 @@ public class QuestTaxonomyController {
         tag.update(request.name(), request.color(), request.enabled());
         QuestTag saved = tagRepository.save(tag);
         return ApiResponse.success(TagResponse.from(saved, (int) questRepository.countByTagId(saved.getTagId())));
+    }
+
+    @DeleteMapping("/quest-tags/{tagId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Void> deleteTag(@PathVariable Long tagId) {
+        QuestTag tag = tagRepository.findById(tagId)
+                .orElseThrow(() -> notFound("TAG_NOT_FOUND", "任务标签不存在"));
+        long used = questRepository.countByTagId(tagId);
+        if (used > 0) {
+            throw new BusinessException(
+                    "TAG_IN_USE", HttpStatus.CONFLICT, "标签正被任务引用，无法删除", "questCount=" + used);
+        }
+        tagRepository.delete(tag);
+        return ApiResponse.success();
     }
 
     private Comparator<CategoryResponse> categoryComparator(String sortBy, String sortOrder) {
