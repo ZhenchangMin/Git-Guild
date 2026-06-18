@@ -42,6 +42,17 @@ const form = ref({
 const submitting = ref(false)
 const submitError = ref('')
 const submitOk = ref(null) // { questId }
+// 该仓库+Issue 已发布过委托时的提示弹窗（{ issueLabel }）。
+const duplicateIssue = ref(null)
+
+// 当前选中 Issue 的可读标签，用于重复发布弹窗里指明是哪一条。
+const selectedIssueLabel = computed(() => {
+  if (form.value.issueMode === 'new') return form.value.giteaIssueTitle.trim()
+  const found = issues.value.find((i) => String(i.issueId) === String(form.value.issueId))
+  if (!found) return ''
+  const num = found.externalIssueId ?? found.issueId
+  return [num ? `#${num}` : '', found.title ?? ''].filter(Boolean).join(' · ')
+})
 
 // 难度选项复用 admin 平台配置的同一份枚举，附带分级说明，
 // 让委托人一眼看懂 A=最难、D=最易，而非只见字母。
@@ -155,6 +166,7 @@ const canSubmit = computed(() => Object.keys(errors.value).length === 0 && !subm
 async function publish() {
   submitError.value = ''
   submitOk.value = null
+  duplicateIssue.value = null
   if (!canSubmit.value) {
     submitError.value = Object.values(errors.value)[0] ?? '请完成必填项。'
     return
@@ -186,10 +198,20 @@ async function publish() {
     await questApi.submitForReview(questId)
     submitOk.value = { questId }
   } catch (error) {
-    submitError.value = error?.message ?? '发布失败，请稍后再试。'
+    // 该 Issue 已关联进行中的委托（或已关闭）→ 后端返回 ISSUE_NOT_AVAILABLE，
+    // 改为弹窗引导维护者去工作台查看自己已发布的委托，而非裸报错。
+    if (error?.code === 'ISSUE_NOT_AVAILABLE') {
+      duplicateIssue.value = { issueLabel: selectedIssueLabel.value }
+    } else {
+      submitError.value = error?.message ?? '发布失败，请稍后再试。'
+    }
   } finally {
     submitting.value = false
   }
+}
+
+function goWorkbench() {
+  router.push({ name: 'maintainer-workbench' })
 }
 
 // 返回上一页：有站内历史就弹出（通常是事务所），避免用 push 反复压入新条目造成
@@ -387,6 +409,33 @@ function unwrapItems(payload) {
           </div>
         </form>
       </article>
+
+      <!-- 该仓库 + Issue 已发布过委托：弹窗指引维护者去工作台查看已发布委托。 -->
+      <transition name="dup-pop">
+        <div
+          v-if="duplicateIssue"
+          class="dup-modal"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="dup-title"
+          @click.self="duplicateIssue = null"
+        >
+          <div class="dup-card">
+            <button class="dup-close" type="button" aria-label="关闭" @click="duplicateIssue = null">×</button>
+            <span class="dup-icon" aria-hidden="true">!</span>
+            <p class="writ-eyebrow">Already Published</p>
+            <h2 id="dup-title">这个 Issue 已发布过委托</h2>
+            <p class="dup-reason">
+              <strong>{{ duplicateIssue.issueLabel || '该 Issue' }}</strong>
+              已关联一个进行中的委托（或该 Issue 已关闭），无法重复发布。可前往工作台查看你已发布的委托。
+            </p>
+            <div class="dup-actions">
+              <button class="quiet-action" type="button" @click="duplicateIssue = null">换一个 Issue</button>
+              <button class="primary-action" type="button" @click="goWorkbench">去工作台查看 →</button>
+            </div>
+          </div>
+        </div>
+      </transition>
     </section>
   </main>
 </template>
@@ -465,10 +514,11 @@ function unwrapItems(payload) {
 }
 .writ-sub {
   margin: 8px 0 0;
-  max-width: 58ch;
   color: var(--ink-soft);
   font-size: 0.92rem;
   line-height: 1.55;
+  /* 流程说明单行展示，不再按 58ch 折行。 */
+  white-space: nowrap;
 }
 
 .writ-form {
@@ -669,6 +719,98 @@ function unwrapItems(payload) {
   margin-top: 20px;
 }
 
+/* ── 重复发布弹窗 ───────────────────────────────────────────────────────────── */
+.dup-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 11, 4, 0.56);
+  backdrop-filter: blur(2px);
+}
+.dup-card {
+  position: relative;
+  width: min(440px, 100%);
+  padding: 34px 30px 26px;
+  text-align: center;
+  border: 1px solid rgba(169, 106, 28, 0.5);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fffaf0, #f4e7c9);
+  box-shadow: 0 24px 60px rgba(20, 11, 4, 0.4);
+}
+.dup-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(91, 53, 29, 0.7);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.dup-close:hover {
+  background: rgba(216, 154, 50, 0.16);
+  color: #6a3a14;
+}
+.dup-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: rgba(216, 154, 50, 0.22);
+  color: #a9661c;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.dup-card h2 {
+  margin: 8px 0 6px;
+  color: var(--ink);
+}
+.dup-reason {
+  margin: 0 auto;
+  max-width: 40ch;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+.dup-reason strong {
+  color: #6a3a14;
+}
+.dup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+.dup-pop-enter-active,
+.dup-pop-leave-active {
+  transition: opacity 180ms ease;
+}
+.dup-pop-enter-active .dup-card,
+.dup-pop-leave-active .dup-card {
+  transition: transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 180ms ease;
+}
+.dup-pop-enter-from,
+.dup-pop-leave-to {
+  opacity: 0;
+}
+.dup-pop-enter-from .dup-card,
+.dup-pop-leave-to .dup-card {
+  transform: translateY(12px) scale(0.96);
+  opacity: 0;
+}
 
 @media (max-width: 640px) {
   .writ-panel {
@@ -678,6 +820,11 @@ function unwrapItems(payload) {
 
   .writ-form {
     grid-template-columns: 1fr;
+  }
+
+  /* 窄屏放开单行限制，避免横向溢出。 */
+  .writ-sub {
+    white-space: normal;
   }
 }
 </style>
