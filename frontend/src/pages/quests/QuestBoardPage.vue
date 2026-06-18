@@ -19,6 +19,8 @@ const taxonomyFilterOptions = ref({
   category: [],
   tag: [],
 })
+// 标签名 → 颜色，供筛选栏在标签 chip 前渲染对应色点（与发布表单一致）。
+const tagColorByName = ref({})
 const recommendationMeta = ref(null)
 const recommendationError = ref('')
 const isRecommendationLoading = ref(true)
@@ -398,15 +400,23 @@ async function loadTaxonomyFilterOptions() {
     ])
     const categoryData = unwrapApiData(categoryPayload)
     const tagData = unwrapApiData(tagPayload)
+    const tagItems = Array.isArray(tagData) ? tagData : (tagData.items ?? [])
     taxonomyFilterOptions.value = {
       category: normalizeTaxonomyOptions(Array.isArray(categoryData) ? categoryData : categoryData.items),
-      tag: normalizeTaxonomyOptions(Array.isArray(tagData) ? tagData : tagData.items),
+      tag: normalizeTaxonomyOptions(tagItems),
     }
+    // 以标签名为键缓存 admin 配置的颜色，筛选 chip 据此上色。
+    tagColorByName.value = Object.fromEntries(
+      tagItems
+        .filter((tag) => tag?.enabled !== false && tag?.name)
+        .map((tag) => [tag.name, tag.color]),
+    )
   } catch {
     taxonomyFilterOptions.value = {
       category: [],
       tag: [],
     }
+    tagColorByName.value = {}
   }
 }
 
@@ -524,6 +534,12 @@ onMounted(() => {
                     :aria-pressed="isQuestFilterSelected(group.id, option)"
                     @click="toggleQuestFilter(group.id, option)"
                   >
+                    <span
+                      v-if="group.id === 'tag'"
+                      class="quest-filter-dot"
+                      :style="{ background: tagColorByName[option] || 'rgba(238, 184, 91, 0.5)' }"
+                      aria-hidden="true"
+                    ></span>
                     {{ option }}
                   </button>
                 </div>
