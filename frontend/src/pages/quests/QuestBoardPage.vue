@@ -181,10 +181,14 @@ const visibleQuestFilterGroups = computed(() => {
     status: questSource.value.map((quest) => quest.status),
   }
 
-  return questFilterGroups.map((group) => ({
-    ...group,
-    options: unique([...(group.options ?? []), ...(dynamicValues[group.id] ?? [])]),
-  }))
+  return questFilterGroups
+    .map((group) => ({
+      ...group,
+      options: unique([...(group.options ?? []), ...(dynamicValues[group.id] ?? [])]),
+    }))
+    // 选项全由真实数据驱动后，无数据的分组（如尚未配置任何标签）直接隐藏，
+    // 不再渲染只有标题、没有可选项的空筛选框。
+    .filter((group) => group.options.length > 0)
 })
 
 const recommendationStatusText = computed(() => {
