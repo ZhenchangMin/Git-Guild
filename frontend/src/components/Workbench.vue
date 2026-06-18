@@ -1381,6 +1381,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
           class="repository-chip"
           :class="{ active: selectedRepositoryName === repository.name }"
           type="button"
+          :title="repository.name"
           @click="selectRepository(repository)"
         >
           <strong>{{ repository.name.replace('git-guild / ', '') }}</strong>
@@ -2314,8 +2315,8 @@ function openFeedback(feedbackId, source = '审核反馈') {
 
 .repository-shortcuts {
   display: grid;
-  grid-template-columns: auto repeat(2, minmax(0, 1fr));
-  align-items: center;
+  grid-template-columns: auto repeat(auto-fill, minmax(150px, 1fr));
+  align-items: stretch;
   gap: 8px;
   min-width: 0;
 }
@@ -2332,7 +2333,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
   display: grid;
   gap: 3px;
   min-width: 0;
-  min-height: 48px;
+  min-height: 54px;
   border: 1px solid rgba(240, 198, 118, 0.2);
   border-radius: 6px;
   padding: 8px 10px;
@@ -2351,11 +2352,14 @@ function openFeedback(feedbackId, source = '审核反馈') {
 }
 
 .repository-chip strong {
+  display: -webkit-box;
   overflow: hidden;
   font-size: 0.86rem;
   line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .repository-chip small {
