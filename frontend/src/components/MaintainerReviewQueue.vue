@@ -48,9 +48,7 @@ function toggleSection(sectionId) {
 <template>
   <aside class="maintainer-review-queue" aria-label="委托提交审核队列">
     <header class="queue-head">
-      <p class="kicker">Review Queue</p>
       <h2>审核队列</h2>
-      <p>选择左侧提交后，在中间核对成果并给出审核结论。</p>
     </header>
 
     <div class="queue-sections">
@@ -150,7 +148,7 @@ function toggleSection(sectionId) {
 }
 
 .section-toggle span {
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .section-toggle strong {
@@ -161,6 +159,7 @@ function toggleSection(sectionId) {
   border-radius: 999px;
   color: #2a1506;
   background: #e6bd72;
+  font-variant-numeric: tabular-nums;
 }
 
 .submission-list {
@@ -211,11 +210,26 @@ function toggleSection(sectionId) {
   background: #e6bd72;
   font-size: 0.76rem;
   font-style: normal;
-  font-weight: 900;
+  font-weight: 700;
+}
+
+.submission-card.approved em {
+  background: #a9d07b;
 }
 
 .submission-card.warning em {
   background: #f0a06d;
+}
+
+.submission-card.danger em {
+  color: #ffe5dd;
+  background: #b3503c;
+}
+
+.submission-card.danger:hover,
+.submission-card.danger:focus-visible,
+.submission-card.danger.active {
+  border-color: rgba(214, 138, 116, 0.7);
 }
 
 .queue-empty {
