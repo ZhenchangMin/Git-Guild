@@ -460,6 +460,14 @@ function backToHall() {
           <i>{{ chip.label }}</i>
           <b>{{ chip.value }}</b>
         </span>
+        <button
+          v-if="primaryShortcut.routeName !== 'quest-board'"
+          class="desk-status-cta desk-status-cta--ghost"
+          type="button"
+          @click="navigate('quest-board')"
+        >
+          <span class="desk-cta-glyph" aria-hidden="true">❖</span>委托板
+        </button>
         <button class="desk-status-cta" type="button" @click="navigate(primaryShortcut.routeName)">
           {{ primaryShortcut.label }}
         </button>
@@ -778,6 +786,32 @@ function backToHall() {
 .desk-status-cta:active,
 .desk-action-btn:active {
   transform: scale(0.96);
+}
+
+/* 次级 CTA：描边幽灵变体，与实心主按钮拉开主次而不脱离金色公会调性。 */
+.desk-status-cta--ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(10, 6, 3, 0.42);
+  color: #ffe0a3;
+  border-color: rgba(245, 195, 99, 0.5);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.26);
+}
+
+.desk-status-cta--ghost:hover,
+.desk-status-cta--ghost:focus-visible {
+  filter: none;
+  background: rgba(62, 38, 13, 0.62);
+  border-color: rgba(255, 213, 130, 0.85);
+  color: #fff1d2;
+  box-shadow: 0 7px 20px rgba(0, 0, 0, 0.36), 0 0 14px rgba(255, 200, 100, 0.14);
+}
+
+.desk-cta-glyph {
+  font-size: 0.74rem;
+  color: rgba(245, 195, 99, 0.9);
+  line-height: 1;
 }
 
 .desk-welcome-bubble,
