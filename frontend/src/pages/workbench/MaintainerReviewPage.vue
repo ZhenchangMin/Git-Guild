@@ -29,10 +29,10 @@ const pendingReviewCount = computed(() => reviews.value.filter((review) => revie
 const reviewedCount = computed(() => reviews.value.length - pendingReviewCount.value)
 const returnedCount = computed(() => reviews.value.filter((review) => review.status.includes('修改')).length)
 const reviewStats = computed(() => [
-  { label: '待审核提交', value: pendingReviewCount.value, hint: '需要委托人给出结论' },
-  { label: '已审核提交', value: reviewedCount.value, hint: '已给出通过、退回或驳回' },
-  { label: '需退回修改', value: returnedCount.value, hint: '存在未通过检查项' },
-  { label: '队列总数', value: reviews.value.length, hint: '真实提交记录' },
+  { label: '待审核提交', value: pendingReviewCount.value },
+  { label: '已审核提交', value: reviewedCount.value },
+  { label: '需退回修改', value: returnedCount.value },
+  { label: '队列总数', value: reviews.value.length },
 ])
 
 function padId(value) {
@@ -53,12 +53,24 @@ function submittedAtOrder(value) {
   return Number.isNaN(time) ? 0 : time
 }
 
+const PR_STATUS_LABELS = {
+  OPEN: '待合并',
+  MERGED: '已合并',
+  CLOSED: '已关闭',
+  DRAFT: '草稿',
+  UNKNOWN: '未知',
+}
+
+function prStatusLabel(status) {
+  return PR_STATUS_LABELS[status] ?? status ?? '未知'
+}
+
 function mapSubmissionStatus(status) {
   return {
     PENDING_REVIEW: { label: '待审核', tone: 'review' },
     APPROVED: { label: '审核通过', tone: 'approved' },
     CHANGES_REQUESTED: { label: '已请求修改', tone: 'warning' },
-    REJECTED: { label: '已驳回', tone: 'warning' },
+    REJECTED: { label: '已驳回', tone: 'danger' },
   }[status] ?? { label: status || '未知状态', tone: 'review' }
 }
 
@@ -84,7 +96,7 @@ function buildCompletionCriteria(submission) {
       passed: prStatus === 'MERGED',
       comment: prStatus === 'MERGED'
         ? 'PR 已合并。'
-        : `当前 PR 状态为 ${prStatus}。“接受提交”只完成任务并发放 XP，不会自动合并；如需合并请用「合并 PR」按钮（或在 Gitea 手动合并）。`,
+        : `当前 PR 状态为「${prStatusLabel(prStatus)}」。「接受提交」只完成任务并发放 XP，不会自动合并；如需合并请点「合并 PR」按钮，或在 Gitea 手动合并。`,
     },
     {
       checkpoint: '成果说明已提交',
@@ -183,7 +195,7 @@ function updateReviewStatus(decision) {
 
   const nextStatus =
     decision === 'APPROVED' ? '审核通过' : decision === 'REJECTED' ? '已驳回' : '已请求修改'
-  const nextTone = decision === 'APPROVED' ? 'approved' : 'warning'
+  const nextTone = decision === 'APPROVED' ? 'approved' : decision === 'REJECTED' ? 'danger' : 'warning'
 
   reviews.value = reviews.value.map((review) =>
     review.id === selectedReview.value.id ? { ...review, status: nextStatus, statusTone: nextTone } : review,
@@ -209,8 +221,10 @@ async function submitReview(payload) {
           : '修改请求已发送'
     const successBody =
       payload.decision === 'APPROVED'
-        ? `${currentReview.questId} 已接受：任务标记完成并发放 XP（submissionId=${submissionId}）。PR 未自动合并，如需合并请点「合并 PR」。`
-        : `${currentReview.questId} 的审核结论已通过后端接口记录为 ${payload.decision}，submissionId=${submissionId}。`
+        ? `「${currentReview.questTitle}」已接受，任务标记完成并发放 ${currentReview.rewardXp} XP。PR 未自动合并，如需合并请点「合并 PR」。`
+        : payload.decision === 'REJECTED'
+          ? `已驳回「${currentReview.questTitle}」的提交。`
+          : `已将「${currentReview.questTitle}」退回给 ${currentReview.submitter}，等待修改后重新提交。`
     reviewAlert.value = {
       tone: payload.decision === 'APPROVED' ? 'success' : 'warning',
       title: successTitle,
@@ -256,7 +270,7 @@ async function mergeSelectedPullRequest() {
     reviewAlert.value = {
       tone: 'success',
       title: 'PR 已合并',
-      body: `${review.pullRequest} 已合并到目标分支（submissionId=${submissionId}）。`,
+      body: `${review.pullRequest} 已合并到目标分支。`,
     }
   } catch (error) {
     const body =
@@ -286,7 +300,7 @@ function buildReviewErrorMessage(error, review) {
   }
   return {
     title: '审核提交失败',
-    body: error?.message || `维护者审核接口提交失败，请确认 submissionId=${review.submissionId} 存在且当前账号有审核权限。`,
+    body: error?.message || '提交失败，请确认当前账号有审核权限，或稍后重试。',
   }
 }
 
@@ -294,7 +308,7 @@ function saveDraft(payload) {
   reviewResult.value = {
     tone: 'review',
     title: '审核草稿已保存',
-    body: `${selectedReview.value.questId} 的 ${payload.decision} 草稿已保存在当前页面，刷新前可继续调整。`,
+    body: `「${selectedReview.value.questTitle}」的审核草稿已保存在当前页面，刷新前可继续调整。`,
   }
 }
 
@@ -329,15 +343,12 @@ onMounted(loadReviewQueue)
       <div class="maintainer-review-shell" :class="{ 'has-review-alert': reviewAlert }">
         <header class="maintainer-review-header">
           <div>
-            <p class="kicker">Maintainer Review Desk</p>
             <h1>委托人审核台</h1>
-            <p>查看真实提交成果、确认 PR 状态和完成标准，并录入维护者审核意见。</p>
           </div>
           <div class="maintainer-review-stats" aria-label="维护者审核统计">
             <article v-for="stat in reviewStats" :key="stat.label">
               <span>{{ stat.label }}</span>
               <strong>{{ stat.value }}</strong>
-              <small>{{ stat.hint }}</small>
             </article>
           </div>
         </header>
@@ -364,7 +375,6 @@ onMounted(loadReviewQueue)
 
           <section v-if="isLoadingReviews" class="review-empty-state" aria-label="审核队列加载中">
             <div>
-              <p class="kicker">Loading</p>
               <h2>正在读取审核队列</h2>
               <p>请稍候。</p>
             </div>
@@ -372,7 +382,6 @@ onMounted(loadReviewQueue)
 
           <section v-else-if="loadError" class="review-empty-state" aria-label="审核队列加载失败">
             <div>
-              <p class="kicker">Load Failed</p>
               <h2>审核队列加载失败</h2>
               <p>{{ loadError }}</p>
             </div>
@@ -380,9 +389,8 @@ onMounted(loadReviewQueue)
 
           <section v-else-if="!selectedReview" class="review-empty-state" aria-label="待选择提交">
             <div>
-              <p class="kicker">Waiting For Selection</p>
-              <h2>{{ pendingReviewCount }} 份待审核委托</h2>
-              <p>请点击左侧委托提交审核。</p>
+              <h2>{{ pendingReviewCount }} 份待审核提交</h2>
+              <p>请点击左侧提交开始审核。</p>
             </div>
           </section>
 
@@ -406,7 +414,7 @@ onMounted(loadReviewQueue)
               :aria-expanded="!isActionPanelCollapsed"
               @click="isActionPanelCollapsed = !isActionPanelCollapsed"
             >
-              {{ isActionPanelCollapsed ? '展开审核操作' : '收起审核操作' }}
+              {{ isActionPanelCollapsed ? '展开审核' : '收起审核' }}
             </button>
             <div v-if="canReviewSelectedSubmission" class="review-action-slot">
               <MaintainerReviewActions
@@ -460,12 +468,19 @@ onMounted(loadReviewQueue)
   box-shadow: 0 22px 64px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 235, 180, 0.14);
 }
 
+.maintainer-review-header > div {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
 .maintainer-review-header h1 {
   margin: 0;
   color: #ffe8b9;
   font-family: var(--font-display);
-  font-size: clamp(2.1rem, 5vw, 4.2rem);
-  line-height: 0.94;
+  font-size: clamp(2rem, 3.4vw, 2.9rem);
+  line-height: 1.02;
+  letter-spacing: -0.015em;
 }
 
 .maintainer-review-header p:last-child {
@@ -485,23 +500,25 @@ onMounted(loadReviewQueue)
 .maintainer-review-stats article {
   display: grid;
   align-content: center;
-  gap: 5px;
+  gap: 10px;
   border: 1px solid rgba(255, 222, 161, 0.18);
   border-radius: 10px;
-  padding: 12px;
+  padding: 16px 16px 18px;
   background: rgba(7, 4, 2, 0.32);
 }
 
-.maintainer-review-stats span,
-.maintainer-review-stats small {
-  color: rgba(255, 231, 183, 0.62);
+.maintainer-review-stats span {
+  color: rgba(255, 231, 183, 0.66);
+  font-size: 0.84rem;
   line-height: 1.35;
 }
 
 .maintainer-review-stats strong {
   color: #ffe2a0;
   font-family: var(--font-display);
-  font-size: 1.75rem;
+  font-size: 2.4rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .maintainer-review-alert {
@@ -577,19 +594,20 @@ onMounted(loadReviewQueue)
   margin: 0;
   color: #ffe8b9;
   font-family: var(--font-display);
-  font-size: clamp(2.4rem, 5vw, 4.8rem);
-  line-height: 0.96;
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
 .review-empty-state p:last-child {
-  margin: 14px 0 0;
+  margin: 12px 0 0;
   color: rgba(255, 231, 183, 0.72);
-  font-size: 1.06rem;
+  font-size: 0.98rem;
 }
 
 .review-focus {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) 48px minmax(300px, 0.85fr);
+  grid-template-columns: minmax(0, 1.35fr) 34px minmax(300px, 0.85fr);
   gap: 12px;
 }
 
@@ -598,7 +616,7 @@ onMounted(loadReviewQueue)
 }
 
 .review-focus.actions-collapsed {
-  grid-template-columns: minmax(0, 1fr) 48px;
+  grid-template-columns: minmax(0, 1fr) 34px;
 }
 
 .review-focus.actions-collapsed .review-action-slot {
@@ -613,26 +631,25 @@ onMounted(loadReviewQueue)
 
 .action-panel-toggle {
   align-self: stretch;
-  border: 1px solid rgba(238, 184, 91, 0.38);
-  border-radius: 12px;
-  padding: 12px 9px;
-  color: #ffe2a0;
-  background:
-    linear-gradient(135deg, rgba(83, 45, 16, 0.76), rgba(14, 7, 3, 0.66)),
-    radial-gradient(circle at 22% 20%, rgba(255, 218, 142, 0.16), transparent 0 42%);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 235, 180, 0.1);
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(238, 184, 91, 0.32);
+  border-radius: 10px;
+  padding: 0;
+  color: rgba(255, 226, 160, 0.78);
+  background: rgba(14, 7, 3, 0.5);
   cursor: pointer;
   writing-mode: vertical-rl;
-  letter-spacing: 0.08em;
-  font-weight: 900;
-  transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+  letter-spacing: 0.16em;
+  font-size: 0.8rem;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
 
 .action-panel-toggle:hover,
 .action-panel-toggle:focus-visible {
-  border-color: rgba(255, 224, 157, 0.76);
-  transform: translateY(-1px);
-  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 235, 180, 0.14);
+  border-color: rgba(255, 224, 157, 0.7);
+  color: #ffe8b9;
+  background: rgba(60, 32, 11, 0.45);
 }
 
 @media (max-width: 1180px) {

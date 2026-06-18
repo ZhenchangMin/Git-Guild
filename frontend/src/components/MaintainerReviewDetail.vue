@@ -10,41 +10,32 @@ defineProps({
   },
 })
 defineEmits(['merge-pr'])
+
+const PR_STATE_LABELS = {
+  OPEN: '待合并',
+  MERGED: '已合并',
+  CLOSED: '已关闭',
+  DRAFT: '草稿',
+  UNKNOWN: '未知',
+}
+
+function prStateLabel(state) {
+  return PR_STATE_LABELS[state] ?? state ?? '未知'
+}
 </script>
 
 <template>
   <section class="maintainer-review-detail">
     <div class="detail-hero">
       <div>
-        <p class="kicker">Submission Detail</p>
-        <h1>{{ review.questId }} · {{ review.questTitle }}</h1>
-        <p>{{ review.summary }}</p>
-      </div>
-      <aside>
-        <span>{{ review.status }}</span>
-        <strong>{{ review.rewardXp }} XP</strong>
-        <small>审核通过后进入成长结算</small>
-      </aside>
-    </div>
-
-    <div class="detail-grid">
-      <article class="detail-card brief-card">
-        <h2>提交信息</h2>
-        <dl>
-          <div>
-            <dt>提交编号</dt>
-            <dd>{{ review.id }}</dd>
-          </div>
-          <div>
-            <dt>后端 ID</dt>
-            <dd>{{ review.submissionId }}</dd>
-          </div>
+        <h1>{{ review.questTitle }}</h1>
+        <dl class="hero-meta">
           <div>
             <dt>提交人</dt>
             <dd>{{ review.submitter }}</dd>
           </div>
           <div>
-            <dt>仓库</dt>
+            <dt>受托仓库</dt>
             <dd>{{ review.repository }}</dd>
           </div>
           <div>
@@ -52,8 +43,14 @@ defineEmits(['merge-pr'])
             <dd>{{ review.submittedAt }}</dd>
           </div>
         </dl>
-      </article>
+      </div>
+      <aside>
+        <span>{{ review.status }}</span>
+        <strong>{{ review.rewardXp }} XP</strong>
+      </aside>
+    </div>
 
+    <div class="detail-grid">
       <article class="detail-card pr-card">
         <h2>PR 状态</h2>
         <dl>
@@ -63,15 +60,11 @@ defineEmits(['merge-pr'])
           </div>
           <div>
             <dt>状态</dt>
-            <dd>{{ review.prState }}</dd>
+            <dd>{{ prStateLabel(review.prState) }}</dd>
           </div>
           <div>
             <dt>分支</dt>
             <dd>{{ review.branch }}</dd>
-          </div>
-          <div>
-            <dt>最新 commit</dt>
-            <dd>{{ review.latestCommit }}</dd>
           </div>
         </dl>
         <div class="pr-merge-row">
@@ -89,7 +82,6 @@ defineEmits(['merge-pr'])
       <article class="detail-card criteria-card">
         <div class="section-head">
           <div>
-            <p class="kicker">Completion Criteria</p>
             <h2>完成标准逐项检查</h2>
           </div>
           <span>{{ review.completionCriteria.filter((item) => item.passed).length }} / {{ review.completionCriteria.length }} 通过</span>
@@ -139,9 +131,9 @@ defineEmits(['merge-pr'])
 
 .detail-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 210px;
+  grid-template-columns: minmax(0, 1fr) 176px;
   gap: 18px;
-  padding: 18px;
+  padding: 20px;
   background:
     linear-gradient(135deg, rgba(91, 50, 19, 0.72), rgba(11, 6, 3, 0.58)),
     radial-gradient(circle at 94% 12%, rgba(255, 217, 138, 0.16), transparent 0 31%);
@@ -151,16 +143,37 @@ defineEmits(['merge-pr'])
   margin: 0;
   color: #ffe8b9;
   font-family: var(--font-display);
-  font-size: clamp(1.85rem, 4vw, 3.2rem);
-  line-height: 1;
+  font-size: clamp(1.65rem, 2.6vw, 2.2rem);
+  line-height: 1.12;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
 }
 
-.detail-hero p {
-  max-width: 72ch;
-  margin: 10px 0 0;
-  color: rgba(255, 231, 183, 0.75);
-  line-height: 1.55;
-  text-wrap: pretty;
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 30px;
+  margin: 16px 0 0;
+}
+
+.hero-meta div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.hero-meta dt {
+  color: rgba(255, 231, 183, 0.56);
+  font-size: 0.76rem;
+  letter-spacing: 0.03em;
+}
+
+.hero-meta dd {
+  margin: 0;
+  color: #ffe9bb;
+  font-size: 1rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .detail-hero aside {
@@ -173,34 +186,32 @@ defineEmits(['merge-pr'])
   background: rgba(7, 4, 2, 0.34);
 }
 
-.detail-hero aside span,
-.detail-hero aside small {
+.detail-hero aside span {
   color: rgba(255, 231, 183, 0.66);
+  font-size: 0.9rem;
 }
 
 .detail-hero aside strong {
   color: #ffe2a0;
   font-family: var(--font-display);
-  font-size: 2rem;
+  font-size: 1.7rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "brief pr"
-    "criteria criteria"
-    "evidence evidence";
+    "pr"
+    "criteria"
+    "evidence";
   gap: 14px;
 }
 
 .detail-card {
   padding: 15px;
   background: rgba(10, 5, 2, 0.5);
-}
-
-.brief-card {
-  grid-area: brief;
 }
 
 .pr-card {
@@ -277,8 +288,6 @@ defineEmits(['merge-pr'])
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
   gap: 12px;
-  border-bottom: 1px solid rgba(240, 198, 118, 0.14);
-  padding-bottom: 8px;
 }
 
 .detail-card dt {
@@ -359,19 +368,14 @@ defineEmits(['merge-pr'])
 }
 
 .evidence-card li {
-  border-bottom: 1px solid rgba(240, 198, 118, 0.14);
-  padding-bottom: 8px;
+  border-left: 2px solid rgba(240, 198, 118, 0.3);
+  padding-left: 10px;
+  line-height: 1.5;
 }
 
 @media (max-width: 980px) {
-  .detail-hero,
-  .detail-grid {
+  .detail-hero {
     grid-template-columns: 1fr;
-    grid-template-areas:
-      "brief"
-      "pr"
-      "criteria"
-      "evidence";
   }
 }
 </style>

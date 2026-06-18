@@ -174,7 +174,7 @@ onMounted(async () => {
           <header class="office-repos-head">
             <p class="kicker">受托仓库 · Repositories</p>
             <button class="quiet-action office-sync-btn" type="button" @click="goRepoSync">
-              导入 / 同步
+              新建 / 导入
             </button>
           </header>
 
@@ -186,9 +186,9 @@ onMounted(async () => {
           </ul>
 
           <p v-else-if="!repos.length" class="office-repos-empty">
-            尚未导入受托仓库。
-            <button class="office-link" type="button" @click="goRepoSync">前往仓库同步</button>
-            ，导入后即可基于其 Issue 发布委托。
+            尚未接入受托仓库。
+            <button class="office-link" type="button" @click="goRepoSync">前往新建或导入仓库</button>
+            ，之后即可基于其发布委托。
           </p>
 
           <ul v-else class="office-repo-list">
