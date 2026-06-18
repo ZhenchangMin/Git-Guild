@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
 import { adminApi } from '../../api/adminApi'
 import { decisionMeta, questStatusMeta } from '../../data/admin'
@@ -54,9 +54,67 @@ const statusHint = {
   PUBLISHED: '任务已通过管理员审核并上架，当前不需要继续处理。',
 }
 
+// 队列自动刷新：避免管理员必须手动刷新页面才能看到新提交的待审核委托。
+const REFRESH_INTERVAL_MS = 15000
+let refreshTimer = null
+const isRefreshing = ref(false)
+
 onMounted(() => {
   loadAdminQuests()
+  refreshTimer = window.setInterval(refreshQueue, REFRESH_INTERVAL_MS)
+  document.addEventListener('visibilitychange', handleVisibility)
+  window.addEventListener('focus', refreshQueue)
 })
+
+onUnmounted(() => {
+  if (refreshTimer) window.clearInterval(refreshTimer)
+  document.removeEventListener('visibilitychange', handleVisibility)
+  window.removeEventListener('focus', refreshQueue)
+})
+
+function handleVisibility() {
+  if (document.visibilityState === 'visible') refreshQueue()
+}
+
+// 增量刷新：只把"新出现的委托"并入队列（置顶），保留管理员当前正在核验的条目与现场进度，
+// 不整页重载、不打断填写中的审核结论。轮询失败保持静默，下次再试。
+async function refreshQueue() {
+  if (loading.value || submitting.value || isRefreshing.value) return
+  isRefreshing.value = true
+  try {
+    const response = await adminApi.listAdminQuests({ page: 1, size: DEFAULT_PAGE_SIZE })
+    const items = response?.data?.items ?? []
+    const existingById = new Map(applications.value.map((app) => [String(app.questId), app]))
+
+    // 已在队列中的：同步最新状态（如别处已处理），但保留现场核验进度。
+    items.forEach((item) => {
+      const existing = existingById.get(String(item.questId))
+      if (existing && item.status && existing.questStatus !== item.status) {
+        existing.questStatus = item.status
+      }
+    })
+
+    const newSummaries = items.filter((item) => !existingById.has(String(item.questId)))
+    if (newSummaries.length === 0) return
+
+    const mapped = await Promise.all(newSummaries.map(toApplication))
+    const fresh = mapped.map(cloneApplication)
+    applications.value = [...fresh, ...applications.value]
+    if (!activeId.value) activeId.value = applications.value[0]?.id ?? null
+    // 此前为空态提示时，恢复为正常待审核引导。
+    if (actionResult.value.tone === 'return') {
+      actionResult.value = {
+        tone: 'idle',
+        title: '等待管理员审核',
+        body: '从左侧队列选择任务发布申请，核对清晰度、合规性、Issue 关联与完成标准，填写审核原因后再做决定。',
+      }
+    }
+  } catch {
+    // 静默：轮询失败不打断管理员当前操作。
+  } finally {
+    isRefreshing.value = false
+  }
+}
 
 async function loadAdminQuests() {
   loading.value = true

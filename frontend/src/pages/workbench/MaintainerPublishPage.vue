@@ -497,7 +497,9 @@ function unwrapItems(payload) {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.writ-field input,
+/* 文本类输入框样式不应套到勾选框 / 单选框上：否则复选框会被加上
+   padding/border/box-shadow 与聚焦描边，点击聚焦时触发回流，表现为按钮抖动。 */
+.writ-field input:not([type='checkbox']):not([type='radio']),
 .writ-field select,
 .writ-field textarea {
   width: 100%;
@@ -515,7 +517,7 @@ function unwrapItems(payload) {
 .writ-field textarea::placeholder {
   color: rgba(91, 53, 29, 0.5);
 }
-.writ-field input:focus,
+.writ-field input:not([type='checkbox']):not([type='radio']):focus,
 .writ-field select:focus,
 .writ-field textarea:focus {
   outline: none;
