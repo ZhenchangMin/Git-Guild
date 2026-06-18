@@ -15,12 +15,16 @@ public interface QuestRepository extends JpaRepository<Quest, Long>, JpaSpecific
 
     boolean existsByIssueAndStatusIn(CodeIssue issue, Collection<QuestStatus> statuses);
 
-    /** 引用该分类的 Quest 数量（用于管理台分类「引用数」展示）。 */
-    long countByCategory_CategoryId(Long categoryId);
+    /**
+     * 引用该分类的 Quest 数量（用于管理台分类「引用数」展示及删除前占用校验）。
+     * 已下架/已驳回的 Quest 不算「占用」——它们的行还在数据库里，但对分类/标签管理而言
+     * 应视为已不再生效，否则管理员永远无法清理一个只剩历史驳回记录的分类。
+     */
+    long countByCategory_CategoryIdAndStatusNotIn(Long categoryId, Collection<QuestStatus> excludedStatuses);
 
-    /** 引用该标签的 Quest 数量（经 quest_tag_relations 关联表统计）。 */
-    @Query("select count(q) from Quest q join q.tags t where t.tagId = :tagId")
-    long countByTagId(Long tagId);
+    /** 引用该标签的 Quest 数量（经 quest_tag_relations 关联表统计），同样排除已下架/已驳回。 */
+    @Query("select count(q) from Quest q join q.tags t where t.tagId = :tagId and q.status not in :excludedStatuses")
+    long countByTagIdAndStatusNotIn(Long tagId, Collection<QuestStatus> excludedStatuses);
 
     Page<Quest> findByStatus(QuestStatus status, Pageable pageable);
 

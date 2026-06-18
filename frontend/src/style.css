@@ -3373,6 +3373,7 @@ h2 {
 .commission-card-top {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding-right: 86px;
   color: rgba(68, 37, 15, 0.7);
@@ -3382,6 +3383,12 @@ h2 {
 
 .commission-id {
   font-weight: 700;
+}
+
+.commission-meta-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .commission-rank {
@@ -3399,12 +3406,11 @@ h2 {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  margin-left: auto;
-  border: 1px solid rgba(67, 97, 58, 0.38);
-  border-radius: 999px;
-  color: #2f5130;
+  border: 1px solid rgba(139, 94, 30, 0.55);
+  border-radius: 4px;
+  color: #6b4a17;
   font-weight: 700;
-  background: rgba(108, 167, 96, 0.18);
+  background: linear-gradient(135deg, rgba(196, 154, 74, 0.4), rgba(139, 94, 30, 0.22));
 }
 
 .commission-title {
