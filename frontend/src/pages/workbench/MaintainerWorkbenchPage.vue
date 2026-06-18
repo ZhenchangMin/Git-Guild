@@ -208,7 +208,7 @@ onMounted(async () => {
           <button class="office-portal" type="button" @click="goRepoSync">
             <span class="office-portal-glyph" aria-hidden="true">⤓</span>
             <span class="office-portal-body">
-              <strong>新建或导入仓库</strong>
+              <strong>导入仓库</strong>
               <small>从 GitHub / Gitee 等导入或同步受托仓库，作为发布委托的来源。</small>
             </span>
             <span class="office-portal-arrow" aria-hidden="true">→</span>

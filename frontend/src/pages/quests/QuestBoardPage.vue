@@ -584,7 +584,6 @@ onMounted(() => {
                 <div class="commission-card-top">
                   <span class="commission-id">{{ quest.id }}</span>
                   <span class="commission-rank" :title="`难度 ${quest.difficulty} 阶`">{{ quest.difficulty }} 阶</span>
-                  <span class="commission-category">{{ quest.category }}</span>
                 </div>
 
                 <h3 class="commission-title">{{ quest.title }}</h3>
@@ -603,17 +602,6 @@ onMounted(() => {
                   <ul>
                     <li v-for="line in quest.criteria" :key="line">{{ line }}</li>
                   </ul>
-                </div>
-
-                <div v-if="quest.tags?.length" class="commission-tags">
-                  <span v-for="tag in quest.tags" :key="tag">
-                    <span
-                      class="commission-tag-dot"
-                      :style="{ background: tagColorByName[tag] || 'rgba(238, 184, 91, 0.5)' }"
-                      aria-hidden="true"
-                    ></span>
-                    {{ tag }}
-                  </span>
                 </div>
 
                 <div class="commission-stack">

@@ -3395,18 +3395,6 @@ h2 {
   background: rgba(255, 240, 191, 0.55);
 }
 
-.commission-category {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  margin-left: auto;
-  border: 1px solid rgba(67, 97, 58, 0.38);
-  border-radius: 999px;
-  color: #2f5130;
-  font-weight: 700;
-  background: rgba(108, 167, 96, 0.18);
-}
-
 .commission-title {
   margin: 2px 0 0;
   color: #4c250c;
@@ -3495,33 +3483,6 @@ h2 {
   font-size: 0.74rem;
   font-weight: 700;
   background: rgba(108, 167, 96, 0.18);
-}
-
-.commission-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 2px;
-}
-
-.commission-tags span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 9px;
-  border: 1px solid rgba(90, 48, 20, 0.26);
-  border-radius: 999px;
-  color: rgba(68, 37, 15, 0.86);
-  font-size: 0.74rem;
-  background: rgba(255, 240, 191, 0.45);
-}
-
-.commission-tag-dot {
-  flex-shrink: 0;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
 .commission-stack {
