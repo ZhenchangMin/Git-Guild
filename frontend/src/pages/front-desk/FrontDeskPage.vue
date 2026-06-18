@@ -29,12 +29,17 @@ const {
 const sceneRef = ref(null)
 const welcomeBubbleRef = ref(null)
 const userBubbleRef = ref(null)
+const userBubbleTextRef = ref(null)
 const historyOpen = ref(false)
 const sceneMetrics = ref(null)
 const welcomeBubbleSize = ref({ width: 420, height: 120 })
 const userBubbleSize = ref({ width: 260, height: 74 })
+const userBubbleScrollable = ref(false)
+const promptRevealCount = ref(0)
+const promptBubbleLayouts = ref({})
 let sceneResizeObserver = null
 let bubbleResizeObserver = null
+let promptRevealTimers = []
 const observedBubbleElements = new Set()
 
 const DESK_IMAGE = {
@@ -57,6 +62,8 @@ const BUBBLE_RADIUS = 22
 const NPC_BUBBLE_TAIL_WIDTH = 18
 const NPC_BUBBLE_HOTZONE_GAP = -50
 const USER_BUBBLE_TAIL_HEIGHT = 16
+const PROMPT_REVEAL_DELAY_MS = 1000
+const PROMPT_REVEAL_STEP_MS = 500
 
 // ── Role-aware status data ──
 const openQuestCount = ref(0)
@@ -74,6 +81,22 @@ const isMaintainer = computed(() => role.value === 'MAINTAINER')
 
 const len = (v) => (Array.isArray(v) ? v.length : 0)
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+const randomInRange = (min, max) => Math.random() * (max - min) + min
+
+function createPromptBubbleLayout() {
+  return {
+    sideGap: randomInRange(-100, 10),
+    gap: randomInRange(20, 50),
+  }
+}
+
+function syncPromptBubbleLayouts(items = allPromptBubbles.value) {
+  const nextLayouts = {}
+  items.forEach((item) => {
+    nextLayouts[item.id] = promptBubbleLayouts.value[item.id] ?? createPromptBubbleLayout()
+  })
+  promptBubbleLayouts.value = nextLayouts
+}
 
 const displayName = computed(() => {
   if (isAdventurer.value) return sessionStore.user?.displayName || sessionStore.user?.username || '冒险家'
@@ -117,10 +140,65 @@ const welcomeBubbleActions = computed(() => {
   return latestAssistantMessage.value?.actions ?? []
 })
 
-const promptBubbles = computed(() => {
+const promptBubblePath = [
+  'M 39 1',
+  'H 338',
+  'Q 359 1 359 22',
+  'V 42',
+  'Q 359 63 338 63',
+  'H 39',
+  'Q 18 63 18 42',
+  'V 39',
+  'L 1 32',
+  'L 18 25',
+  'V 22',
+  'Q 18 1 39 1',
+  'Z',
+].join(' ')
+
+const assistantPromptLabels = [
+  (question) => `这个我也能帮你：${question}`,
+  (question) => `还想继续的话，可以问我：${question}`,
+  (question) => `需要我带路吗？点这里问：${question}`,
+  (question) => `也可以顺手问我：${question}`,
+]
+
+function normalizePromptBubble(item, index) {
+  const rawMessage = typeof item === 'string'
+    ? item
+    : item?.message ?? item?.question ?? item?.text ?? item?.label ?? ''
+  const message = String(rawMessage).trim()
+  const label = typeof item === 'object' && item?.label
+    ? item.label
+    : assistantPromptLabels[index % assistantPromptLabels.length](message)
+
+  return {
+    id: `${index}-${message}`,
+    label,
+    message,
+  }
+}
+
+const allPromptBubbles = computed(() => {
   const suggestedQuestions = latestAssistantMessage.value?.suggestedQuestions ?? []
-  return (suggestedQuestions.length ? suggestedQuestions : quickQuestions.value).slice(0, 4)
+  return (suggestedQuestions.length ? suggestedQuestions : quickQuestions.value)
+    .map(normalizePromptBubble)
+    .filter((item) => item.message)
+    .slice(0, 4)
 })
+
+const promptBubbles = computed(() => allPromptBubbles.value.slice(0, promptRevealCount.value))
+
+const promptBubblesWithLayout = computed(() => promptBubbles.value.map((prompt, index, items) => {
+  const layout = promptBubbleLayouts.value[prompt.id] ?? createPromptBubbleLayout()
+  return {
+    ...prompt,
+    style: {
+      marginLeft: `${layout.sideGap}px`,
+      marginBottom: index < items.length - 1 ? `${layout.gap}px` : '0px',
+    },
+  }
+}))
 
 const historyButtonLabel = computed(() => {
   const count = messages.value.length
@@ -145,13 +223,6 @@ const statusChips = computed(() => {
     ]
   }
   return [{ label: '委托板', value: `${openQuestCount.value} 份可接` }]
-})
-
-// One contextual shortcut per role.
-const primaryShortcut = computed(() => {
-  if (isAdventurer.value) return { label: '前往工作台', routeName: 'adventurer-workbench' }
-  if (isMaintainer.value) return { label: '前往审核台', routeName: 'maintainer-review' }
-  return { label: '浏览悬赏任务板', routeName: 'quest-board' }
 })
 
 const welcomeBubbleStyle = computed(() => {
@@ -188,8 +259,9 @@ const userBubbleStyle = computed(() => {
 
   return {
     right: `${right}px`,
-    bottom: '126px',
+    bottom: '176px',
     maxWidth: `${inputDockWidth}px`,
+    '--user-bubble-content-max': `${Math.max(160, inputDockWidth - 44)}px`,
   }
 })
 
@@ -277,13 +349,32 @@ const promptCloudStyle = computed(() => {
   const metrics = sceneMetrics.value
   if (!metrics) return {}
 
-  const { character, width } = metrics
-  const availableWidth = character.left - SCREEN_EDGE - 16
-  const cloudWidth = clamp(Math.min(610, availableWidth), 360, 610)
-  const left = clamp(SCREEN_EDGE + 32, SCREEN_EDGE, width - cloudWidth - SCREEN_EDGE)
+  const { character, width, height } = metrics
+  if (width < 900) {
+    return {
+      left: `${SCREEN_EDGE}px`,
+      right: `${SCREEN_EDGE}px`,
+      bottom: '224px',
+      top: 'auto',
+      width: 'auto',
+    }
+  }
+
+  const sideGap = 0
+  const rightSpace = width - character.right - SCREEN_EDGE - sideGap
+  const leftSpace = character.left - SCREEN_EDGE - sideGap
+  const useRightSide = rightSpace >= 280 || rightSpace >= leftSpace
+  const availableWidth = useRightSide ? rightSpace : leftSpace
+  const cloudWidth = clamp(Math.min(390, availableWidth), 270, 390)
+  const left = useRightSide
+    ? clamp(character.right + sideGap, SCREEN_EDGE, width - cloudWidth - SCREEN_EDGE)
+    : clamp(character.left - cloudWidth - sideGap, SCREEN_EDGE, width - cloudWidth - SCREEN_EDGE)
+  const top = clamp(character.top + 58, 128, height - 330)
 
   return {
     left: `${left}px`,
+    top: `${top}px`,
+    bottom: 'auto',
     width: `${cloudWidth}px`,
   }
 })
@@ -344,6 +435,60 @@ function observeBubbleElement(target, sizeRef) {
 function refreshBubbleObservers() {
   observeBubbleElement(welcomeBubbleRef.value, welcomeBubbleSize)
   observeBubbleElement(userBubbleRef.value, userBubbleSize)
+  updateUserBubbleScrollState()
+}
+
+function updateUserBubbleScrollState() {
+  const el = userBubbleTextRef.value
+  if (!el) {
+    userBubbleScrollable.value = false
+    return
+  }
+
+  userBubbleScrollable.value = el.scrollHeight > el.clientHeight + 1
+}
+
+function clearPromptRevealTimers() {
+  promptRevealTimers.forEach((timer) => clearTimeout(timer))
+  promptRevealTimers = []
+}
+
+function isAssistantAnswerForLatestUser() {
+  const assistantMessage = latestAssistantMessage.value
+  const userMessage = latestUserMessage.value
+  if (!assistantMessage || !userMessage) return false
+
+  const assistantCreatedAt = Date.parse(assistantMessage.createdAt)
+  const userCreatedAt = Date.parse(userMessage.createdAt)
+  if (Number.isFinite(assistantCreatedAt) && Number.isFinite(userCreatedAt)) {
+    return assistantCreatedAt >= userCreatedAt
+  }
+
+  return Number(assistantMessage.id) > Number(userMessage.id)
+}
+
+function syncPromptReveal() {
+  clearPromptRevealTimers()
+  syncPromptBubbleLayouts()
+
+  const total = allPromptBubbles.value.length
+  if (!total || loading.value) {
+    promptRevealCount.value = 0
+    return
+  }
+
+  if (!isAssistantAnswerForLatestUser()) {
+    promptRevealCount.value = total
+    return
+  }
+
+  promptRevealCount.value = 0
+  for (let index = 1; index <= total; index += 1) {
+    const timer = setTimeout(() => {
+      promptRevealCount.value = Math.max(promptRevealCount.value, index)
+    }, PROMPT_REVEAL_DELAY_MS + (index - 1) * PROMPT_REVEAL_STEP_MS)
+    promptRevealTimers.push(timer)
+  }
 }
 
 function openHistory() {
@@ -370,6 +515,7 @@ onMounted(async () => {
         if (entry.target === welcomeBubbleRef.value) updateBubbleSize(entry.target, welcomeBubbleSize)
         if (entry.target === userBubbleRef.value) updateBubbleSize(entry.target, userBubbleSize)
       })
+      updateUserBubbleScrollState()
     })
     await nextTick()
     refreshBubbleObservers()
@@ -412,7 +558,19 @@ watch([latestUserMessage, welcomeBubbleText, welcomeBubbleActions], () => {
   nextTick(refreshBubbleObservers)
 })
 
+watch(
+  [
+    () => latestAssistantMessage.value?.id,
+    () => latestUserMessage.value?.id,
+    () => loading.value,
+    allPromptBubbles,
+  ],
+  syncPromptReveal,
+  { immediate: true },
+)
+
 onBeforeUnmount(() => {
+  clearPromptRevealTimers()
   sceneResizeObserver?.disconnect()
   sceneResizeObserver = null
   bubbleResizeObserver?.disconnect()
@@ -424,13 +582,12 @@ function navigate(routeName) {
   router.push({ name: routeName })
 }
 
-// 带上来源标记，使委托板的返回按钮能回到前台而非默认的公会大厅。
-function goQuestBoard() {
-  router.push({ name: 'quest-board', query: { from: 'front-desk' } })
-}
-
 function backToHall() {
   router.push({ name: 'hall' })
+}
+
+function sendPromptBubble(prompt) {
+  send(prompt.message)
 }
 </script>
 
@@ -465,17 +622,6 @@ function backToHall() {
           <i>{{ chip.label }}</i>
           <b>{{ chip.value }}</b>
         </span>
-        <button
-          v-if="primaryShortcut.routeName !== 'quest-board'"
-          class="desk-status-cta desk-status-cta--alt"
-          type="button"
-          @click="goQuestBoard"
-        >
-          <span class="desk-cta-glyph" aria-hidden="true">❖</span>委托板
-        </button>
-        <button class="desk-status-cta" type="button" @click="navigate(primaryShortcut.routeName)">
-          {{ primaryShortcut.label }}
-        </button>
       </aside>
 
       <section
@@ -563,18 +709,51 @@ function backToHall() {
               stroke-linejoin="round"
             />
           </svg>
-          <p class="desk-bubble">{{ latestUserMessage.text }}</p>
+          <p
+            ref="userBubbleTextRef"
+            class="desk-bubble"
+            :class="{ 'is-scrollable': userBubbleScrollable }"
+          >{{ latestUserMessage.text }}</p>
         </section>
       </Transition>
 
       <section class="desk-prompt-cloud" :style="promptCloudStyle" aria-label="推荐问题">
         <button
-          v-for="q in promptBubbles"
-          :key="q"
+          v-for="(prompt, index) in promptBubblesWithLayout"
+          :key="prompt.id"
           class="desk-quick-chip"
           type="button"
-          @click="send(q)"
-        >{{ q }}</button>
+          :style="prompt.style"
+          :disabled="loading"
+          :aria-label="`快速发送：${prompt.message}`"
+          @click="sendPromptBubble(prompt)"
+        >
+          <svg
+            class="desk-quick-frame"
+            viewBox="0 0 360 64"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <defs>
+              <linearGradient :id="`deskPromptBubbleFill-${index}`" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#22130a" stop-opacity="0.94" />
+                <stop offset="1" stop-color="#0f0905" stop-opacity="0.86" />
+              </linearGradient>
+            </defs>
+            <path
+              class="desk-quick-frame-path"
+              :d="promptBubblePath"
+              :fill="`url(#deskPromptBubbleFill-${index})`"
+              stroke="#eeb85b"
+              stroke-opacity="0.42"
+              stroke-width="1.2"
+              stroke-linejoin="round"
+              vector-effect="non-scaling-stroke"
+            />
+          </svg>
+          <span class="desk-quick-label">{{ prompt.label }}</span>
+        </button>
       </section>
 
       <footer class="desk-input-dock" aria-label="向艾丽丝提问">
@@ -761,7 +940,6 @@ function backToHall() {
   color: #ffb088;
 }
 
-.desk-status-cta,
 .desk-action-btn {
   border: 1px solid rgba(245, 195, 99, 0.56);
   color: #1a0f06;
@@ -772,15 +950,6 @@ function backToHall() {
   transition: filter 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
 
-.desk-status-cta {
-  min-height: 32px;
-  border-radius: 999px;
-  padding: 6px 14px;
-  font-size: 0.78rem;
-}
-
-.desk-status-cta:hover,
-.desk-status-cta:focus-visible,
 .desk-action-btn:hover,
 .desk-action-btn:focus-visible {
   filter: brightness(1.08);
@@ -788,33 +957,8 @@ function backToHall() {
   box-shadow: 0 7px 22px rgba(0, 0, 0, 0.4), 0 0 16px rgba(255, 200, 100, 0.16);
 }
 
-.desk-status-cta:active,
 .desk-action-btn:active {
   transform: scale(0.96);
-}
-
-/* 次级 CTA：翡翠实心变体，与金色主按钮同尺寸但用高对比色，一眼可辨（金+绿纹章配色）。 */
-.desk-status-cta--alt {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: linear-gradient(180deg, #5fd9a4, #1c8c5e);
-  color: #042a1d;
-  border-color: rgba(150, 240, 200, 0.62);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.32), 0 0 14px rgba(45, 200, 140, 0.22);
-}
-
-.desk-status-cta--alt:hover,
-.desk-status-cta--alt:focus-visible {
-  filter: brightness(1.08);
-  box-shadow: 0 7px 22px rgba(0, 0, 0, 0.4), 0 0 18px rgba(60, 220, 150, 0.36);
-}
-
-.desk-cta-glyph {
-  font-size: 0.74rem;
-  color: currentColor;
-  opacity: 0.78;
-  line-height: 1;
 }
 
 .desk-welcome-bubble,
@@ -830,7 +974,7 @@ function backToHall() {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: center;
   min-height: 98px;
   padding: 16px 18px 17px;
   overflow: visible;
@@ -874,6 +1018,7 @@ function backToHall() {
 .desk-welcome-copy {
   position: relative;
   z-index: 3;
+  align-self: center;
 }
 
 .desk-welcome-copy strong {
@@ -901,7 +1046,7 @@ function backToHall() {
   display: grid;
   gap: 7px;
   width: fit-content;
-  padding: 14px 24px 17px 18px;
+  padding: 12px 22px 10px;
   overflow: visible;
   color: rgba(255, 235, 200, 0.92);
   animation: bubbleArrive 420ms cubic-bezier(0.18, 0.86, 0.2, 1) both;
@@ -909,7 +1054,8 @@ function backToHall() {
 }
 
 .desk-user-echo {
-  justify-items: end;
+  justify-items: center;
+  align-items: center;
   z-index: 7;
 }
 
@@ -933,17 +1079,28 @@ function backToHall() {
 }
 
 .desk-user-echo .desk-bubble {
+  display: grid;
+  align-items: center;
+  justify-self: center;
   width: fit-content;
   min-width: 0;
-  max-width: 100%;
+  max-width: min(30em, var(--user-bubble-content-max, 30em));
   border-radius: 0;
-  padding: 0 11px 0 0;
+  padding: 0 4px;
   color: rgba(255, 235, 200, 0.88);
   background: transparent;
   font-size: 1rem;
   overflow-wrap: anywhere;
-  scrollbar-gutter: stable;
+  text-align: left;
+  transform: translateY(1px);
   white-space: normal;
+}
+
+.desk-user-echo .desk-bubble.is-scrollable {
+  align-items: start;
+  width: min(30em, var(--user-bubble-content-max, 30em));
+  padding: 0 8px;
+  scrollbar-gutter: stable both-edges;
 }
 
 .history-msg.user .history-bubble {
@@ -1036,59 +1193,101 @@ function backToHall() {
 }
 
 .desk-prompt-cloud {
-  bottom: 118px;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 0;
   align-items: flex-start;
+  pointer-events: none;
 }
 
 .desk-quick-chip {
-  width: fit-content;
+  position: relative;
+  display: inline-grid;
+  place-items: center start;
+  width: max-content;
   max-width: 100%;
-  min-height: 42px;
-  border: 1px solid rgba(238, 184, 91, 0.4);
-  border-radius: 14px;
-  padding: 9px 16px;
-  color: rgba(255, 232, 190, 0.86);
-  background:
-    linear-gradient(180deg, rgba(37, 21, 11, 0.68), rgba(13, 8, 5, 0.58)),
-    rgba(21, 12, 7, 0.46);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(8px);
-  font-size: 0.84rem;
-  line-height: 1.35;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  padding: 11px 22px 11px 36px;
+  color: rgba(255, 235, 200, 0.9);
+  background: transparent;
+  box-shadow: none;
+  appearance: none;
+  font-size: 0.86rem;
+  line-height: 1.42;
   text-align: left;
   text-wrap: pretty;
+  white-space: normal;
+  pointer-events: auto;
   cursor: pointer;
-  transition: border-color 180ms ease, background 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
-  animation: bubbleArrive 420ms cubic-bezier(0.18, 0.86, 0.2, 1) both;
+  transition:
+    color 180ms ease,
+    transform 180ms ease;
+  animation: bubbleArrive 680ms cubic-bezier(0.18, 0.86, 0.2, 1) both;
+  isolation: isolate;
 }
 
-.desk-quick-chip:nth-child(2) {
-  animation-delay: 70ms;
+.desk-quick-frame {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 16px 38px rgba(0, 0, 0, 0.38));
+  transition:
+    filter 180ms ease,
+    opacity 180ms ease;
 }
 
-.desk-quick-chip:nth-child(3) {
-  animation-delay: 120ms;
+.desk-quick-frame-path {
+  transition:
+    stroke-opacity 180ms ease,
+    stroke 180ms ease;
 }
 
-.desk-quick-chip:nth-child(4) {
-  animation-delay: 170ms;
+.desk-quick-label {
+  position: relative;
+  z-index: 1;
+  display: block;
+  min-width: 0;
 }
 
 .desk-quick-chip:hover,
 .desk-quick-chip:focus-visible {
-  border-color: var(--gold-bright);
   color: #fff2d0;
-  background: rgba(82, 45, 16, 0.66);
-  box-shadow: 0 0 18px rgba(255, 200, 100, 0.16), 0 12px 28px rgba(0, 0, 0, 0.36);
   transform: translateY(-2px);
+}
+
+.desk-quick-chip:hover .desk-quick-frame,
+.desk-quick-chip:focus-visible .desk-quick-frame {
+  filter:
+    drop-shadow(0 0 18px rgba(255, 200, 100, 0.16))
+    drop-shadow(0 17px 40px rgba(0, 0, 0, 0.44));
+}
+
+.desk-quick-chip:hover .desk-quick-frame-path,
+.desk-quick-chip:focus-visible .desk-quick-frame-path {
+  stroke: var(--gold-bright);
+  stroke-opacity: 0.7;
+}
+
+.desk-quick-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+  transform: none;
+}
+
+.desk-quick-chip:disabled .desk-quick-frame {
+  opacity: 0.7;
 }
 
 .desk-input-dock {
   left: 50%;
-  bottom: 28px;
+  bottom: 78px;
   z-index: 6;
   width: min(860px, calc(100% - 84px));
   transform: translateX(-50%);
