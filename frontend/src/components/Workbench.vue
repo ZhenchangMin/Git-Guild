@@ -3793,9 +3793,29 @@ dd {
   gap: 10px;
 }
 .copied-hint {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 60;
   margin: 0;
-  color: #b6e3a0;
-  font-size: 0.8rem;
+  padding: 10px 16px;
+  border: 1px solid rgba(182, 227, 160, 0.45);
+  border-radius: 8px;
+  background: rgba(20, 36, 14, 0.92);
+  color: #d9f5c8;
+  font-size: 0.84rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  animation: copied-hint-pop 180ms ease-out;
+}
+@keyframes copied-hint-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @media (max-width: 640px) {
   .clone-field-grid {
