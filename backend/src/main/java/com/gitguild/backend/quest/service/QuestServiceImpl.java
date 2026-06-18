@@ -324,9 +324,9 @@ public class QuestServiceImpl implements QuestService {
         CodeIssue issue = quest.getIssue();
 
         // 查找该 quest 仓库下的 PR，取最新一条
-        List<CodePullRequest> prs = pullRequestRepository.findAll().stream()
-                .filter(pr -> pr.getRepository().getRepositoryId().equals(repo.getRepositoryId()))
-                .toList();
+        // 注意：原先用 findAll() 再在 Java 里过滤，等价于每个 assignment 都做一次全表扫描；
+        // 工作台一旦有多个进行中任务，这里就会被放大成 N 次全表查询，是首屏加载慢的主因。
+        List<CodePullRequest> prs = pullRequestRepository.findByRepositoryRepositoryId(repo.getRepositoryId());
         PullRequestBrief prBrief = prs.isEmpty() ? null : new PullRequestBrief(
                 prs.get(prs.size() - 1).getPullRequestId(),
                 prs.get(prs.size() - 1).getExternalPrId(),

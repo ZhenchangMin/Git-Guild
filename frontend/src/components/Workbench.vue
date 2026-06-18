@@ -53,7 +53,8 @@ const liveUser = ref({
 const liveAssignments = ref([])       // MyAssignmentItem[]
 const liveRepositories = ref([])      // Repo[]
 const livePullRequests = ref([])      // PR[]
-const liveStats = ref(workbenchStats.map((stat) => ({ ...stat })))
+// 初始展示占位符 '-'，避免真实数据到达前闪现 workbenchStats 演示数值（2/1/1/3）
+const liveStats = ref(workbenchStats.map((stat) => ({ ...stat, value: '-' })))
 const liveLoading = ref(true) // 起始即加载态：成长数据由 onMounted 拉取，首帧先显示占位符而非演示值
 
 async function fetchWorkbenchData() {
