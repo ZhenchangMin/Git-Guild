@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import { repositoryApi } from '../../api/repositoryApi'
+import { questDifficulties } from '../../data/adminTaxonomy'
 import HomeOrb from '../../components/HomeOrb.vue'
 import parchmentFormImg from '../../assets/submission-form-parchment-v0-clean.webp'
 import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
@@ -42,7 +43,13 @@ const submitting = ref(false)
 const submitError = ref('')
 const submitOk = ref(null) // { questId }
 
-const DIFFICULTIES = ['A', 'B', 'C', 'D']
+// 难度选项复用 admin 平台配置的同一份枚举，附带分级说明，
+// 让委托人一眼看懂 A=最难、D=最易，而非只见字母。
+const DIFFICULTIES = questDifficulties
+
+const selectedDifficulty = computed(
+  () => DIFFICULTIES.find((d) => d.code === form.value.difficulty) ?? null,
+)
 
 const selectedRepo = computed(
   () => repositories.value.find((r) => String(r.repositoryId) === String(form.value.repositoryId)) ?? null,
@@ -345,8 +352,13 @@ function unwrapItems(payload) {
           <label class="writ-field">
             <span>难度</span>
             <select v-model="form.difficulty">
-              <option v-for="d in DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
+              <option v-for="d in DIFFICULTIES" :key="d.code" :value="d.code">
+                {{ d.code }} · {{ d.label }} — {{ d.hint }}
+              </option>
             </select>
+            <small v-if="selectedDifficulty" class="writ-hint">
+              {{ selectedDifficulty.label }}：{{ selectedDifficulty.hint }}（A 最难 · D 最易）
+            </small>
           </label>
 
           <label class="writ-field">
