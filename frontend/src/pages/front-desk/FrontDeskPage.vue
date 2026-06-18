@@ -462,7 +462,7 @@ function backToHall() {
         </span>
         <button
           v-if="primaryShortcut.routeName !== 'quest-board'"
-          class="desk-status-cta desk-status-cta--ghost"
+          class="desk-status-cta desk-status-cta--alt"
           type="button"
           @click="navigate('quest-board')"
         >
@@ -788,29 +788,27 @@ function backToHall() {
   transform: scale(0.96);
 }
 
-/* 次级 CTA：描边幽灵变体，与实心主按钮拉开主次而不脱离金色公会调性。 */
-.desk-status-cta--ghost {
+/* 次级 CTA：翡翠实心变体，与金色主按钮同尺寸但用高对比色，一眼可辨（金+绿纹章配色）。 */
+.desk-status-cta--alt {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: rgba(10, 6, 3, 0.42);
-  color: #ffe0a3;
-  border-color: rgba(245, 195, 99, 0.5);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.26);
+  background: linear-gradient(180deg, #5fd9a4, #1c8c5e);
+  color: #042a1d;
+  border-color: rgba(150, 240, 200, 0.62);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.32), 0 0 14px rgba(45, 200, 140, 0.22);
 }
 
-.desk-status-cta--ghost:hover,
-.desk-status-cta--ghost:focus-visible {
-  filter: none;
-  background: rgba(62, 38, 13, 0.62);
-  border-color: rgba(255, 213, 130, 0.85);
-  color: #fff1d2;
-  box-shadow: 0 7px 20px rgba(0, 0, 0, 0.36), 0 0 14px rgba(255, 200, 100, 0.14);
+.desk-status-cta--alt:hover,
+.desk-status-cta--alt:focus-visible {
+  filter: brightness(1.08);
+  box-shadow: 0 7px 22px rgba(0, 0, 0, 0.4), 0 0 18px rgba(60, 220, 150, 0.36);
 }
 
 .desk-cta-glyph {
   font-size: 0.74rem;
-  color: rgba(245, 195, 99, 0.9);
+  color: currentColor;
+  opacity: 0.78;
   line-height: 1;
 }
 
