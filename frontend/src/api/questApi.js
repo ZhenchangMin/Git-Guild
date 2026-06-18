@@ -49,4 +49,8 @@ export const questApi = {
   myPublished() {
     return request('/quests/me/published')
   },
+  // 某委托的管理员审核记录（含驳回原因）；仅发布者或管理员可查。
+  reviews(questId) {
+    return request(`/quests/${questId}/admin-reviews`)
+  },
 }

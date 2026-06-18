@@ -1,6 +1,7 @@
 package com.gitguild.backend.quest.service;
 
 import com.gitguild.backend.quest.dto.CreateQuestRequest;
+import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.AssignmentResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.CreateQuestResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.MyAssignmentResponse;
@@ -32,4 +33,7 @@ public interface QuestService {
 
     /** 当前维护者发布的全部委托（含 DRAFT / 待审核 等所有状态），用于「我发布的委托」视图。 */
     List<QuestSummaryResponse> listMyPublishedQuests(Long publisherId);
+
+    /** 某委托的 Admin 审核记录（含驳回原因）；仅发布者或管理员可查，发布者只见对其可见的意见。 */
+    List<AdminReviewResponse> listQuestReviews(Long questId, Long currentUserId);
 }

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
 import questBoardImg from '../../assets/quest board.webp'
@@ -8,6 +8,7 @@ import { questFilterGroups } from '../../data/questBoard'
 import { sessionStore } from '../../stores/sessionStore'
 
 const router = useRouter()
+const route = useRoute()
 const questSearch = ref('')
 const questPage = ref(1)
 const questPageSize = 18
@@ -18,6 +19,8 @@ const taxonomyFilterOptions = ref({
   category: [],
   tag: [],
 })
+// 标签名 → 颜色，供筛选栏在标签 chip 前渲染对应色点（与发布表单一致）。
+const tagColorByName = ref({})
 const recommendationMeta = ref(null)
 const recommendationError = ref('')
 const isRecommendationLoading = ref(true)
@@ -167,23 +170,24 @@ const hasQuestSearch = computed(() => questSearch.value.trim().length > 0)
 
 const visibleQuestFilterGroups = computed(() => {
   const dynamicValues = {
-    category: [
-      ...taxonomyFilterOptions.value.category,
-      ...questSource.value.map((quest) => quest.category),
-    ],
-    tag: [
-      ...taxonomyFilterOptions.value.tag,
-      ...questSource.value.flatMap((quest) => quest.tags ?? []),
-    ],
+    // 分类 / 标签只取 taxonomy 接口（与 admin 平台配置同源），
+    // 不再混入委托自带的 category/tags——后者含推荐兜底「推荐」与推荐理由，
+    // 会冒出 admin 里并不存在的“假”筛选项，导致两处不一致。
+    category: [...taxonomyFilterOptions.value.category],
+    tag: [...taxonomyFilterOptions.value.tag],
     difficulty: questSource.value.map((quest) => quest.difficulty),
     stack: questSource.value.flatMap((quest) => quest.techStack ?? []),
     status: questSource.value.map((quest) => quest.status),
   }
 
-  return questFilterGroups.map((group) => ({
-    ...group,
-    options: unique([...(group.options ?? []), ...(dynamicValues[group.id] ?? [])]),
-  }))
+  return questFilterGroups
+    .map((group) => ({
+      ...group,
+      options: unique([...(group.options ?? []), ...(dynamicValues[group.id] ?? [])]),
+    }))
+    // 选项全由真实数据驱动后，无数据的分组（如尚未配置任何标签）直接隐藏，
+    // 不再渲染只有标题、没有可选项的空筛选框。
+    .filter((group) => group.options.length > 0)
 })
 
 const recommendationStatusText = computed(() => {
@@ -396,15 +400,23 @@ async function loadTaxonomyFilterOptions() {
     ])
     const categoryData = unwrapApiData(categoryPayload)
     const tagData = unwrapApiData(tagPayload)
+    const tagItems = Array.isArray(tagData) ? tagData : (tagData.items ?? [])
     taxonomyFilterOptions.value = {
       category: normalizeTaxonomyOptions(Array.isArray(categoryData) ? categoryData : categoryData.items),
-      tag: normalizeTaxonomyOptions(Array.isArray(tagData) ? tagData : tagData.items),
+      tag: normalizeTaxonomyOptions(tagItems),
     }
+    // 以标签名为键缓存 admin 配置的颜色，筛选 chip 据此上色。
+    tagColorByName.value = Object.fromEntries(
+      tagItems
+        .filter((tag) => tag?.enabled !== false && tag?.name)
+        .map((tag) => [tag.name, tag.color]),
+    )
   } catch {
     taxonomyFilterOptions.value = {
       category: [],
       tag: [],
     }
+    tagColorByName.value = {}
   }
 }
 
@@ -429,9 +441,18 @@ function openQuestDetail(questId, intent = 'view') {
 // Visitors never had a hall to come from — the board is their entry point. Send
 // them back to the login gate instead, mirroring the accept-quest flow.
 const isVisitor = computed(() => sessionStore.role === 'VISITOR')
-const backLabel = computed(() => (isVisitor.value ? '返回登录' : '返回公会大厅'))
+// 从前台进入时，返回应回到前台而非默认的公会大厅（来源由 query.from 标记）。
+const fromFrontDesk = computed(() => route.query.from === 'front-desk')
+const backLabel = computed(() => {
+  if (fromFrontDesk.value) return '返回前台'
+  return isVisitor.value ? '返回登录' : '返回公会大厅'
+})
 
 function goBack() {
+  if (fromFrontDesk.value) {
+    router.push({ name: 'front-desk' })
+    return
+  }
   if (isVisitor.value) {
     router.push({ name: 'login' })
     return
@@ -513,6 +534,12 @@ onMounted(() => {
                     :aria-pressed="isQuestFilterSelected(group.id, option)"
                     @click="toggleQuestFilter(group.id, option)"
                   >
+                    <span
+                      v-if="group.id === 'tag'"
+                      class="quest-filter-dot"
+                      :style="{ background: tagColorByName[option] || 'rgba(238, 184, 91, 0.5)' }"
+                      aria-hidden="true"
+                    ></span>
                     {{ option }}
                   </button>
                 </div>

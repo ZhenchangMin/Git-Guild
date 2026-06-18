@@ -13,6 +13,10 @@ export const repositoryApi = {
   detail(repositoryId) {
     return request(`/repositories/${repositoryId}`)
   },
+  // 直接在平台本地 Gitea 新建仓库（委托人 / 管理员）。
+  create(payload) {
+    return request('/repositories', { method: 'POST', body: payload })
+  },
   importRepository(payload, options = {}) {
     return request('/repositories/import', { method: 'POST', body: payload, signal: options.signal })
   },

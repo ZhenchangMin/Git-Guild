@@ -77,6 +77,9 @@ class QuestServiceImplTest {
     @Mock
     private CodePullRequestRepository pullRequestRepository;
 
+    @Mock
+    private com.gitguild.backend.quest.repository.AdminReviewRecordRepository adminReviewRecordRepository;
+
     private QuestServiceImpl questService;
 
     @BeforeEach
@@ -93,7 +96,8 @@ class QuestServiceImplTest {
                 pullRequestRepository,
                 userRepository,
                 new ObjectMapper(),
-                new com.gitguild.backend.codehost.gitea.GiteaProperties("http://localhost:3000", "test-token", "spike-admin", null));
+                new com.gitguild.backend.codehost.gitea.GiteaProperties("http://localhost:3000", "test-token", "spike-admin", null),
+                adminReviewRecordRepository);
     }
 
     @Test

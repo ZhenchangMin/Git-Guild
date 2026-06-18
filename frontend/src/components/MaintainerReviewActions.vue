@@ -60,9 +60,7 @@ watch(
 <template>
   <aside class="maintainer-review-actions">
     <div class="action-head">
-      <p class="kicker">Feedback Operation</p>
-      <h2>反馈操作</h2>
-      <p>输出字段对齐后端审核接口：`decision`、`summary`、`items[]`。</p>
+      <h2>审核反馈</h2>
     </div>
 
     <div class="decision-list" role="radiogroup" aria-label="审核结论">

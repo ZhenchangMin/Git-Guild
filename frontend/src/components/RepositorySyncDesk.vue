@@ -7,6 +7,14 @@ import { toBrowsableGiteaUrl } from '../utils/giteaUrl'
 
 const router = useRouter()
 
+// 'create' = 在平台直接新建空仓库；'import' = 迁入已有外部仓库。
+const mode = ref('create')
+
+const createForm = ref({
+  name: 'gitguild-demo',
+  description: '',
+})
+
 const repositoryForm = ref({
   sourceUrl: '',
   name: '',
@@ -49,13 +57,31 @@ function startCreep(cap) {
   }, 220)
 }
 
+function switchMode(next) {
+  if (mode.value === next) return
+  mode.value = next
+  errorMessage.value = ''
+}
+
 const notice = computed(() => {
   if (errorMessage.value) {
     return {
       tone: 'warn',
-      title: '仓库暂时无法接入',
+      title: mode.value === 'create' ? '仓库暂时无法创建' : '仓库暂时无法接入',
       body: errorMessage.value,
-      steps: ['确认仓库地址可访问', '确认仓库为公开仓库或平台有权限', '修正后重新导入'],
+      steps:
+        mode.value === 'create'
+          ? ['确认仓库名未被占用', '仅委托人或管理员可创建仓库', '修正后重新创建']
+          : ['确认仓库地址可访问', '确认仓库为公开仓库或平台有权限', '修正后重新导入'],
+    }
+  }
+
+  if (stage.value === 'created') {
+    return {
+      tone: 'success',
+      title: '仓库已创建',
+      body: `${lastRepository.value?.name ?? '新仓库'} 已在平台本地 Gitea 创建完成。现在可以回到委托人工作台发布委托。`,
+      steps: ['空仓库已就绪', '可在工作台基于该仓库发布委托', '冒险家接取后会自动建任务分支'],
     }
   }
 
@@ -77,6 +103,15 @@ const notice = computed(() => {
     }
   }
 
+  if (mode.value === 'create') {
+    return {
+      tone: 'info',
+      title: '新建受托仓库',
+      body: '在平台本地 Gitea 直接创建一个空仓库，无需任何外部地址。创建后即可在工作台基于它发布委托。',
+      steps: ['填写仓库名称', '创建空仓库', '返回工作台发布委托'],
+    }
+  }
+
   return {
     tone: 'info',
     title: '接入受托仓库',
@@ -87,6 +122,7 @@ const notice = computed(() => {
 
 const issueOptions = computed(() => repositoryIssues.value.filter((issue) => issue.status !== 'CLOSED'))
 const canImport = computed(() => repositoryForm.value.sourceUrl.trim() && repositoryForm.value.name.trim() && !loading.value)
+const canCreate = computed(() => createForm.value.name.trim() && !loading.value)
 
 function inferRepositoryName(sourceUrl) {
   const clean = sourceUrl.trim().replace(/\.git$/i, '')
@@ -226,6 +262,27 @@ async function importRepository() {
     stopCreep()
     loading.value = false
     abortController = null
+  }
+}
+
+async function createRepository() {
+  errorMessage.value = ''
+  loading.value = true
+  repositoryIssues.value = []
+  try {
+    const response = await repositoryApi.create({
+      name: createForm.value.name.trim(),
+      description: createForm.value.description.trim(),
+    })
+    const repository = response?.data
+    if (!repository?.repositoryId) throw new Error('仓库创建成功但未返回 repositoryId。')
+    lastRepository.value = repository
+    stage.value = 'created'
+  } catch (error) {
+    stage.value = 'ready'
+    errorMessage.value = readableError(error, '仓库创建失败，请确认仓库名未被占用且你有委托人权限。')
+  } finally {
+    loading.value = false
   }
 }
 
@@ -382,16 +439,52 @@ onBeforeUnmount(stopCreep)
       </ol>
     </section>
 
-    <form class="frontdesk-pocket import-panel" @submit.prevent="importRepository">
+    <form class="frontdesk-pocket import-panel" @submit.prevent="mode === 'create' ? createRepository() : importRepository()">
       <div class="pocket-head">
         <div>
           <p class="kicker">Repository Intake</p>
-          <h2>导入仓库</h2>
+          <h2>{{ mode === 'create' ? '新建仓库' : '导入仓库' }}</h2>
         </div>
         <span v-if="lastRepository" class="repo-id">ID {{ lastRepository.repositoryId }}</span>
       </div>
 
-      <section class="form-section">
+      <div class="mode-switch" role="tablist" aria-label="仓库接入方式">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="mode === 'create'"
+          :class="{ active: mode === 'create' }"
+          @click="switchMode('create')"
+        >新建空仓库</button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="mode === 'import'"
+          :class="{ active: mode === 'import' }"
+          @click="switchMode('import')"
+        >导入已有仓库</button>
+      </div>
+
+      <section v-if="mode === 'create'" class="form-section">
+        <div class="section-head">
+          <strong>新建仓库</strong>
+          <span>在平台本地 Gitea 创建</span>
+        </div>
+        <label>
+          仓库名称
+          <input v-model.trim="createForm.name" placeholder="gitguild-demo" required />
+          <small class="field-hint">仅字母、数字、连字符；将作为本地 Gitea 仓库名。</small>
+        </label>
+        <label>
+          仓库描述
+          <input v-model.trim="createForm.description" placeholder="可选，简述这个仓库的用途" />
+        </label>
+        <button class="primary-action section-action" type="submit" :disabled="!canCreate">
+          {{ loading ? '正在创建仓库…' : '创建空仓库' }}
+        </button>
+      </section>
+
+      <section v-else class="form-section">
         <div class="section-head">
           <strong>仓库来源</strong>
           <span>GitHub / Gitea 公网地址</span>
@@ -474,13 +567,17 @@ onBeforeUnmount(stopCreep)
 
       <section v-if="lastRepository" class="form-section repository-result">
         <div class="section-head">
-          <strong>接入结果</strong>
-          <span>{{ lastRepository.syncStatus || 'SYNCED' }}</span>
+          <strong>{{ stage === 'created' ? '创建结果' : '接入结果' }}</strong>
+          <span>{{ stage === 'created' ? '已就绪' : lastRepository.syncStatus || 'SYNCED' }}</span>
         </div>
         <dl>
           <div>
             <dt>仓库</dt>
             <dd>{{ lastRepository.name }}</dd>
+          </div>
+          <div>
+            <dt>仓库 ID</dt>
+            <dd>{{ lastRepository.repositoryId }}</dd>
           </div>
           <div>
             <dt>默认分支</dt>
@@ -493,7 +590,7 @@ onBeforeUnmount(stopCreep)
         </dl>
       </section>
 
-      <div v-if="stage === 'imported'" class="next-step">
+      <div v-if="stage === 'imported' || stage === 'created'" class="next-step">
         <div class="next-step-buttons">
           <button
             v-if="lastRepository?.sourceUrl"
@@ -506,7 +603,7 @@ onBeforeUnmount(stopCreep)
             <span class="cta-publish-arrow" aria-hidden="true">→</span>
           </button>
         </div>
-        <span class="next-step-hint">仓库已接入 · 下一步起草并发布委托</span>
+        <span class="next-step-hint">{{ stage === 'created' ? '仓库已创建 · 下一步起草并发布委托' : '仓库已接入 · 下一步起草并发布委托' }}</span>
       </div>
 
     </form>
@@ -666,6 +763,38 @@ onBeforeUnmount(stopCreep)
   width: min(540px, 43vw);
   max-height: min(74vh, 720px);
   overflow: auto;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  border: 1px solid rgba(224, 163, 72, 0.3);
+  border-radius: 8px;
+  padding: 4px;
+  background: rgba(8, 5, 3, 0.4);
+}
+
+.mode-switch button {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: rgba(255, 231, 183, 0.66);
+  background: transparent;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.mode-switch button:hover {
+  color: #ffe7b5;
+}
+
+.mode-switch button.active {
+  border-color: rgba(245, 195, 99, 0.5);
+  color: #1a0f06;
+  font-weight: 700;
+  background: linear-gradient(180deg, #ffd98a, #c07528);
 }
 
 .pocket-head,

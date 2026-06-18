@@ -2695,6 +2695,32 @@ h2 {
   background: rgba(28, 16, 8, 0.5);
 }
 
+.admin-tax-delete {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: 1px solid rgba(200, 75, 75, 0.4);
+  border-radius: 7px;
+  background: rgba(60, 20, 16, 0.4);
+  color: rgba(255, 190, 178, 0.92);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+
+.admin-tax-delete:hover:not(:disabled) {
+  border-color: rgba(214, 92, 84, 0.78);
+  background: rgba(120, 36, 28, 0.55);
+}
+
+.admin-tax-delete:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
 .admin-difficulty-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3105,6 +3131,9 @@ h2 {
 }
 
 .quest-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 26px;
   border: 1px solid rgba(238, 184, 91, 0.42);
   border-radius: 999px;
@@ -3113,6 +3142,15 @@ h2 {
   font-size: 0.78rem;
   background: rgba(12, 7, 4, 0.38);
   transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+/* 标签筛选 chip 前的颜色点：对齐发布表单的 writ-tag-dot，让 admin 配色在筛选栏也可见。 */
+.quest-filter-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .quest-filter-chip:hover,
