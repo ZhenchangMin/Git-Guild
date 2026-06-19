@@ -234,6 +234,11 @@ public class Quest {
         return techStackJson;
     }
 
+    /** 审核通过时把委托技术栈规范化为平台已登记的标准写法（大小写统一），不改变发布表单的自由输入流程。 */
+    public void setTechStackJson(String techStackJson) {
+        this.techStackJson = techStackJson;
+    }
+
     public int getRewardXp() {
         return rewardXp;
     }

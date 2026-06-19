@@ -26,6 +26,15 @@ public interface QuestRepository extends JpaRepository<Quest, Long>, JpaSpecific
     @Query("select count(q) from Quest q join q.tags t where t.tagId = :tagId and q.status not in :excludedStatuses")
     long countByTagIdAndStatusNotIn(Long tagId, Collection<QuestStatus> excludedStatuses);
 
+    /**
+     * 引用该技术栈名称的 Quest 数量。技术栈没有关联表，原样存在 tech_stack JSON 数组列里，
+     * 这里用「转小写后按 JSON 字符串元素子串匹配」代替 MySQL 专属的 JSON_CONTAINS，
+     * 以便在 H2(MySQL 模式) 测试库与生产 MySQL 上行为一致。同样排除已下架/已驳回。
+     */
+    @Query("select count(q) from Quest q where lower(q.techStackJson) like lower(concat('%\"', :name, '\"%'))"
+            + " and q.status not in :excludedStatuses")
+    long countByTechStackNameAndStatusNotIn(String name, Collection<QuestStatus> excludedStatuses);
+
     Page<Quest> findByStatus(QuestStatus status, Pageable pageable);
 
     /**

@@ -126,6 +126,15 @@ CREATE TABLE IF NOT EXISTS quest_tags (
                             UNIQUE KEY uk_tags_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS quest_tech_stacks (
+                                   tech_stack_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                                   name VARCHAR(64) NOT NULL,
+                                   enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                                   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                   UNIQUE KEY uk_tech_stacks_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS quests (
                         quest_id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         publisher_id BIGINT NOT NULL,

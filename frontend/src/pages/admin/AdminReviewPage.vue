@@ -16,6 +16,8 @@ function cloneApplication(application) {
     complianceChecks: application.complianceChecks.map((check) => ({ ...check })),
     risks: [...application.risks],
     reviewRecords: application.reviewRecords.map((record) => ({ ...record })),
+    tags: application.tags.map((tag) => ({ ...tag })),
+    techStack: [...application.techStack],
   }
 }
 
@@ -30,6 +32,41 @@ const submitting = ref(false)
 const loading = ref(false)
 const loadError = ref('')
 const reasonField = ref(null)
+
+// 已登记技术栈词表（大小写不敏感比对），用于标红未登记项并支持一键登记。
+const registeredTechStacks = ref([])
+const registeringTechStack = ref(null)
+const techStackNotice = ref('')
+
+function isTechStackRegistered(name) {
+  return registeredTechStacks.value.some((stack) => stack.toLowerCase() === String(name).toLowerCase())
+}
+
+async function loadRegisteredTechStacks() {
+  try {
+    const response = await adminApi.listTechStacks({ includeDisabled: false, size: 100 })
+    const items = response?.data?.items ?? response?.data ?? []
+    registeredTechStacks.value = items.map((item) => item.name)
+  } catch {
+    // 静默：不影响主审核流程，仅未登记标红功能会暂时不可用。
+  }
+}
+
+async function registerTechStack(name) {
+  if (registeringTechStack.value) return
+  registeringTechStack.value = name
+  techStackNotice.value = ''
+  try {
+    const res = await adminApi.createTechStack({ name, enabled: true })
+    const created = res?.data?.name ?? name
+    registeredTechStacks.value = [...registeredTechStacks.value, created]
+    techStackNotice.value = `技术栈「${created}」已登记，可继续审核通过。`
+  } catch (error) {
+    techStackNotice.value = readableError(error, `登记技术栈「${name}」失败。`)
+  } finally {
+    registeringTechStack.value = null
+  }
+}
 
 const actionResult = ref({
   tone: 'idle',
@@ -58,6 +95,11 @@ const confirmDialogMeta = {
       `确认下架「${application.questCode}」吗？${
         application.assignmentActive ? '接取者的进度将被取消，且无法恢复。' : '该任务将不再展示于悬赏任务板。'
       }`,
+  },
+  REOPEN: {
+    confirmLabel: '确认重新上架',
+    text: (application) =>
+      `确认重新上架「${application.questCode}」吗？该任务将重新进入悬赏任务板，供冒险家接取。`,
   },
 }
 
@@ -94,6 +136,7 @@ const isRefreshing = ref(false)
 
 onMounted(() => {
   loadAdminQuests()
+  loadRegisteredTechStacks()
   refreshTimer = window.setInterval(refreshQueue, REFRESH_INTERVAL_MS)
   document.addEventListener('visibilitychange', handleVisibility)
   window.addEventListener('focus', refreshQueue)
@@ -200,6 +243,9 @@ async function toApplication(summary) {
   const questId = source.questId ?? summary.questId
   const assignmentActive = Boolean(source.assignment?.assigned)
   const assigneeName = source.assignment?.assignee?.username ?? null
+  const category = source.category ?? null
+  const tags = source.tags ?? []
+  const techStack = source.techStack ?? []
 
   return {
     id: `APP-${questId}`,
@@ -219,6 +265,9 @@ async function toApplication(summary) {
     completionCriteria,
     assignmentActive,
     assigneeName,
+    category,
+    tags,
+    techStack,
     clarityChecks: buildClarityChecks(title, description, completionCriteria),
     complianceChecks: buildComplianceChecks(source),
     risks: [],
@@ -341,6 +390,12 @@ const activeApplication = computed(
     applications.value[0],
 )
 
+const unregisteredTechStack = computed(() => {
+  const application = activeApplication.value
+  if (!application) return []
+  return application.techStack.filter((name) => !isTechStackRegistered(name))
+})
+
 const queueStats = computed(() => {
   const counts = applications.value.reduce(
     (summary, application) => {
@@ -435,11 +490,12 @@ async function submitDecision(decision) {
   }
   reasonError.value = ''
 
-  // 通过上架 / 退回补充始终二次确认；下架仅在任务存在 ACTIVE 接取记录时才拦截确认。
+  // 通过上架 / 退回补充 / 下架 / 重新上架均需二次确认，避免误触导致任务状态变更。
   const needsConfirm =
     decision === 'APPROVE_PUBLISH' ||
     decision === 'REJECT_PUBLISH' ||
-    (decision === 'TAKE_DOWN' && application.assignmentActive)
+    decision === 'TAKE_DOWN' ||
+    decision === 'REOPEN'
   if (needsConfirm && confirmingDecision.value !== decision) {
     confirmingDecision.value = decision
     return
@@ -488,10 +544,20 @@ async function submitDecision(decision) {
     }
     reason.value = ''
   } catch (error) {
-    actionResult.value = {
-      tone: 'danger',
-      title: '审核提交失败',
-      body: readableError(error, '管理员审核提交失败。'),
+    confirmingDecision.value = null
+    if (error?.code === 'TECH_STACK_NOT_REGISTERED') {
+      await loadRegisteredTechStacks()
+      actionResult.value = {
+        tone: 'danger',
+        title: '存在未登记的技术栈',
+        body: `${error.details ?? ''} 未在平台配置中登记，请先在「委托内容」卡片里登记后再通过。`,
+      }
+    } else {
+      actionResult.value = {
+        tone: 'danger',
+        title: '审核提交失败',
+        body: readableError(error, '管理员审核提交失败。'),
+      }
     }
   } finally {
     submitting.value = false
@@ -599,14 +665,51 @@ async function submitDecision(decision) {
                   <dt>难度 · 奖励</dt>
                   <dd>{{ activeApplication.difficulty }} · {{ activeApplication.reward }}</dd>
                 </div>
-                <div class="admin-dl-wide">
-                  <dt>任务描述</dt>
-                  <dd>{{ activeApplication.summary }}</dd>
+                <div>
+                  <dt>任务分类</dt>
+                  <dd>
+                    <span v-if="activeApplication.category" class="admin-chip">{{ activeApplication.category.name }}</span>
+                    <span v-else class="admin-chip muted">未分类</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>任务标签</dt>
+                  <dd>
+                    <span
+                      v-for="tag in activeApplication.tags"
+                      :key="tag.tagId"
+                      class="admin-chip"
+                      :style="{ background: tag.color }"
+                    >
+                      {{ tag.name }}
+                    </span>
+                    <span v-if="activeApplication.tags.length === 0" class="admin-chip muted">无标签</span>
+                  </dd>
                 </div>
                 <div class="admin-dl-wide">
-                  <dt>完成标准</dt>
-                  <dd>{{ activeApplication.completionCriteria || '维护者尚未填写完成标准。' }}</dd>
+                  <dt>技术栈</dt>
+                  <dd class="admin-tech-stack-row">
+                    <span
+                      v-for="name in activeApplication.techStack"
+                      :key="name"
+                      class="admin-chip"
+                      :class="{ unregistered: !isTechStackRegistered(name) }"
+                    >
+                      {{ name }}
+                      <button
+                        v-if="!isTechStackRegistered(name)"
+                        type="button"
+                        class="admin-chip-register"
+                        :disabled="registeringTechStack === name"
+                        @click="registerTechStack(name)"
+                      >
+                        ＋ 新建技术栈
+                      </button>
+                    </span>
+                    <span v-if="activeApplication.techStack.length === 0" class="admin-chip muted">未填写</span>
+                  </dd>
                 </div>
+                <p v-if="techStackNotice" class="admin-tech-stack-notice">{{ techStackNotice }}</p>
               </dl>
             </article>
 
@@ -744,9 +847,14 @@ async function submitDecision(decision) {
                 ⚠ 该任务已被「{{ activeApplication.assigneeName ?? '某位冒险家' }}」接取。下架会同步取消其接取记录，对方需重新接取才能继续。
               </p>
 
+              <p v-if="unregisteredTechStack.length > 0 && !confirmingDecision" class="admin-assignment-warning">
+                ⚠ 存在未登记的技术栈：{{ unregisteredTechStack.join('、') }}。请在「委托内容」卡片中登记后再通过上架。
+              </p>
+
               <div v-if="confirmingDecision" class="admin-confirm-dialog" :class="recordTone(confirmingDecision)">
                 <p>{{ confirmDialogMeta[confirmingDecision].text(activeApplication) }}</p>
                 <div class="admin-confirm-actions">
+                  <button type="button" class="quiet-action" @click="cancelConfirm">取消</button>
                   <button
                     type="button"
                     :class="confirmButtonClass(confirmingDecision)"
@@ -755,7 +863,6 @@ async function submitDecision(decision) {
                   >
                     {{ confirmDialogMeta[confirmingDecision].confirmLabel }}
                   </button>
-                  <button type="button" class="quiet-action" @click="cancelConfirm">取消</button>
                 </div>
               </div>
 

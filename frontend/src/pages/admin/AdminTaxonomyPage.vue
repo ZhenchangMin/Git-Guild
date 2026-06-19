@@ -2,18 +2,20 @@
 import { computed, onMounted, ref } from 'vue'
 
 import { adminApi } from '../../api/adminApi'
-import { questDifficulties, tagPalette } from '../../data/adminTaxonomy'
+import { tagPalette } from '../../data/adminTaxonomy'
 
 const categories = ref([])
 const tags = ref([])
-const difficulties = questDifficulties
+const techStacks = ref([])
 
 const newCategory = ref({ name: '', description: '' })
 const newTag = ref({ name: '', color: tagPalette[0] })
+const newTechStack = ref({ name: '' })
 // 自定义取色：独立保存最近一次自定义值，不被预设点击覆盖。
 const customColor = ref('#c84b8f')
 const categoryNotice = ref(null)
 const tagNotice = ref(null)
+const techStackNotice = ref(null)
 const loading = ref(true)
 
 // 当前选色不在预设色板中时，视为使用了自定义颜色。
@@ -26,10 +28,12 @@ function pickCustomColor(event) {
 
 const enabledCategoryCount = computed(() => categories.value.filter((c) => c.enabled).length)
 const enabledTagCount = computed(() => tags.value.filter((t) => t.enabled).length)
+const enabledTechStackCount = computed(() => techStacks.value.filter((t) => t.enabled).length)
 
 function notice(target, tone, text) {
   const value = { tone, text }
   if (target === 'category') categoryNotice.value = value
+  else if (target === 'techStack') techStackNotice.value = value
   else tagNotice.value = value
 }
 
@@ -39,16 +43,19 @@ onMounted(loadTaxonomy)
 async function loadTaxonomy() {
   loading.value = true
   try {
-    const [catRes, tagRes] = await Promise.all([
+    const [catRes, tagRes, techStackRes] = await Promise.all([
       adminApi.listCategories({ withQuestCount: true, includeDisabled: true, sortBy: 'name' }),
       adminApi.listTags({ includeDisabled: true, size: 100 }),
+      adminApi.listTechStacks({ includeDisabled: true, size: 100 }),
     ])
     categories.value = (catRes?.data ?? []).map(normalizeCategory)
     tags.value = (tagRes?.data?.items ?? tagRes?.data ?? []).map(normalizeTag)
+    techStacks.value = (techStackRes?.data?.items ?? techStackRes?.data ?? []).map(normalizeTechStack)
   } catch (error) {
-    const text = readableError(error, '加载分类/标签失败，请确认后端已启动并以管理员登录。')
+    const text = readableError(error, '加载分类/标签/技术栈失败，请确认后端已启动并以管理员登录。')
     notice('category', 'danger', text)
     notice('tag', 'danger', text)
+    notice('techStack', 'danger', text)
   } finally {
     loading.value = false
   }
@@ -71,6 +78,15 @@ function normalizeTag(tag) {
     color: tag.color ?? tagPalette[0],
     enabled: tag.enabled !== false,
     questCount: tag.questCount ?? 0,
+  }
+}
+
+function normalizeTechStack(stack) {
+  return {
+    techStackId: stack.techStackId,
+    name: stack.name ?? '',
+    enabled: stack.enabled !== false,
+    questCount: stack.questCount ?? 0,
   }
 }
 
@@ -196,6 +212,60 @@ async function toggleTag(tag) {
     notice('tag', 'danger', readableError(error, '更新标签失败。'))
   }
 }
+
+async function addTechStack() {
+  const name = newTechStack.value.name.trim()
+  if (name.length < 1 || name.length > 64) {
+    notice('techStack', 'danger', '技术栈名称长度需为 1-64 个字符。')
+    return
+  }
+  if (techStacks.value.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+    notice('techStack', 'danger', `同名技术栈已存在：${name}`)
+    return
+  }
+  try {
+    const payload = { name, enabled: true }
+    const res = await adminApi.createTechStack(payload)
+    const created = res?.data ?? {}
+    techStacks.value = [...techStacks.value, normalizeTechStack({ ...payload, questCount: 0, ...created })]
+    newTechStack.value = { name: '' }
+    notice('techStack', 'approved', `技术栈已创建：${created.name ?? name}`)
+  } catch (error) {
+    notice('techStack', 'danger', readableError(error, '创建技术栈失败。'))
+  }
+}
+
+async function toggleTechStack(stack) {
+  if (stack.enabled && stack.questCount > 0) {
+    notice('techStack', 'danger', `「${stack.name}」被 ${stack.questCount} 个任务引用，无法禁用。`)
+    return
+  }
+  const nextEnabled = !stack.enabled
+  try {
+    const payload = { name: stack.name, enabled: nextEnabled }
+    const res = await adminApi.updateTechStack(stack.techStackId, payload)
+    Object.assign(stack, normalizeTechStack({ ...stack, ...payload, ...(res?.data ?? {}) }))
+    notice('techStack', stack.enabled ? 'approved' : 'return', `「${stack.name}」已${stack.enabled ? '启用' : '停用'}。`)
+  } catch (error) {
+    notice('techStack', 'danger', readableError(error, '更新技术栈失败。'))
+  }
+}
+
+// 删除技术栈：被任务引用的不能删（与停用规则一致）。
+async function removeTechStack(stack) {
+  if (stack.questCount > 0) {
+    notice('techStack', 'danger', `「${stack.name}」被 ${stack.questCount} 个任务引用，无法删除。`)
+    return
+  }
+  if (!window.confirm(`确定删除技术栈「${stack.name}」？该操作不可撤销。`)) return
+  try {
+    await adminApi.deleteTechStack(stack.techStackId)
+    techStacks.value = techStacks.value.filter((t) => t.techStackId !== stack.techStackId)
+    notice('techStack', 'return', `技术栈已删除：${stack.name}`)
+  } catch (error) {
+    notice('techStack', 'danger', readableError(error, '删除技术栈失败。'))
+  }
+}
 </script>
 
 <template>
@@ -319,24 +389,49 @@ async function toggleTag(tag) {
       </ul>
     </section>
 
-    <!-- 难度（固定枚举，只读） -->
-    <section class="admin-tax-panel admin-tax-difficulty">
+    <!-- 技术栈 -->
+    <section class="admin-tax-panel">
       <div class="admin-panel-head">
         <div>
-          <p class="kicker">Difficulty</p>
-          <h1>难度选项</h1>
+          <p class="kicker">Tech Stack</p>
+          <h1>技术栈</h1>
         </div>
-        <span>固定枚举 · 只读</span>
+        <span>{{ loading ? '加载中…' : `${enabledTechStackCount} / ${techStacks.length} 启用` }}</span>
       </div>
-      <div class="admin-difficulty-grid">
-        <article v-for="level in difficulties" :key="level.code">
-          <span class="admin-difficulty-code">{{ level.code }}</span>
-          <div>
-            <strong>{{ level.label }}</strong>
-            <small>{{ level.hint }}</small>
+
+      <form class="admin-tax-add" @submit.prevent="addTechStack">
+        <input v-model="newTechStack.name" type="text" maxlength="64" placeholder="新技术栈名称（1-64 字）" />
+        <button type="submit" class="primary-action">新增技术栈</button>
+      </form>
+
+      <p v-if="techStackNotice" class="admin-tax-notice" :class="techStackNotice.tone">{{ techStackNotice.text }}</p>
+
+      <ul class="admin-tax-list">
+        <li v-for="stack in techStacks" :key="stack.techStackId" :class="{ disabled: !stack.enabled }">
+          <div class="admin-tax-row-main">
+            <strong>{{ stack.name }}</strong>
           </div>
-        </article>
-      </div>
+          <span class="admin-tax-count">{{ stack.questCount }} 引用</span>
+          <button
+            type="button"
+            class="admin-tax-toggle"
+            :class="stack.enabled ? 'on' : 'off'"
+            @click="toggleTechStack(stack)"
+          >
+            {{ stack.enabled ? '启用中' : '已停用' }}
+          </button>
+          <button
+            type="button"
+            class="admin-tax-delete"
+            :disabled="stack.questCount > 0"
+            :title="stack.questCount > 0 ? '被任务引用，无法删除' : '删除技术栈'"
+            aria-label="删除技术栈"
+            @click="removeTechStack(stack)"
+          >
+            🗑
+          </button>
+        </li>
+      </ul>
     </section>
   </div>
 </template>

@@ -9,6 +9,7 @@ import com.gitguild.backend.quest.domain.AdminReviewRecord;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.quest.domain.QuestStatus;
+import com.gitguild.backend.quest.domain.QuestTechStack;
 import com.gitguild.backend.quest.dto.AdminReviewRequest;
 import com.gitguild.backend.quest.dto.ChecklistItemDto;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminQuestPageResponse;
@@ -19,11 +20,14 @@ import com.gitguild.backend.quest.dto.QuestResponses.UserBrief;
 import com.gitguild.backend.quest.repository.AdminReviewRecordRepository;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
+import com.gitguild.backend.quest.repository.QuestTechStackRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -41,6 +45,7 @@ public class AdminQuestServiceImpl implements AdminQuestService {
     private final AdminReviewRecordRepository reviewRecordRepository;
     private final QuestAssignmentRepository assignmentRepository;
     private final UserRepository userRepository;
+    private final QuestTechStackRepository techStackRepository;
     private final ObjectMapper objectMapper;
 
     public AdminQuestServiceImpl(
@@ -48,11 +53,13 @@ public class AdminQuestServiceImpl implements AdminQuestService {
             AdminReviewRecordRepository reviewRecordRepository,
             QuestAssignmentRepository assignmentRepository,
             UserRepository userRepository,
+            QuestTechStackRepository techStackRepository,
             ObjectMapper objectMapper) {
         this.questRepository = questRepository;
         this.reviewRecordRepository = reviewRecordRepository;
         this.assignmentRepository = assignmentRepository;
         this.userRepository = userRepository;
+        this.techStackRepository = techStackRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -108,6 +115,7 @@ public class AdminQuestServiceImpl implements AdminQuestService {
 
         if (request.getDecision() == AdminDecision.APPROVE_PUBLISH) {
             validateChecklist(request.getChecklist());
+            validateAndNormalizeTechStack(quest);
         }
 
         applyDecision(quest, request.getDecision());
@@ -161,6 +169,53 @@ public class AdminQuestServiceImpl implements AdminQuestService {
             throw new BusinessException("CHECKLIST_INCOMPLETE", HttpStatus.UNPROCESSABLE_ENTITY,
                     "请先完成全部审核检查项后再通过上架",
                     "checklistSize=" + (checklist == null ? 0 : checklist.size()));
+        }
+    }
+
+    /**
+     * 通过上架前校验委托技术栈是否均已在平台配置（quest_tech_stacks）登记：
+     * 委托人发布页填写的是自由文本，大小写/写法可能与平台登记的标准写法不一致，
+     * 这里按大小写不敏感匹配；未登记的一律拦截，要求管理员先在平台配置中登记后再通过。
+     * 全部命中后把委托存储的技术栈重写为登记记录的标准写法，避免任务板出现同义但写法不同的技术栈。
+     */
+    private void validateAndNormalizeTechStack(Quest quest) {
+        List<String> techStack = fromTechStackJson(quest.getTechStackJson());
+        List<String> missing = new ArrayList<>();
+        // LinkedHashMap 保持原始顺序，便于规范化后写回时和委托人原始填写顺序一致。
+        Map<String, String> normalized = new LinkedHashMap<>();
+        for (String name : techStack) {
+            techStackRepository.findByNameIgnoreCase(name)
+                    .map(QuestTechStack::getName)
+                    .ifPresentOrElse(
+                            standardName -> normalized.put(name, standardName),
+                            () -> missing.add(name));
+        }
+        if (!missing.isEmpty()) {
+            throw new BusinessException(
+                    "TECH_STACK_NOT_REGISTERED",
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "存在未登记的技术栈，请先在平台配置中登记后再通过",
+                    String.join(",", missing));
+        }
+        quest.setTechStackJson(toTechStackJson(techStack.stream().map(normalized::get).toList()));
+    }
+
+    private List<String> fromTechStackJson(String techStackJson) {
+        if (techStackJson == null || techStackJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(techStackJson, new TypeReference<List<String>>() { });
+        } catch (JsonProcessingException ex) {
+            return List.of();
+        }
+    }
+
+    private String toTechStackJson(List<String> techStack) {
+        try {
+            return objectMapper.writeValueAsString(techStack);
+        } catch (JsonProcessingException ex) {
+            throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "请求参数不合法", "techStack 无法序列化");
         }
     }
 

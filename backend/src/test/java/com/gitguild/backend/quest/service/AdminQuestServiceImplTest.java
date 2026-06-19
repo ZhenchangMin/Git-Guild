@@ -20,6 +20,7 @@ import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.quest.domain.QuestAssignment;
 import com.gitguild.backend.quest.domain.QuestCategory;
 import com.gitguild.backend.quest.domain.QuestStatus;
+import com.gitguild.backend.quest.domain.QuestTechStack;
 import com.gitguild.backend.quest.dto.AdminReviewRequest;
 import com.gitguild.backend.quest.dto.ChecklistItemDto;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminQuestPageResponse;
@@ -27,6 +28,7 @@ import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewResponse;
 import com.gitguild.backend.quest.repository.AdminReviewRecordRepository;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
+import com.gitguild.backend.quest.repository.QuestTechStackRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
@@ -53,6 +55,8 @@ class AdminQuestServiceImplTest {
     private QuestAssignmentRepository assignmentRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private QuestTechStackRepository techStackRepository;
 
     private AdminQuestServiceImpl adminQuestService;
 
@@ -63,7 +67,24 @@ class AdminQuestServiceImplTest {
                 reviewRecordRepository,
                 assignmentRepository,
                 userRepository,
+                techStackRepository,
                 new ObjectMapper());
+    }
+
+    /** APPROVE_PUBLISH 测试默认前提：委托技术栈词表里的所有项均已登记（标准写法与委托一致）。 */
+    private void stubAllTechStacksRegistered(Quest quest) {
+        for (String name : techStackOf(quest)) {
+            when(techStackRepository.findByNameIgnoreCase(name))
+                    .thenReturn(Optional.of(new QuestTechStack(name)));
+        }
+    }
+
+    private List<String> techStackOf(Quest quest) {
+        try {
+            return new ObjectMapper().readValue(quest.getTechStackJson(), new com.fasterxml.jackson.core.type.TypeReference<List<String>>() { });
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     private List<ChecklistItemDto> fullPassingChecklist() {
@@ -125,6 +146,7 @@ class AdminQuestServiceImplTest {
         when(userRepository.findById(1001L)).thenReturn(Optional.of(admin));
         when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
         when(reviewRecordRepository.save(any(AdminReviewRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        stubAllTechStacksRegistered(quest);
 
         AdminReviewRequest approveRequest = request(AdminDecision.APPROVE_PUBLISH, "Ready to publish", true);
         approveRequest.setChecklist(fullPassingChecklist());
@@ -199,6 +221,7 @@ class AdminQuestServiceImplTest {
 
         when(userRepository.findById(1001L)).thenReturn(Optional.of(admin));
         when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+        stubAllTechStacksRegistered(quest);
 
         AdminReviewRequest approveRequest = request(AdminDecision.APPROVE_PUBLISH, "Already published", true);
         approveRequest.setChecklist(fullPassingChecklist());
@@ -279,6 +302,48 @@ class AdminQuestServiceImplTest {
         assertThat(quest.getStatus()).isEqualTo(QuestStatus.PENDING_ADMIN_REVIEW);
         verify(reviewRecordRepository, never()).save(any());
         verify(questRepository, never()).save(any());
+    }
+
+    @Test
+    void reviewQuestShouldRejectApprovalWhenTechStackIsNotRegistered() {
+        User admin = user(1001L, UserRole.ADMIN);
+        Quest quest = quest(user(2001L, UserRole.MAINTAINER), QuestStatus.PENDING_ADMIN_REVIEW);
+
+        when(userRepository.findById(1001L)).thenReturn(Optional.of(admin));
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+        when(techStackRepository.findByNameIgnoreCase("Spring Boot")).thenReturn(Optional.empty());
+
+        AdminReviewRequest approveRequest = request(AdminDecision.APPROVE_PUBLISH, "Ready to publish", true);
+        approveRequest.setChecklist(fullPassingChecklist());
+
+        assertThatThrownBy(() -> adminQuestService.reviewQuest(5001L, 1001L, approveRequest))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("TECH_STACK_NOT_REGISTERED");
+
+        assertThat(quest.getStatus()).isEqualTo(QuestStatus.PENDING_ADMIN_REVIEW);
+        verify(reviewRecordRepository, never()).save(any());
+        verify(questRepository, never()).save(any());
+    }
+
+    @Test
+    void reviewQuestShouldNormalizeTechStackCasingOnApproval() {
+        User admin = user(1001L, UserRole.ADMIN);
+        Quest quest = quest(user(2001L, UserRole.MAINTAINER), QuestStatus.PENDING_ADMIN_REVIEW);
+
+        when(userRepository.findById(1001L)).thenReturn(Optional.of(admin));
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+        when(reviewRecordRepository.save(any(AdminReviewRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        // 委托人填写的是 "Spring Boot"，平台登记的标准写法大小写不同，验证最终落库会被规范化为登记的标准写法。
+        when(techStackRepository.findByNameIgnoreCase("Spring Boot"))
+                .thenReturn(Optional.of(new QuestTechStack("spring boot")));
+
+        AdminReviewRequest approveRequest = request(AdminDecision.APPROVE_PUBLISH, "Ready to publish", true);
+        approveRequest.setChecklist(fullPassingChecklist());
+
+        adminQuestService.reviewQuest(5001L, 1001L, approveRequest);
+
+        assertThat(quest.getTechStackJson()).isEqualTo("[\"spring boot\"]");
     }
 
     @Test

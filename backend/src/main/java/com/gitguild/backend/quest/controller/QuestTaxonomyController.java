@@ -5,9 +5,11 @@ import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.QuestCategory;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.domain.QuestTag;
+import com.gitguild.backend.quest.domain.QuestTechStack;
 import com.gitguild.backend.quest.repository.QuestCategoryRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.quest.repository.QuestTagRepository;
+import com.gitguild.backend.quest.repository.QuestTechStackRepository;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
@@ -33,14 +35,17 @@ public class QuestTaxonomyController {
 
     private final QuestCategoryRepository categoryRepository;
     private final QuestTagRepository tagRepository;
+    private final QuestTechStackRepository techStackRepository;
     private final QuestRepository questRepository;
 
     public QuestTaxonomyController(
             QuestCategoryRepository categoryRepository,
             QuestTagRepository tagRepository,
+            QuestTechStackRepository techStackRepository,
             QuestRepository questRepository) {
         this.categoryRepository = categoryRepository;
         this.tagRepository = tagRepository;
+        this.techStackRepository = techStackRepository;
         this.questRepository = questRepository;
     }
 
@@ -151,6 +156,63 @@ public class QuestTaxonomyController {
         return ApiResponse.success();
     }
 
+    @GetMapping("/quest-tech-stacks")
+    public ApiResponse<TechStackPageResponse> listTechStacks(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "false") boolean includeDisabled,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        validatePage(page, size);
+        List<TechStackResponse> filtered = techStackRepository.findAll().stream()
+                .filter(stack -> includeDisabled || stack.isEnabled())
+                .filter(stack -> keyword == null || keyword.isBlank() || stack.getName().contains(keyword.trim()))
+                .sorted(Comparator.comparing(QuestTechStack::getName))
+                .map(stack -> TechStackResponse.from(
+                        stack, (int) questRepository.countByTechStackNameAndStatusNotIn(stack.getName(), INACTIVE_STATUSES)))
+                .toList();
+        int from = Math.min((page - 1) * size, filtered.size());
+        int to = Math.min(from + size, filtered.size());
+        return ApiResponse.success(new TechStackPageResponse(filtered.subList(from, to), page, size, filtered.size()));
+    }
+
+    @PostMapping("/quest-tech-stacks")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<TechStackResponse> createTechStack(@RequestBody TechStackRequest request) {
+        validateName(request.name());
+        if (techStackRepository.existsByNameIgnoreCase(request.name().trim())) {
+            throw alreadyExists("同名技术栈已存在");
+        }
+        QuestTechStack stack = techStackRepository.save(new QuestTechStack(request.name().trim()));
+        return ApiResponse.success("CREATED", TechStackResponse.from(stack, 0));
+    }
+
+    @PatchMapping("/quest-tech-stacks/{techStackId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<TechStackResponse> updateTechStack(
+            @PathVariable Long techStackId,
+            @RequestBody TechStackRequest request) {
+        QuestTechStack stack = techStackRepository.findById(techStackId)
+                .orElseThrow(() -> notFound("TECH_STACK_NOT_FOUND", "技术栈不存在"));
+        stack.update(request.name(), request.enabled());
+        QuestTechStack saved = techStackRepository.save(stack);
+        return ApiResponse.success(
+                TechStackResponse.from(saved, (int) questRepository.countByTechStackNameAndStatusNotIn(saved.getName(), INACTIVE_STATUSES)));
+    }
+
+    @DeleteMapping("/quest-tech-stacks/{techStackId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Void> deleteTechStack(@PathVariable Long techStackId) {
+        QuestTechStack stack = techStackRepository.findById(techStackId)
+                .orElseThrow(() -> notFound("TECH_STACK_NOT_FOUND", "技术栈不存在"));
+        long used = questRepository.countByTechStackNameAndStatusNotIn(stack.getName(), INACTIVE_STATUSES);
+        if (used > 0) {
+            throw new BusinessException(
+                    "TECH_STACK_IN_USE", HttpStatus.CONFLICT, "技术栈正被任务引用，无法删除", "questCount=" + used);
+        }
+        techStackRepository.delete(stack);
+        return ApiResponse.success();
+    }
+
     private Comparator<CategoryResponse> categoryComparator(String sortBy, String sortOrder) {
         Comparator<CategoryResponse> comparator = "questCount".equals(sortBy)
                 ? Comparator.comparing(response -> response.questCount() == null ? 0 : response.questCount())
@@ -207,5 +269,17 @@ public class QuestTaxonomyController {
     }
 
     public record TagPageResponse(List<TagResponse> items, int page, int size, int total) {
+    }
+
+    public record TechStackRequest(String name, Boolean enabled) {
+    }
+
+    public record TechStackResponse(Long techStackId, String name, Boolean enabled, Integer questCount) {
+        static TechStackResponse from(QuestTechStack stack, Integer questCount) {
+            return new TechStackResponse(stack.getTechStackId(), stack.getName(), stack.isEnabled(), questCount);
+        }
+    }
+
+    public record TechStackPageResponse(List<TechStackResponse> items, int page, int size, int total) {
     }
 }

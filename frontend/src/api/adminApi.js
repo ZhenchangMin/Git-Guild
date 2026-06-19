@@ -68,6 +68,18 @@ export const adminApi = {
   deleteTag(tagId) {
     return request(`/quest-tags/${tagId}`, { method: 'DELETE' })
   },
+  listTechStacks(params) {
+    return request(`/quest-tech-stacks${toQuery(params)}`)
+  },
+  createTechStack(payload) {
+    return request('/quest-tech-stacks', { method: 'POST', body: payload })
+  },
+  updateTechStack(techStackId, payload) {
+    return request(`/quest-tech-stacks/${techStackId}`, { method: 'PATCH', body: payload })
+  },
+  deleteTechStack(techStackId) {
+    return request(`/quest-tech-stacks/${techStackId}`, { method: 'DELETE' })
+  },
 }
 
 function toQuery(params) {
