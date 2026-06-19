@@ -116,6 +116,17 @@ public final class QuestResponses {
             IssueBrief issue) {
     }
 
+    /** 单条历史审核记录，供管理台「审核记录」时间线按 Quest 拉取完整历史（而非仅本次会话内的临时记录）。 */
+    public record AdminReviewHistoryItem(
+            Long adminReviewId,
+            AdminDecision decision,
+            String reason,
+            UserBrief admin,
+            boolean visibleToPublisher,
+            OffsetDateTime reviewedAt,
+            List<ChecklistItemDto> checklist) {
+    }
+
     public record AdminReviewResponse(
             Long adminReviewId,
             Long questId,

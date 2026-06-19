@@ -1808,9 +1808,17 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-.issue-card,
-.standards-card {
+.content-card,
+.issue-card {
   grid-column: 1 / -1;
+}
+
+.admin-dl-wide {
+  grid-column: 1 / -1;
+}
+
+.admin-dl-wide dd {
+  white-space: pre-wrap;
 }
 
 .admin-check-list {
@@ -1823,19 +1831,10 @@ h2 {
   display: grid;
   gap: 6px;
   border: 1px solid rgba(98, 55, 20, 0.18);
-  /* 左侧色条表示管理员的现场结论：待核验 / 通过 / 存疑。 */
   border-left: 3px solid rgba(214, 142, 56, 0.5);
   border-radius: 5px;
   padding: 9px 10px;
   background: rgba(255, 244, 210, 0.35);
-}
-
-.admin-check-row.passed {
-  border-left-color: rgba(67, 97, 58, 0.85);
-}
-
-.admin-check-row.failed {
-  border-left-color: rgba(110, 42, 36, 0.85);
 }
 
 .admin-check-head {
@@ -1849,60 +1848,11 @@ h2 {
   color: #3f2410;
 }
 
-.admin-check-verdict {
-  display: inline-flex;
-  flex: 0 0 auto;
-  gap: 4px;
-}
-
-.admin-check-verdict button {
-  border: 1px solid rgba(98, 55, 20, 0.3);
-  border-radius: 999px;
-  padding: 3px 11px;
-  color: #5a3414;
-  background: rgba(255, 250, 238, 0.6);
-  font-size: 0.76rem;
-  cursor: pointer;
-  transition: border-color 130ms ease, background 130ms ease, color 130ms ease;
-}
-
-.admin-check-verdict button:hover,
-.admin-check-verdict button:focus-visible {
-  border-color: rgba(98, 55, 20, 0.6);
-}
-
-.admin-check-verdict button.on {
-  border-color: rgba(67, 97, 58, 0.85);
-  color: #f1ffd6;
-  background: rgba(67, 97, 58, 0.82);
-}
-
-.admin-check-verdict button.fail.on {
-  border-color: rgba(110, 42, 36, 0.85);
-  color: #ffe0da;
-  background: rgba(110, 42, 36, 0.82);
-}
-
 .admin-check-row p {
   margin: 0;
   color: rgba(69, 37, 15, 0.72);
   font-size: 0.84rem;
   line-height: 1.4;
-}
-
-.standards-card ol {
-  display: grid;
-  gap: 7px;
-  margin: 12px 0 0;
-  padding-left: 20px;
-  color: #3f2410;
-  line-height: 1.45;
-}
-
-.admin-empty-note {
-  margin: 12px 0 0;
-  color: rgba(110, 42, 36, 0.82);
-  line-height: 1.5;
 }
 
 .admin-action-panel {
@@ -2283,6 +2233,98 @@ h2 {
   width: 16px;
   height: 16px;
   accent-color: var(--green);
+}
+
+.admin-assignment-warning {
+  margin: 12px 0 0;
+  border: 1px solid rgba(214, 142, 56, 0.55);
+  border-radius: 5px;
+  padding: 9px 12px;
+  color: #6e3a10;
+  background: rgba(241, 184, 95, 0.22);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.admin-confirm-dialog {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  border-radius: 5px;
+  padding: 12px;
+}
+
+.admin-confirm-dialog p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* 通过上架：绿色基调，与 admin-timeline li.approved 一致。 */
+.admin-confirm-dialog.approved {
+  border: 1px solid rgba(67, 97, 58, 0.6);
+  background: rgba(67, 97, 58, 0.12);
+}
+.admin-confirm-dialog.approved p {
+  color: #2c4423;
+}
+
+/* 退回补充：橙色基调，与 admin-timeline li.return 一致。 */
+.admin-confirm-dialog.return {
+  border: 1px solid rgba(214, 142, 56, 0.6);
+  background: rgba(214, 142, 56, 0.14);
+}
+.admin-confirm-dialog.return p {
+  color: #6e3a10;
+}
+
+/* 下架：红色基调，与 admin-timeline li.danger 一致。 */
+.admin-confirm-dialog.danger {
+  border: 1px solid rgba(202, 104, 88, 0.6);
+  background: rgba(168, 57, 43, 0.1);
+}
+.admin-confirm-dialog.danger p {
+  color: #6e2418;
+}
+
+.admin-confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.quiet-action.warn {
+  border-color: rgba(214, 142, 56, 0.7);
+  color: #6e3a10;
+}
+
+.quiet-action.warn:hover {
+  border-color: #b5701c;
+  background: rgba(214, 142, 56, 0.16);
+}
+
+.admin-gitea-link {
+  border: 1px solid rgba(238, 184, 91, 0.48);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #ffe8b8;
+  background: rgba(21, 12, 7, 0.5);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.admin-gitea-link:hover {
+  border-color: var(--gold-bright);
+  color: var(--gold-bright);
+}
+
+.admin-timeline li.superseded {
+  opacity: 0.6;
+}
+
+.superseded-badge {
+  color: rgba(110, 42, 36, 0.82);
+  font-style: normal;
 }
 
 .admin-action-buttons button:disabled {

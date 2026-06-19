@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gitguild.backend.codehost.domain.CodeIssue;
 import com.gitguild.backend.codehost.domain.CodeRepository;
 import com.gitguild.backend.common.BusinessException;
@@ -20,6 +21,7 @@ import com.gitguild.backend.quest.domain.QuestAssignment;
 import com.gitguild.backend.quest.domain.QuestCategory;
 import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.dto.AdminReviewRequest;
+import com.gitguild.backend.quest.dto.ChecklistItemDto;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminQuestPageResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewResponse;
 import com.gitguild.backend.quest.repository.AdminReviewRecordRepository;
@@ -28,6 +30,7 @@ import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,7 +62,16 @@ class AdminQuestServiceImplTest {
                 questRepository,
                 reviewRecordRepository,
                 assignmentRepository,
-                userRepository);
+                userRepository,
+                new ObjectMapper());
+    }
+
+    private List<ChecklistItemDto> fullPassingChecklist() {
+        List<ChecklistItemDto> checklist = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            checklist.add(new ChecklistItemDto("check-" + i, true));
+        }
+        return checklist;
     }
 
     @Test
@@ -114,10 +126,13 @@ class AdminQuestServiceImplTest {
         when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
         when(reviewRecordRepository.save(any(AdminReviewRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
+        AdminReviewRequest approveRequest = request(AdminDecision.APPROVE_PUBLISH, "Ready to publish", true);
+        approveRequest.setChecklist(fullPassingChecklist());
+
         AdminReviewResponse response = adminQuestService.reviewQuest(
                 5001L,
                 1001L,
-                request(AdminDecision.APPROVE_PUBLISH, "Ready to publish", true));
+                approveRequest);
 
         assertThat(response.questId()).isEqualTo(5001L);
         assertThat(response.adminId()).isEqualTo(1001L);
@@ -185,10 +200,10 @@ class AdminQuestServiceImplTest {
         when(userRepository.findById(1001L)).thenReturn(Optional.of(admin));
         when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
 
-        assertThatThrownBy(() -> adminQuestService.reviewQuest(
-                5001L,
-                1001L,
-                request(AdminDecision.APPROVE_PUBLISH, "Already published", true)))
+        AdminReviewRequest approveRequest = request(AdminDecision.APPROVE_PUBLISH, "Already published", true);
+        approveRequest.setChecklist(fullPassingChecklist());
+
+        assertThatThrownBy(() -> adminQuestService.reviewQuest(5001L, 1001L, approveRequest))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo("QUEST_NOT_REVIEWABLE");
@@ -241,6 +256,67 @@ class AdminQuestServiceImplTest {
                 .isEqualTo("QUEST_ALREADY_CLOSED");
 
         verify(assignmentRepository, never()).findByQuestAndStatus(any(), any());
+        verify(reviewRecordRepository, never()).save(any());
+        verify(questRepository, never()).save(any());
+    }
+
+    @Test
+    void reviewQuestShouldRejectApprovalWhenChecklistIsIncomplete() {
+        User admin = user(1001L, UserRole.ADMIN);
+        Quest quest = quest(user(2001L, UserRole.MAINTAINER), QuestStatus.PENDING_ADMIN_REVIEW);
+
+        when(userRepository.findById(1001L)).thenReturn(Optional.of(admin));
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+
+        AdminReviewRequest approveRequest = request(AdminDecision.APPROVE_PUBLISH, "Ready to publish", true);
+        approveRequest.setChecklist(List.of(new ChecklistItemDto("only-one", true)));
+
+        assertThatThrownBy(() -> adminQuestService.reviewQuest(5001L, 1001L, approveRequest))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("CHECKLIST_INCOMPLETE");
+
+        assertThat(quest.getStatus()).isEqualTo(QuestStatus.PENDING_ADMIN_REVIEW);
+        verify(reviewRecordRepository, never()).save(any());
+        verify(questRepository, never()).save(any());
+    }
+
+    @Test
+    void reviewQuestShouldReopenClosedQuest() {
+        User admin = user(1001L, UserRole.ADMIN);
+        Quest quest = quest(user(2001L, UserRole.MAINTAINER), QuestStatus.CLOSED);
+
+        when(userRepository.findById(1001L)).thenReturn(Optional.of(admin));
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+        when(reviewRecordRepository.save(any(AdminReviewRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AdminReviewResponse response = adminQuestService.reviewQuest(
+                5001L,
+                1001L,
+                request(AdminDecision.REOPEN, "Reopening after fix", true));
+
+        assertThat(response.decision()).isEqualTo(AdminDecision.REOPEN);
+        assertThat(response.questStatus()).isEqualTo(QuestStatus.PUBLISHED);
+        assertThat(quest.getStatus()).isEqualTo(QuestStatus.PUBLISHED);
+        verify(questRepository).save(quest);
+    }
+
+    @Test
+    void reviewQuestShouldRejectReopenWhenQuestIsNotClosed() {
+        User admin = user(1001L, UserRole.ADMIN);
+        Quest quest = quest(user(2001L, UserRole.MAINTAINER), QuestStatus.PUBLISHED);
+
+        when(userRepository.findById(1001L)).thenReturn(Optional.of(admin));
+        when(questRepository.findById(5001L)).thenReturn(Optional.of(quest));
+
+        assertThatThrownBy(() -> adminQuestService.reviewQuest(
+                5001L,
+                1001L,
+                request(AdminDecision.REOPEN, "Not closed", true)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("QUEST_NOT_REOPENABLE");
+
         verify(reviewRecordRepository, never()).save(any());
         verify(questRepository, never()).save(any());
     }

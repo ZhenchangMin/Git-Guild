@@ -160,6 +160,16 @@ public class Quest {
         this.status = QuestStatus.CLOSED;
     }
 
+    public boolean canBeReopened() {
+        return status == QuestStatus.CLOSED;
+    }
+
+    /** 重新上架：CLOSED → PUBLISHED。此前因下架被取消的接取记录不会恢复，需要冒险家重新接取。 */
+    public void reopen() {
+        this.status = QuestStatus.PUBLISHED;
+        this.publishedAt = OffsetDateTime.now();
+    }
+
     public boolean canBeAccepted() {
         return status == QuestStatus.PUBLISHED || status == QuestStatus.IN_PROGRESS;
     }

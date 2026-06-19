@@ -18,9 +18,13 @@ export const adminApi = {
   getAdminQuest(questId) {
     return request(`/quests/${questId}`)
   },
-  // 通过上架 / 退回补充 / 下架统一走单接口，按 decision 区分。
+  // 通过上架 / 退回补充 / 下架 / 重新上架统一走单接口，按 decision 区分。
   submitAdminReview(questId, payload) {
     return request(`/quests/${questId}/admin-reviews`, { method: 'POST', body: payload })
+  },
+  // 拉取该委托的全部历史审核记录（按审核时刻升序），用于时间线展示真实审核轨迹。
+  listReviewHistory(questId) {
+    return request(`/admin/quests/${questId}/review-records`)
   },
 
   // ── 异常处理中心（M3 / M4 / M5，已接真实后端）────────

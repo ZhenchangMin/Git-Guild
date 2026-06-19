@@ -226,6 +226,7 @@ CREATE TABLE IF NOT EXISTS admin_review_records (
                                       decision VARCHAR(32) NOT NULL,
                                       reason VARCHAR(500) NOT NULL,
                                       visible_to_publisher BOOLEAN NOT NULL DEFAULT TRUE,
+                                      checklist_json TEXT NULL,
                                       reviewed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                       CONSTRAINT fk_admin_reviews_quest FOREIGN KEY (quest_id) REFERENCES quests(quest_id),

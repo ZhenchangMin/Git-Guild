@@ -55,6 +55,10 @@ public class AdminReviewRecord {
     @Column(name = "visible_to_publisher", nullable = false)
     private boolean visibleToPublisher = true;
 
+    /** APPROVE_PUBLISH 时落库的 6 项提示性检查清单（JSON 序列化的 ChecklistItemDto 列表）；其余决策可为 null。 */
+    @Column(name = "checklist_json", columnDefinition = "TEXT")
+    private String checklistJson;
+
     @Column(name = "reviewed_at", nullable = false)
     private OffsetDateTime reviewedAt;
 
@@ -65,11 +69,17 @@ public class AdminReviewRecord {
     }
 
     public AdminReviewRecord(Quest quest, User admin, AdminDecision decision, String reason, boolean visibleToPublisher) {
+        this(quest, admin, decision, reason, visibleToPublisher, null);
+    }
+
+    public AdminReviewRecord(
+            Quest quest, User admin, AdminDecision decision, String reason, boolean visibleToPublisher, String checklistJson) {
         this.quest = quest;
         this.admin = admin;
         this.decision = decision;
         this.reason = reason;
         this.visibleToPublisher = visibleToPublisher;
+        this.checklistJson = checklistJson;
         this.reviewedAt = OffsetDateTime.now();
     }
 
@@ -87,5 +97,6 @@ public class AdminReviewRecord {
     public AdminDecision getDecision() { return decision; }
     public String getReason() { return reason; }
     public boolean isVisibleToPublisher() { return visibleToPublisher; }
+    public String getChecklistJson() { return checklistJson; }
     public OffsetDateTime getReviewedAt() { return reviewedAt; }
 }
