@@ -1770,6 +1770,27 @@ h2 {
   padding-top: 14px;
 }
 
+/* 当前筛选下没有可展示的申请——与左侧队列的空态保持一致，避免左右"各说各话"。 */
+.admin-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  grid-template-rows: none;
+}
+
+.admin-detail-empty h2 {
+  font-size: clamp(1.1rem, 1.6vw, 1.5rem);
+  color: rgba(255, 231, 183, 0.86);
+}
+
+.admin-detail-empty p:last-child {
+  max-width: 32rem;
+  color: rgba(255, 231, 183, 0.6);
+}
+
 .admin-ledger-card {
   padding: 14px;
   color: #3f2410;
@@ -2169,6 +2190,61 @@ h2 {
 
 .admin-decision-lead.muted {
   color: rgba(76, 37, 12, 0.7);
+}
+
+/* 三种审核结论的切换按钮——选中后下方说明文案与 textarea 占位文字随之切换，
+   颜色基调与 admin-confirm-dialog / admin-timeline 的 approved/return/danger 保持一致。 */
+.admin-decision-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.admin-decision-toggle-btn {
+  flex: 1 1 auto;
+  border: 1px solid rgba(98, 55, 20, 0.32);
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: rgba(255, 249, 232, 0.5);
+  color: rgba(76, 37, 12, 0.75);
+  font-family: var(--font-body);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.admin-decision-toggle-btn:hover {
+  transform: translateY(-1px);
+}
+
+.admin-decision-toggle-btn.approved.active {
+  border-color: rgba(67, 97, 58, 0.7);
+  background: rgba(67, 97, 58, 0.18);
+  color: #2c4423;
+}
+
+.admin-decision-toggle-btn.return.active {
+  border-color: rgba(214, 142, 56, 0.7);
+  background: rgba(214, 142, 56, 0.2);
+  color: #6e3a10;
+}
+
+.admin-decision-toggle-btn.danger.active {
+  border-color: rgba(202, 104, 88, 0.7);
+  background: rgba(168, 57, 43, 0.16);
+  color: #6e2418;
+}
+
+.admin-decision-copy {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid rgba(98, 55, 20, 0.4);
+  color: rgba(76, 37, 12, 0.78);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 
 .admin-reason-field {

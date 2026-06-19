@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { adminApi } from '../../api/adminApi'
 import { decisionMeta, questStatusMeta } from '../../data/admin'
@@ -101,6 +101,35 @@ const confirmDialogMeta = {
     text: (application) =>
       `确认重新上架「${application.questCode}」吗？该任务将重新进入悬赏任务板，供冒险家接取。`,
   },
+}
+
+// 当前选中的决策按钮（通过 / 退回 / 下架 / 重新上架）——选中后下方的说明文案与
+// 输入框 placeholder 都要跟着切换，让管理员清楚自己在为哪个结论写理由。
+const selectedDecision = ref(null)
+
+const decisionCopy = {
+  APPROVE_PUBLISH: {
+    hint: '说明通过上架的依据，将记入审核记录并可展示给发布者。',
+    placeholder: '例如：任务目标明确，完成标准可验收，仓库与 Issue 已正确关联。',
+  },
+  REJECT_PUBLISH: {
+    hint: '说明需要发布者补充或修改的具体内容，越具体越能加快重新提交的速度。',
+    placeholder: '例如：完成标准过于模糊，请补充可量化的验收指标后再提交审核。',
+  },
+  TAKE_DOWN: {
+    hint: '说明下架原因，将记入审核记录。若任务已被接取，接取记录会同步取消。',
+    placeholder: '例如：任务内容违规 / 长期无人完成 / 委托人主动申请下架。',
+  },
+  REOPEN: {
+    hint: '说明重新上架的原因，任务将重新进入悬赏任务板供冒险家接取。',
+    placeholder: '例如：此前下架的问题已澄清，确认符合上架要求。',
+  },
+}
+
+function selectDecision(decision) {
+  selectedDecision.value = selectedDecision.value === decision ? null : decision
+  reason.value = ''
+  reasonError.value = ''
 }
 
 function confirmButtonClass(decision) {
@@ -235,6 +264,9 @@ async function toApplication(summary) {
   const completionCriteria = source.completionCriteria ?? ''
   const repository = source.repository?.name ?? '未关联仓库'
   const repositoryUrl = source.repository?.webUrl ?? null
+  const repositoryBranch = source.repository?.defaultBranch || 'main'
+  // 直接跳到分支的提交列表，而不是仓库首页——审核时要看的是提交内容，不是仓库介绍页。
+  const repositoryBranchUrl = repositoryUrl ? `${repositoryUrl}/commits/branch/${repositoryBranch}` : null
   const issue = source.issue
     ? `#${source.issue.externalIssueId ?? source.issue.issueId} · ${source.issue.title ?? '未命名 Issue'}`
     : '未关联 Issue'
@@ -255,6 +287,8 @@ async function toApplication(summary) {
     publisher: `委托人 · ${publisher}`,
     repository,
     repositoryUrl,
+    repositoryBranch,
+    repositoryBranchUrl,
     issue,
     submittedAt: formatDateTime(source.createdAt ?? summary.createdAt),
     questStatus: status,
@@ -269,7 +303,7 @@ async function toApplication(summary) {
     tags,
     techStack,
     clarityChecks: buildClarityChecks(title, description, completionCriteria),
-    complianceChecks: buildComplianceChecks(source),
+    complianceChecks: buildComplianceChecks(source, repositoryBranchUrl),
     risks: [],
     reviewRecords: await loadReviewHistory(questId, publisher, source.createdAt ?? summary.createdAt),
   }
@@ -333,7 +367,7 @@ function buildClarityChecks(title, description, completionCriteria) {
   ]
 }
 
-function buildComplianceChecks(quest) {
+function buildComplianceChecks(quest, repositoryBranchUrl) {
   return [
     {
       label: '仓库与 Issue 已关联',
@@ -345,8 +379,8 @@ function buildComplianceChecks(quest) {
     },
     {
       label: '仓库文件内容合规',
-      note: '请前往 Gitea 仓库核对文件内容，确认不含敏感信息或违规内容。',
-      link: quest?.repository?.webUrl ?? null,
+      note: '请前往 Gitea 仓库分支核对提交内容，确认不含敏感信息或违规内容。',
+      link: repositoryBranchUrl,
     },
   ]
 }
@@ -385,10 +419,16 @@ const filteredApplications = computed(() => {
 })
 
 const activeApplication = computed(
-  () =>
-    applications.value.find((application) => application.id === activeId.value) ??
-    applications.value[0],
+  () => filteredApplications.value.find((application) => application.id === activeId.value) ?? null,
 )
+
+// 切换状态筛选后，若当前选中项不在新筛选结果里，自动跟随筛选切到第一项（或清空），
+// 避免左侧列表显示"无符合项"而右侧仍残留着上一个筛选下的详情。
+watch(filteredApplications, (list) => {
+  if (!list.some((application) => application.id === activeId.value)) {
+    activeId.value = list[0]?.id ?? null
+  }
+})
 
 const unregisteredTechStack = computed(() => {
   const application = activeApplication.value
@@ -464,6 +504,7 @@ function selectApplication(application) {
   reasonError.value = ''
   visibleToPublisher.value = true
   confirmingDecision.value = null
+  selectedDecision.value = null
   actionResult.value = {
     tone: 'idle',
     title: `${application.questCode} 已调阅`,
@@ -536,6 +577,7 @@ async function submitDecision(decision) {
       application.assignmentActive = false
     }
     confirmingDecision.value = null
+    selectedDecision.value = null
 
     const notify = visibleToPublisher.value
       ? '审核原因已同步给发布者。'
@@ -719,13 +761,13 @@ async function submitDecision(decision) {
                   <h3>Issue 关联</h3>
                 </div>
                 <a
-                  v-if="activeApplication.repositoryUrl"
+                  v-if="activeApplication.repositoryBranchUrl"
                   class="admin-gitea-link"
-                  :href="activeApplication.repositoryUrl"
+                  :href="activeApplication.repositoryBranchUrl"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  前往 Gitea 查看仓库 ↗
+                  前往 {{ activeApplication.repositoryBranch }} 分支查看提交 ↗
                 </a>
               </div>
               <dl>
@@ -797,7 +839,7 @@ async function submitDecision(decision) {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    前往 Gitea 仓库查看 ↗
+                    前往分支查看提交 ↗
                   </a>
                 </section>
               </div>
@@ -866,45 +908,63 @@ async function submitDecision(decision) {
               </div>
 
               <template v-else>
-                <label class="admin-reason-field" :class="{ invalid: reasonError }">
-                  <span class="admin-reason-label">
-                    审核原因
-                    <small>{{ reason.length }} / {{ REASON_MAX }}</small>
-                  </span>
-                  <textarea
-                    ref="reasonField"
-                    v-model="reason"
-                    :maxlength="REASON_MAX"
-                    rows="3"
-                    placeholder="说明本次审核结论的依据，将记入审核记录。"
-                    @input="reasonError = ''"
-                  ></textarea>
-                  <span v-if="reasonError" class="admin-reason-error">{{ reasonError }}</span>
-                </label>
-
-                <label class="admin-visibility-toggle">
-                  <input v-model="visibleToPublisher" type="checkbox" />
-                  <span>将审核原因展示给任务发布者</span>
-                </label>
-
-                <div class="admin-action-buttons">
+                <div class="admin-decision-toggle" role="tablist" aria-label="选择审核结论">
                   <button
                     v-for="decision in availableDecisions"
                     :key="decision"
                     type="button"
-                    :class="
-                      decisionMeta[decision].intent === 'primary'
-                        ? 'primary-action'
-                        : decisionMeta[decision].intent === 'danger'
-                          ? 'quiet-action danger'
-                          : 'quiet-action'
-                    "
-                    :disabled="submitting"
-                    @click="submitDecision(decision)"
+                    role="tab"
+                    class="admin-decision-toggle-btn"
+                    :class="[recordTone(decision), { active: selectedDecision === decision }]"
+                    :aria-pressed="selectedDecision === decision"
+                    @click="selectDecision(decision)"
                   >
                     {{ decisionMeta[decision].label }}
                   </button>
                 </div>
+
+                <template v-if="selectedDecision">
+                  <p class="admin-decision-copy">{{ decisionCopy[selectedDecision].hint }}</p>
+
+                  <label class="admin-reason-field" :class="{ invalid: reasonError }">
+                    <span class="admin-reason-label">
+                      审核原因
+                      <small>{{ reason.length }} / {{ REASON_MAX }}</small>
+                    </span>
+                    <textarea
+                      ref="reasonField"
+                      v-model="reason"
+                      :maxlength="REASON_MAX"
+                      rows="3"
+                      :placeholder="decisionCopy[selectedDecision].placeholder"
+                      @input="reasonError = ''"
+                    ></textarea>
+                    <span v-if="reasonError" class="admin-reason-error">{{ reasonError }}</span>
+                  </label>
+
+                  <label class="admin-visibility-toggle">
+                    <input v-model="visibleToPublisher" type="checkbox" />
+                    <span>将审核原因展示给任务发布者</span>
+                  </label>
+
+                  <div class="admin-action-buttons">
+                    <button
+                      type="button"
+                      :class="
+                        decisionMeta[selectedDecision].intent === 'primary'
+                          ? 'primary-action'
+                          : decisionMeta[selectedDecision].intent === 'danger'
+                            ? 'quiet-action danger'
+                            : 'quiet-action'
+                      "
+                      :disabled="submitting"
+                      @click="submitDecision(selectedDecision)"
+                    >
+                      {{ decisionMeta[selectedDecision].label }}
+                    </button>
+                  </div>
+                </template>
+                <p v-else class="admin-decision-lead muted">请选择上方的审核结论，下方会出现对应的填写说明与理由模板。</p>
               </template>
             </template>
 
@@ -917,6 +977,14 @@ async function submitDecision(decision) {
             <p>{{ actionResult.body }}</p>
           </section>
         </aside>
+
+        <!-- 当前筛选下没有任何申请时，右侧不能继续停留在上一个筛选结果的详情上，
+             必须和左侧的"无符合项"保持一致。 -->
+        <section v-else class="admin-detail-panel admin-detail-empty">
+          <p class="kicker">Quest Publishing Application</p>
+          <h2>当前筛选下没有任务发布申请</h2>
+          <p>{{ loading ? '正在读取真实审核队列...' : loadError || '请切换左侧的状态筛选，或等待新的任务发布申请进入队列。' }}</p>
+        </section>
       </div>
   </div>
 </template>
