@@ -30,17 +30,7 @@ const selectedQuestFilters = ref({
   tag: [],
   difficulty: [],
   stack: [],
-  status: [],
 })
-
-// Map each quest status to a seal colour so the board reads at a glance.
-const STATUS_TONE = {
-  可接取: 'open',
-  进行中: 'active',
-  'PR 已就绪': 'ready',
-  待审核: 'review',
-  退回修改: 'returned',
-}
 
 const STATUS_LABELS = {
   PUBLISHED: '可接取',
@@ -49,10 +39,6 @@ const STATUS_LABELS = {
   COMPLETED: '已完成',
   CLOSED: '已关闭',
   DRAFT: '草稿',
-}
-
-function statusTone(status) {
-  return STATUS_TONE[status] || 'open'
 }
 
 function unwrapApiData(payload) {
@@ -177,7 +163,6 @@ const visibleQuestFilterGroups = computed(() => {
     tag: [...taxonomyFilterOptions.value.tag],
     difficulty: questSource.value.map((quest) => quest.difficulty),
     stack: questSource.value.flatMap((quest) => quest.techStack ?? []),
-    status: questSource.value.map((quest) => quest.status),
   }
 
   return questFilterGroups
@@ -223,7 +208,6 @@ const rankedQuestCommissions = computed(() => {
         tag: selected.tag.length === 0 || selected.tag.some((tag) => quest.tags?.includes(tag)),
         difficulty: selected.difficulty.length === 0 || selected.difficulty.includes(quest.difficulty),
         stack: selected.stack.length === 0 || selected.stack.some((stack) => quest.techStack?.includes(stack)),
-        status: selected.status.length === 0 || selected.status.includes(quest.status),
       }
       const filterMatched = Object.values(groupMatches).every(Boolean)
       const searchableText = [
@@ -303,7 +287,6 @@ function clearQuestFilters() {
     tag: [],
     difficulty: [],
     stack: [],
-    status: [],
   }
   questPage.value = 1
 }
@@ -578,8 +561,6 @@ onMounted(() => {
                 class="commission-card"
                 :class="{ 'is-strong-match': quest.strongMatch }"
               >
-                <span class="commission-seal" :class="`tone-${statusTone(quest.status)}`">{{ quest.status }}</span>
-
                 <div class="commission-card-top">
                   <span class="commission-id">{{ quest.id }}</span>
                   <div class="commission-meta-group">

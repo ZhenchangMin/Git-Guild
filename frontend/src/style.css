@@ -3436,50 +3436,11 @@ h2 {
   transform: translateX(-50%);
 }
 
-/* Status seal, top-right corner. */
-.commission-seal {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  border: 1px solid currentColor;
-}
-
-.commission-seal.tone-open {
-  color: #2f5130;
-  background: rgba(108, 167, 96, 0.32);
-}
-
-.commission-seal.tone-active {
-  color: #8a5410;
-  background: rgba(232, 170, 60, 0.36);
-}
-
-.commission-seal.tone-ready {
-  color: #1f3c63;
-  background: rgba(70, 116, 178, 0.3);
-}
-
-.commission-seal.tone-review {
-  color: #5a3a6e;
-  background: rgba(140, 104, 168, 0.3);
-}
-
-.commission-seal.tone-returned {
-  color: #7a2b22;
-  background: rgba(178, 86, 70, 0.3);
-}
-
 .commission-card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding-right: 86px;
   color: rgba(68, 37, 15, 0.7);
   font-size: 0.74rem;
   letter-spacing: 0.06em;
