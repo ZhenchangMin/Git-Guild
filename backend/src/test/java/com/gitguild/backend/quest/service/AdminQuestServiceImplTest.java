@@ -126,7 +126,7 @@ class AdminQuestServiceImplTest {
         AdminQuestPageResponse response = adminQuestService.listQuests(null, 1, 20);
 
         assertThat(response.items()).hasSize(1);
-        // 「全部」视图覆盖待审核/已上架/已退回/已下架，但不含 DRAFT
+        // 「全部」视图覆盖待审核/已上架/已接取/进行中/审核中/已完成/已退回/已下架，但不含 DRAFT
         @SuppressWarnings("unchecked")
         ArgumentCaptor<java.util.Collection<QuestStatus>> statusesCaptor =
                 ArgumentCaptor.forClass(java.util.Collection.class);
@@ -134,6 +134,7 @@ class AdminQuestServiceImplTest {
         assertThat(statusesCaptor.getValue())
                 .containsExactlyInAnyOrder(
                         QuestStatus.PENDING_ADMIN_REVIEW, QuestStatus.PUBLISHED,
+                        QuestStatus.IN_PROGRESS, QuestStatus.IN_REVIEW, QuestStatus.COMPLETED,
                         QuestStatus.REJECTED, QuestStatus.CLOSED)
                 .doesNotContain(QuestStatus.DRAFT);
     }
