@@ -66,10 +66,15 @@ function quietlySeedFromQuest() {
   // Only fill empty fields; never overwrite something the user already typed.
   // 仓库/分支为服务端派生（分支即 task branch），此处只做兜底占位，真正取值见 fetchDraftFromBackend。
   if (!form.repository) form.repository = q.detail?.repository?.name ?? 'git-guild / frontend'
-  if (!form.note) {
-    form.note = `准备提交 ${q.id} 的成果。请说明本次修改、测试结果，以及完成标准的逐项自检情况。`
-  }
 }
+
+// 提交说明输入框的占位提示——只是引导性的底层灰字，不写入 form.note，
+// 否则用户没动过这段文字也会被当成「已填写」的真实内容一起提交。
+const notePlaceholder = computed(() =>
+  props.quest?.id
+    ? `准备提交 ${props.quest.id} 的成果。请说明本次修改、测试结果，以及完成标准的逐项自检情况。`
+    : '本次修改、测试结果、完成标准自检情况',
+)
 
 function hydrateFromDraft() {
   // Reset state so switching between quests doesn't leak fields.
@@ -462,7 +467,7 @@ function formatDateTime(date) {
                 <textarea
                   v-model="form.note"
                   rows="4"
-                  placeholder="本次修改、测试结果、完成标准自检情况"
+                  :placeholder="notePlaceholder"
                   :disabled="isLocked"
                 ></textarea>
                 <small v-if="errors.note" class="submission-field-error">{{ errors.note }}</small>
