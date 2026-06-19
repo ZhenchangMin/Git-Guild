@@ -569,9 +569,10 @@ onMounted(async () => {
   border-color: rgba(240, 184, 104, 0.4);
 }
 .office-quest-badge.published {
-  color: #fff0c2;
-  background: linear-gradient(160deg, rgba(244, 192, 111, 0.42), rgba(180, 120, 30, 0.26));
-  border-color: rgba(244, 192, 111, 0.65);
+  color: #2a1605;
+  background: linear-gradient(180deg, #ffd98a, #d89a32);
+  border-color: rgba(255, 233, 178, 0.7);
+  box-shadow: 0 0 0 1px rgba(255, 217, 138, 0.18);
 }
 .office-quest-badge.active {
   color: #cfe6ad;
