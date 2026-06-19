@@ -148,6 +148,7 @@ const statusFilterOptions = [
   { key: 'PENDING_ADMIN_REVIEW', label: '待审核' },
   { key: 'PUBLISHED', label: '已上架' },
   { key: 'TAKEN', label: '已接取' },
+  { key: 'COMPLETED', label: '已完成' },
   { key: 'REJECTED', label: '已退回' },
   { key: 'CLOSED', label: '已下架' },
 ]
@@ -451,6 +452,7 @@ const queueStats = computed(() => {
     { label: '待审核', value: counts.PENDING_ADMIN_REVIEW ?? 0, tone: 'pending' },
     { label: '已上架', value: counts.PUBLISHED ?? 0, tone: 'approved' },
     { label: '已接取', value: counts.TAKEN ?? 0, tone: 'approved' },
+    { label: '已完成', value: counts.COMPLETED ?? 0, tone: 'approved' },
     { label: '已退回', value: (counts.REJECTED ?? 0) + (counts.DRAFT ?? 0), tone: 'return' },
     { label: '已下架', value: counts.CLOSED ?? 0, tone: 'danger' },
   ]
