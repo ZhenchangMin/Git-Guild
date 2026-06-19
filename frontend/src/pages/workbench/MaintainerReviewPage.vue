@@ -8,6 +8,7 @@ import MaintainerReviewActions from '../../components/MaintainerReviewActions.vu
 import MaintainerReviewDetail from '../../components/MaintainerReviewDetail.vue'
 import MaintainerReviewQueue from '../../components/MaintainerReviewQueue.vue'
 import { reviewApi, submissionApi } from '../../api'
+import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
 
 const router = useRouter()
 
@@ -126,6 +127,10 @@ function mapSubmissionToReview(submission) {
       ? `${pullRequest.sourceBranch} -> ${pullRequest.targetBranch}`
       : pullRequest.sourceBranch || repository.defaultBranch || '—'
   const completionCriteria = buildCompletionCriteria(submission)
+  const repositoryBranchName = pullRequest.sourceBranch || repository.defaultBranch || 'main'
+  const repositoryUrl = toBrowsableGiteaUrl(repository.sourceUrl) || null
+  // 审核时要核对的是分支的提交内容，直接跳到提交列表而不是仓库首页。
+  const repositoryBranchUrl = repositoryUrl ? `${repositoryUrl}/commits/branch/${repositoryBranchName}` : null
 
   return {
     id: `SUB-${padId(submission.submissionId)}`,
@@ -134,6 +139,8 @@ function mapSubmissionToReview(submission) {
     questTitle: quest.title || '未命名委托',
     submitter: submission.submitter?.username || `用户 ${submission.submitter?.userId ?? '—'}`,
     repository: repository.name || repository.sourceUrl || '未关联仓库',
+    repositoryBranch: repositoryBranchName,
+    repositoryBranchUrl,
     pullRequest: prLabel,
     pullRequestUrl: pullRequest.externalUrl || '',
     pullRequestTitle: pullRequest.title || '未命名 PR',

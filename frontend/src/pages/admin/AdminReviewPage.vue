@@ -265,12 +265,10 @@ async function toApplication(summary) {
   const completionCriteria = source.completionCriteria ?? ''
   const repository = source.repository?.name ?? '未关联仓库'
   const repositoryUrl = source.repository?.webUrl ?? null
-  const repositoryBranch = source.repository?.defaultBranch || 'main'
-  // 直接跳到分支的提交列表，而不是仓库首页——审核时要看的是提交内容，不是仓库介绍页。
-  const repositoryBranchUrl = repositoryUrl ? `${repositoryUrl}/commits/branch/${repositoryBranch}` : null
   const issue = source.issue
     ? `#${source.issue.externalIssueId ?? source.issue.issueId} · ${source.issue.title ?? '未命名 Issue'}`
     : '未关联 Issue'
+  const issueUrl = source.issue?.externalUrl ?? null
   const publisher = source.publisher?.username ?? summary.publisher?.username ?? '未知委托人'
   const status = source.status ?? summary.status ?? 'PENDING_ADMIN_REVIEW'
   const questId = source.questId ?? summary.questId
@@ -288,9 +286,8 @@ async function toApplication(summary) {
     publisher: `委托人 · ${publisher}`,
     repository,
     repositoryUrl,
-    repositoryBranch,
-    repositoryBranchUrl,
     issue,
+    issueUrl,
     submittedAt: formatDateTime(source.createdAt ?? summary.createdAt),
     questStatus: status,
     summary: description,
@@ -304,7 +301,7 @@ async function toApplication(summary) {
     tags,
     techStack,
     clarityChecks: buildClarityChecks(title, description, completionCriteria),
-    complianceChecks: buildComplianceChecks(source, repositoryBranchUrl),
+    complianceChecks: buildComplianceChecks(source),
     risks: [],
     reviewRecords: await loadReviewHistory(questId, publisher, source.createdAt ?? summary.createdAt),
   }
@@ -368,7 +365,7 @@ function buildClarityChecks(title, description, completionCriteria) {
   ]
 }
 
-function buildComplianceChecks(quest, repositoryBranchUrl) {
+function buildComplianceChecks(quest) {
   return [
     {
       label: '仓库与 Issue 已关联',
@@ -380,8 +377,8 @@ function buildComplianceChecks(quest, repositoryBranchUrl) {
     },
     {
       label: '仓库文件内容合规',
-      note: '请前往 Gitea 仓库分支核对提交内容，确认不含敏感信息或违规内容。',
-      link: repositoryBranchUrl,
+      note: '请前往 Gitea 仓库核对文件内容，确认不含敏感信息或违规内容。',
+      link: quest?.repository?.webUrl ?? null,
     },
   ]
 }
@@ -702,6 +699,15 @@ async function submitDecision(decision) {
                   <p class="kicker">Quest Content</p>
                   <h3>委托内容</h3>
                 </div>
+                <a
+                  v-if="activeApplication.repositoryUrl"
+                  class="admin-gitea-link"
+                  :href="activeApplication.repositoryUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  前往 Gitea 查看仓库 ↗
+                </a>
               </div>
               <dl>
                 <div>
@@ -763,13 +769,13 @@ async function submitDecision(decision) {
                   <h3>Issue 关联</h3>
                 </div>
                 <a
-                  v-if="activeApplication.repositoryBranchUrl"
+                  v-if="activeApplication.issueUrl"
                   class="admin-gitea-link"
-                  :href="activeApplication.repositoryBranchUrl"
+                  :href="activeApplication.issueUrl"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  前往 {{ activeApplication.repositoryBranch }} 分支查看提交 ↗
+                  去 Gitea 查看关联 Issue ↗
                 </a>
               </div>
               <dl>
@@ -841,7 +847,7 @@ async function submitDecision(decision) {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    前往分支查看提交 ↗
+                    前往 Gitea 仓库查看 ↗
                   </a>
                 </section>
               </div>

@@ -43,6 +43,15 @@ function prStateLabel(state) {
             <dd>{{ review.submittedAt }}</dd>
           </div>
         </dl>
+        <a
+          v-if="review.repositoryBranchUrl"
+          class="branch-commits-link"
+          :href="review.repositoryBranchUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          前往 {{ review.repositoryBranch }} 分支查看提交 ↗
+        </a>
       </div>
       <aside>
         <span>{{ review.status }}</span>
@@ -174,6 +183,24 @@ function prStateLabel(state) {
   font-size: 1rem;
   line-height: 1.3;
   overflow-wrap: anywhere;
+}
+
+.branch-commits-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 14px;
+  color: #ffe2a0;
+  font-size: 0.86rem;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 226, 160, 0.4);
+  transition: color 150ms ease, text-decoration-color 150ms ease;
+}
+
+.branch-commits-link:hover,
+.branch-commits-link:focus-visible {
+  color: #ffe8b9;
+  text-decoration-color: rgba(255, 232, 185, 0.8);
 }
 
 .detail-hero aside {

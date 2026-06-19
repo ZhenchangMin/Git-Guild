@@ -32,6 +32,8 @@ const repositoryIssues = ref([])
 const errorMessage = ref('')
 // 导入失败弹窗：null = 不显示；否则为 { title, reason, hints, detail, sourceUrl }
 const failure = ref(null)
+// 导入二次确认弹窗：null = 不显示；否则为待确认的 { sourceUrl, name, hostType }
+const importConfirm = ref(null)
 
 // 迁移进度：后端是单次异步调用、不流式回传百分比，所以进度绑定真实阶段边界
 // （迁移 → 同步 Issue → 读取 Issue → 完成）；长耗时的迁移阶段用渐近爬升避免“卡死感”。
@@ -146,6 +148,25 @@ function syncNameFromUrl() {
   if (!repositoryForm.value.sourceUrl.trim()) return
   if (repositoryForm.value.name && repositoryForm.value.name !== 'gitguild-demo') return
   repositoryForm.value.name = inferRepositoryName(repositoryForm.value.sourceUrl)
+}
+
+// 提交前先弹二次确认：展示用户填写的仓库基本信息，避免误填地址直接触发迁移。
+function requestImportConfirm() {
+  if (!canImport.value) return
+  importConfirm.value = {
+    sourceUrl: repositoryForm.value.sourceUrl.trim(),
+    name: repositoryForm.value.name.trim(),
+    hostType: repositoryForm.value.hostType,
+  }
+}
+
+function cancelImportConfirm() {
+  importConfirm.value = null
+}
+
+function confirmImport() {
+  importConfirm.value = null
+  importRepository()
 }
 
 async function importRepository() {
@@ -439,7 +460,7 @@ onBeforeUnmount(stopCreep)
       </ol>
     </section>
 
-    <form class="frontdesk-pocket import-panel" @submit.prevent="mode === 'create' ? createRepository() : importRepository()">
+    <form class="frontdesk-pocket import-panel" @submit.prevent="mode === 'create' ? createRepository() : requestImportConfirm()">
       <div class="pocket-head">
         <div>
           <p class="kicker">Repository Intake</p>
@@ -607,6 +628,42 @@ onBeforeUnmount(stopCreep)
       </div>
 
     </form>
+
+    <transition name="failure-pop">
+      <div
+        v-if="importConfirm"
+        class="import-confirm-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="import-confirm-title"
+        @click.self="cancelImportConfirm"
+      >
+        <div class="confirm-card">
+          <button class="confirm-close" type="button" aria-label="关闭" @click="cancelImportConfirm">×</button>
+          <p class="kicker">Confirm Import</p>
+          <h2 id="import-confirm-title">确认导入这个仓库？</h2>
+          <p class="confirm-lead">迁移开始后会把以下来源仓库迁入平台并同步 Issue，请核对信息无误。</p>
+          <dl class="confirm-meta">
+            <div>
+              <dt>仓库地址</dt>
+              <dd>{{ importConfirm.sourceUrl }}</dd>
+            </div>
+            <div>
+              <dt>平台仓库名称</dt>
+              <dd>{{ importConfirm.name }}</dd>
+            </div>
+            <div>
+              <dt>托管类型</dt>
+              <dd>{{ importConfirm.hostType === 'GITEA' ? 'Gitea / GitHub' : importConfirm.hostType }}</dd>
+            </div>
+          </dl>
+          <div class="confirm-actions">
+            <button class="quiet-action" type="button" @click="cancelImportConfirm">取消</button>
+            <button class="primary-action" type="button" @click="confirmImport">确认导入</button>
+          </div>
+        </div>
+      </div>
+    </transition>
 
     <transition name="failure-pop">
       <div
@@ -1214,6 +1271,101 @@ onBeforeUnmount(stopCreep)
 .duplicate-actions .primary-action {
   min-height: 38px;
   padding-inline: 16px;
+}
+
+/* ── 导入二次确认弹窗（与已导入过弹窗同色调，强调“核对后再继续”） ── */
+.import-confirm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at 50% 35%, rgba(40, 20, 4, 0.6), rgba(6, 3, 2, 0.8));
+  backdrop-filter: blur(4px);
+}
+.confirm-card {
+  position: relative;
+  width: min(440px, 92vw);
+  padding: 28px 26px 24px;
+  border: 1px solid rgba(238, 184, 91, 0.62);
+  border-radius: 16px;
+  color: #ffe7b5;
+  text-align: left;
+  background:
+    linear-gradient(180deg, rgba(38, 20, 8, 0.96), rgba(20, 10, 4, 0.96)),
+    radial-gradient(circle at 50% 0%, rgba(238, 184, 91, 0.22), transparent 52%);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 220, 140, 0.16);
+}
+.confirm-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  color: rgba(255, 220, 150, 0.72);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  background: transparent;
+  transition: background 150ms ease, color 150ms ease;
+}
+.confirm-close:hover {
+  color: #ffe7b5;
+  background: rgba(238, 184, 91, 0.18);
+}
+.confirm-card .kicker {
+  margin-bottom: 4px;
+  color: rgba(255, 220, 150, 0.8);
+}
+.confirm-card h2 {
+  margin: 2px 0 10px;
+  color: #ffe4a0;
+  font-family: var(--font-display);
+  font-size: 1.28rem;
+}
+.confirm-lead {
+  margin: 0 0 18px;
+  color: rgba(255, 231, 183, 0.78);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.confirm-meta {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 22px;
+  padding: 12px 14px;
+  border: 1px solid rgba(224, 163, 72, 0.28);
+  border-radius: 10px;
+  background: rgba(8, 5, 3, 0.4);
+}
+.confirm-meta div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+}
+.confirm-meta dt {
+  color: rgba(255, 231, 183, 0.55);
+  font-size: 0.76rem;
+}
+.confirm-meta dd {
+  min-width: 0;
+  margin: 0;
+  color: #ffe9bb;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.confirm-actions .quiet-action,
+.confirm-actions .primary-action {
+  min-height: 38px;
+  padding-inline: 18px;
 }
 
 /* ── 导入失败弹窗 ─────────────────────────────────────────── */
