@@ -433,7 +433,14 @@ function tagQuality(count) {
 const DIFF_LABEL = { A: '高级', B: '中级', C: '初级', D: '入门' }
 
 // ─── navigation ────────────────────────────────────
-function backToHall() { router.push({ name: 'hall' }) }
+// 返回上一页（保留用户来路，如工作台）；无站内历史（直接深链进入）时兜底回大厅。
+function goBack() {
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push({ name: 'hall' })
+  }
+}
 function openQuestBoard() { router.push({ name: 'quest-board' }) }
 function openWorkbench() { router.push({ name: 'adventurer-workbench' }) }
 function openLeaderboard() { router.push({ name: 'leaderboard' }) }
@@ -457,9 +464,9 @@ const icons = {
   <main class="app-shell">
     <section class="scene profile-scene" :style="{ '--profile-archive-bg': `url(${profileArchiveBg})` }">
       <!-- back button -->
-      <button class="back-orb" type="button" aria-label="返回公会大厅" @click="backToHall">
+      <button class="back-orb" type="button" aria-label="返回上一页" @click="goBack">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6 9 12l6 6" /></svg>
-        <span>返回公会大厅</span>
+        <span>返回</span>
       </button>
 
       <aside class="growth-map-points" aria-label="成长路径点">

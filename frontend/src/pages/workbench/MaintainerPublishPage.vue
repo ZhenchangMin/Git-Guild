@@ -22,22 +22,26 @@ const loadingIssues = ref(false)
 const metaError = ref('')
 
 // ── 表单状态 ────────────────────────────────────────────────────────────────
-const form = ref({
-  repositoryId: '',
-  issueMode: 'existing', // existing | new
-  issueId: '',
-  giteaIssueTitle: '',
-  giteaIssueBody: '',
-  title: '',
-  description: '',
-  completionCriteria: '',
-  categoryId: '',
-  tagIds: [],
-  difficulty: 'A',
-  techStack: '',
-  estimatedHours: 1,
-  rewardXp: 50,
-})
+function blankForm() {
+  return {
+    repositoryId: '',
+    issueMode: 'existing', // existing | new
+    issueId: '',
+    giteaIssueTitle: '',
+    giteaIssueBody: '',
+    title: '',
+    description: '',
+    completionCriteria: '',
+    categoryId: '',
+    tagIds: [],
+    difficulty: 'A',
+    techStack: '',
+    estimatedHours: 1,
+    rewardXp: 50,
+  }
+}
+
+const form = ref(blankForm())
 
 const submitting = ref(false)
 const submitError = ref('')
@@ -88,14 +92,18 @@ async function loadMeta() {
         : null
       form.value.repositoryId = String((preselect ?? repositories.value[0]).repositoryId)
     }
-    const mvp = categories.value.find((c) => c.name === 'MVP') ?? categories.value[0]
-    if (mvp) form.value.categoryId = String(mvp.categoryId)
+    preselectCategory()
   } catch (error) {
     metaError.value = error?.message ?? '加载仓库/分类失败，请确认后端已启动。'
   } finally {
     loadingMeta.value = false
   }
   loadTags()
+}
+
+function preselectCategory() {
+  const mvp = categories.value.find((c) => c.name === 'MVP') ?? categories.value[0]
+  if (mvp) form.value.categoryId = String(mvp.categoryId)
 }
 
 // 标签：非阻塞加载，失败不影响发布（标签可选）。
@@ -203,7 +211,10 @@ async function publish() {
     if (error?.code === 'ISSUE_NOT_AVAILABLE') {
       duplicateIssue.value = { issueLabel: selectedIssueLabel.value }
     } else {
-      submitError.value = error?.message ?? '发布失败，请稍后再试。'
+      // 后端把根因放进 details（如异常类型+消息、字段校验明细），
+      // 拼到提示里而非只给一句通用文案，方便委托人定位是哪一步出了问题。
+      const base = error?.message ?? '发布失败，请稍后再试。'
+      submitError.value = error?.details ? `${base}（${error.details}）` : base
     }
   } finally {
     submitting.value = false
@@ -212,6 +223,18 @@ async function publish() {
 
 function goWorkbench() {
   router.push({ name: 'maintainer-workbench' })
+}
+
+// 「继续发布」：回到一个干净的初始表单（保留仓库/分类的默认预选），而非沿用刚提交过的内容。
+function startNewPublish() {
+  submitOk.value = null
+  submitError.value = ''
+  form.value = blankForm()
+  if (repositories.value.length > 0) {
+    form.value.repositoryId = String(repositories.value[0].repositoryId)
+  }
+  preselectCategory()
+  loadIssues(form.value.repositoryId)
 }
 
 // 返回上一页：有站内历史就弹出（通常是事务所），避免用 push 反复压入新条目造成
@@ -268,8 +291,8 @@ function unwrapItems(payload) {
             任务已创建并提交管理员审核。请用 admin 账号到审核台通过后，委托即上架悬赏板。
           </p>
           <div class="writ-receipt-actions">
-            <button class="quiet-action" type="button" @click="submitOk = null">继续发布</button>
-            <button class="primary-action" type="button" @click="backToWorkbench">返回事务所</button>
+            <button class="quiet-action" type="button" @click="startNewPublish">继续发布</button>
+            <button class="primary-action" type="button" @click="goWorkbench">返回事务所</button>
           </div>
         </div>
 
