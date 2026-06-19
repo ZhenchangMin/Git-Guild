@@ -20,7 +20,6 @@ const loadError = ref('')
 const isLoadingReviews = ref(false)
 const isSubmittingReview = ref(false)
 const isMerging = ref(false)
-const isActionPanelCollapsed = ref(false)
 
 const selectedReview = computed(
   () => reviews.value.find((review) => review.id === selectedReviewId.value) ?? null,
@@ -194,7 +193,6 @@ function selectReview(reviewId) {
   selectedReviewId.value = reviewId
   reviewResult.value = null
   reviewAlert.value = null
-  isActionPanelCollapsed.value = false
 }
 
 function updateReviewStatus(decision) {
@@ -405,28 +403,15 @@ onMounted(loadReviewQueue)
           <section
             v-else
             class="review-focus"
-            :class="{
-              'readonly-review': !canReviewSelectedSubmission,
-              'actions-collapsed': canReviewSelectedSubmission && isActionPanelCollapsed,
-            }"
+            :class="{ 'readonly-review': !canReviewSelectedSubmission }"
           >
             <MaintainerReviewDetail
               :review="selectedReview"
               :merging="isMerging"
               @merge-pr="mergeSelectedPullRequest"
             />
-            <button
-              v-if="canReviewSelectedSubmission"
-              class="action-panel-toggle"
-              type="button"
-              :aria-expanded="!isActionPanelCollapsed"
-              @click="isActionPanelCollapsed = !isActionPanelCollapsed"
-            >
-              {{ isActionPanelCollapsed ? '展开审核' : '收起审核' }}
-            </button>
             <div v-if="canReviewSelectedSubmission" class="review-action-slot">
               <MaintainerReviewActions
-                v-if="!isActionPanelCollapsed"
                 :review="selectedReview"
                 :result="reviewResult"
                 :busy="isSubmittingReview"
@@ -615,7 +600,7 @@ onMounted(loadReviewQueue)
 
 .review-focus {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) 34px minmax(300px, 0.85fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
   gap: 12px;
 }
 
@@ -623,41 +608,10 @@ onMounted(loadReviewQueue)
   grid-template-columns: minmax(0, 1fr);
 }
 
-.review-focus.actions-collapsed {
-  grid-template-columns: minmax(0, 1fr) 34px;
-}
-
-.review-focus.actions-collapsed .review-action-slot {
-  display: none;
-}
-
 .review-action-slot {
   display: grid;
   min-width: 0;
   min-height: 0;
-}
-
-.action-panel-toggle {
-  align-self: stretch;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(238, 184, 91, 0.32);
-  border-radius: 10px;
-  padding: 0;
-  color: rgba(255, 226, 160, 0.78);
-  background: rgba(14, 7, 3, 0.5);
-  cursor: pointer;
-  writing-mode: vertical-rl;
-  letter-spacing: 0.16em;
-  font-size: 0.8rem;
-  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
-}
-
-.action-panel-toggle:hover,
-.action-panel-toggle:focus-visible {
-  border-color: rgba(255, 224, 157, 0.7);
-  color: #ffe8b9;
-  background: rgba(60, 32, 11, 0.45);
 }
 
 @media (max-width: 1180px) {
