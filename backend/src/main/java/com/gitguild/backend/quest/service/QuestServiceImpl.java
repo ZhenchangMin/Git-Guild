@@ -296,7 +296,8 @@ public class QuestServiceImpl implements QuestService {
     @Transactional(readOnly = true)
     public MyAssignmentsResponse getMyAssignments(Long userId) {
         findUser(userId);  // 用户不存在则 404
-        List<QuestAssignment> assignments = assignmentRepository.findByAssigneeUserIdAndStatus(userId, AssignmentStatus.ACTIVE);
+        List<QuestAssignment> assignments = assignmentRepository.findByAssigneeUserIdAndStatusIn(
+                userId, List.of(AssignmentStatus.ACTIVE, AssignmentStatus.COMPLETED));
         List<MyAssignmentItem> items = assignments.stream()
                 .map(this::toMyAssignmentItem)
                 .toList();

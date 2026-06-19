@@ -408,7 +408,7 @@ function showIssueHint() {
               <p class="kicker">接取契约 · 二次确认</p>
               <h2 id="accept-dialog-title">{{ quest.code ?? quest.id }} · {{ quest.title }}</h2>
               <p class="accept-dialog-body">
-                接取后任务将记入你的工作台待办，请确认已仔细阅读任务背景、完成标准与提交要求 —— 这不是一份可以随意撂下的契约。
+                接取后任务将记入你的工作台待办，请确认已仔细阅读任务背景、完成标准与提交要求。
               </p>
 
               <label class="accept-dialog-check">
