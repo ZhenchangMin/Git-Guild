@@ -1821,7 +1821,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
                   type="button"
                   :disabled="!taskCloneUrl"
                   @click="copyText(taskCloneUrl, 'clone-url')"
-                ><span v-if="copiedKey === 'clone-url'">{{ copiedOk ? '✓ 已复制' : '复制失败' }}</span><span v-else>复制</span></button>
+                ><span v-if="copiedKey === 'clone-url'" class="copy-btn-result"><svg v-if="copiedOk" class="copy-check-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>{{ copiedOk ? '已复制' : '复制失败' }}</span><span v-else>复制</span></button>
               </div>
               <div class="clone-field">
                 <span class="clone-label">任务分支</span>
@@ -1832,7 +1832,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
                   type="button"
                   :disabled="!realTaskBranch"
                   @click="copyText(realTaskBranch, 'task-branch')"
-                ><span v-if="copiedKey === 'task-branch'">{{ copiedOk ? '✓ 已复制' : '复制失败' }}</span><span v-else>复制</span></button>
+                ><span v-if="copiedKey === 'task-branch'" class="copy-btn-result"><svg v-if="copiedOk" class="copy-check-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>{{ copiedOk ? '已复制' : '复制失败' }}</span><span v-else>复制</span></button>
               </div>
             </div>
 
@@ -1850,7 +1850,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
                     :class="{ copied: copiedKey === `step-${step.title}` }"
                     type="button"
                     @click="copyText(step.command, `step-${step.title}`)"
-                  ><span v-if="copiedKey === `step-${step.title}`">{{ copiedOk ? '✓ 已复制' : '复制失败' }}</span><span v-else>复制命令</span></button>
+                  ><span v-if="copiedKey === `step-${step.title}`" class="copy-btn-result"><svg v-if="copiedOk" class="copy-check-icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>{{ copiedOk ? '已复制' : '复制失败' }}</span><span v-else>复制命令</span></button>
                 </div>
                 <span>{{ step.body }}</span>
                 <code>{{ step.command }}</code>
@@ -3806,6 +3806,16 @@ dd {
   color: #d9f5c8;
   animation: copy-btn-pop 220ms ease-out;
 }
+.copy-btn-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.copy-check-icon {
+  flex: none;
+  color: #9be37f;
+  animation: copy-check-draw 220ms ease-out;
+}
 @keyframes copy-btn-pop {
   0% {
     transform: scale(0.92);
@@ -3814,6 +3824,16 @@ dd {
     transform: scale(1.04);
   }
   100% {
+    transform: scale(1);
+  }
+}
+@keyframes copy-check-draw {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
     transform: scale(1);
   }
 }
