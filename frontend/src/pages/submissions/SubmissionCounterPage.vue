@@ -86,6 +86,12 @@ function handleSubmitted(receipt) {
   lastReceipt.value = receipt
 }
 
+// "回到工作台" 按钮：与单纯提交成功不同，这里要真的导航离开柜台页。
+function handleBackToWorkbench(receipt) {
+  lastReceipt.value = receipt
+  router.push(backTarget.value)
+}
+
 // Adventurers and maintainers can both use the adventurer-style workbench to
 // complete accepted quests; admins preview from the hall.
 const backTarget = computed(() => {
@@ -143,7 +149,11 @@ function formatReceiptTime(date) {
         </aside>
       </Transition>
 
-      <SubmissionCounter :quest="activeQuest" @submitted="handleSubmitted" />
+      <SubmissionCounter
+        :quest="activeQuest"
+        @submitted="handleSubmitted"
+        @back-to-workbench="handleBackToWorkbench"
+      />
     </section>
   </main>
 </template>

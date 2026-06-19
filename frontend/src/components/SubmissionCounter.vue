@@ -19,7 +19,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['submitted'])
+const emit = defineEmits(['submitted', 'back-to-workbench'])
 
 // ── Stage machine ──────────────────────────────────────────────────────────
 // draft       — user is editing; everything is interactive
@@ -302,8 +302,11 @@ function returnToDraft() {
 
 // Receipt actions
 function backToWorkbench() {
-  // Component is route-agnostic; let the page handle navigation by emitting.
-  emit('submitted', receipt.value)
+  // Component is route-agnostic; let the page handle navigation by emitting
+  // a dedicated event — reusing 'submitted' here would be indistinguishable
+  // from the actual submit-success emit and the page would just store the
+  // receipt again instead of navigating.
+  emit('back-to-workbench', receipt.value)
   closeSheet()
 }
 
