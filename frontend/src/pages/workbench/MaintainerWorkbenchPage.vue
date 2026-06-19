@@ -41,6 +41,20 @@ function questStatus(status) {
   return QUEST_STATUS[status] ?? { label: status || '未知', tone: 'draft' }
 }
 
+// 状态筛选：'ALL' 表示不过滤。chip 列表只展示当前委托里实际出现过的状态，避免空选项。
+const questStatusFilter = ref('ALL')
+const questStatusFilterOptions = computed(() => {
+  const present = new Set(myQuests.value.map((q) => q.status))
+  return Object.keys(QUEST_STATUS).filter((status) => present.has(status))
+})
+const filteredMyQuests = computed(() => {
+  if (questStatusFilter.value === 'ALL') return myQuests.value
+  return myQuests.value.filter((q) => q.status === questStatusFilter.value)
+})
+function setQuestStatusFilter(status) {
+  questStatusFilter.value = status
+}
+
 // 已驳回委托的驳回原因弹窗状态。
 // { quest, loading, reason, error } — null 表示弹窗关闭。
 const rejectionModal = ref(null)
@@ -230,6 +244,29 @@ onMounted(async () => {
             <button class="quiet-action office-sync-btn" type="button" @click="goPublish">发布新委托</button>
           </header>
 
+          <div v-if="questStatusFilterOptions.length > 1" class="quest-filter-options" aria-label="按状态筛选">
+            <button
+              type="button"
+              class="quest-filter-chip"
+              :class="{ active: questStatusFilter === 'ALL' }"
+              :aria-pressed="questStatusFilter === 'ALL'"
+              @click="setQuestStatusFilter('ALL')"
+            >
+              全部 · {{ myQuests.length }}
+            </button>
+            <button
+              v-for="status in questStatusFilterOptions"
+              :key="status"
+              type="button"
+              class="quest-filter-chip"
+              :class="{ active: questStatusFilter === status }"
+              :aria-pressed="questStatusFilter === status"
+              @click="setQuestStatusFilter(status)"
+            >
+              {{ questStatus(status).label }}
+            </button>
+          </div>
+
           <ul v-if="myQuestsLoading" class="office-repo-list" aria-hidden="true">
             <li v-for="n in 2" :key="n" class="office-repo-row is-skeleton">
               <span class="sk sk-name"></span>
@@ -243,8 +280,12 @@ onMounted(async () => {
             起草第一个任务。
           </p>
 
+          <p v-else-if="!filteredMyQuests.length" class="office-repos-empty">
+            没有符合该状态的委托。
+          </p>
+
           <ul v-else class="office-quest-list">
-            <li v-for="q in myQuests" :key="q.questId" class="office-quest-row">
+            <li v-for="q in filteredMyQuests" :key="q.questId" class="office-quest-row">
               <span class="office-quest-title">{{ q.title }}</span>
               <span class="office-quest-repo">{{ q.repository?.name || '—' }}</span>
               <button

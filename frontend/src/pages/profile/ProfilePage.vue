@@ -515,12 +515,12 @@ const icons = {
                 <button
                   class="edit-btn"
                   type="button"
-                  aria-label="编辑资料"
+                  aria-label="编辑签名"
                   :disabled="isSavingProfile"
                   @click="editProfileMotto"
                 >
                   <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path :d="icons.edit" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  <span>编辑</span>
+                  <span>编辑签名</span>
                 </button>
               </div>
 
