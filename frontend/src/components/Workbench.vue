@@ -1,9 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
-import WorkbenchGitOperationPanel from './WorkbenchGitOperationPanel.vue'
-import WorkbenchPrLinkPanel from './WorkbenchPrLinkPanel.vue'
-import WorkbenchRepositoryPanel from './WorkbenchRepositoryPanel.vue'
 import QuestStatusFlow from './QuestStatusFlow.vue'
 import { questApi } from '../api/questApi'
 import { growthApi } from '../api/growthApi'
@@ -165,7 +162,6 @@ function mapAssignmentToTask(item) {
     // 维护者每次退回时留下的意见，按时间升序——QuestStatusFlow 用它判断是否允许查看「退回修改」节点并渲染历史。
     changeRequests: item.changeRequests ?? [],
     actions: [
-      { label: '查看仓库', type: 'repository' },
       { label: '同步 PR 状态', type: 'sync-pr' },
       { label: '去提交柜台', type: 'submit', primary: true },
     ],
@@ -206,7 +202,6 @@ watch(defaultTaskId, (id) => {
   if (id && !selectedTaskId.value) selectedTaskId.value = id
 }, { immediate: true })
 const selectedEmailId = ref(null)
-const selectedRepositoryName = ref(null)
 const selectedNotificationText = ref(null)
 const selectedFeedbackId = ref(null)
 const isGrowthDetailOpen = ref(false)
@@ -300,9 +295,6 @@ const displayStats = computed(() =>
 )
 const selectedTaskRepository = computed(() =>
   repositoryList.value.find((repository) => repository.name === selectedTask.value?.repository),
-)
-const selectedRepository = computed(() =>
-  repositoryList.value.find((repository) => repository.name === selectedRepositoryName.value) ?? null,
 )
 const selectedTaskPullRequests = computed(() => {
   if (!selectedTask.value) return []
@@ -465,16 +457,6 @@ const selectedTaskGitActions = computed(() => {
 
   return nextActions
 })
-const selectedRepositoryTasks = computed(() =>
-  allTasks.value.filter((task) => task.repository === selectedRepository.value?.name),
-)
-const selectedRepositoryPullRequests = computed(() => {
-  if (!selectedRepository.value) return []
-
-  return pullRequestList.value.filter(
-    (pullRequest) => findTaskRecord(pullRequest.taskId)?.repository === selectedRepository.value.name,
-  )
-})
 const selectedFeedbackTask = computed(() =>
   allTasks.value.find((task) => task.id === selectedFeedback.value?.questId) ?? null,
 )
@@ -491,17 +473,6 @@ const feedbackStatusOptions = [
   { value: 'changes-requested', label: '退回修改' },
   { value: 'in-review', label: '待复审' },
 ]
-const repositoryGitActions = [
-  { label: '查看仓库', type: 'repository' },
-  { label: '同步 PR 状态', type: 'sync-pr' },
-  { label: '去提交柜台', type: 'submit', primary: true },
-]
-const taskGitOperationHelper =
-  '工作台负责引导和同步项目提交；代码修改、分支、commit 和 PR 先在本地 Git 与 Gitea 完成，提交柜台负责任务成果登记。'
-const repositoryGitOperationHelper =
-  '推荐顺序：确认仓库上下文 -> 在本地创建任务分支 -> push commit -> 在 Gitea 发起 PR -> 回到工作台同步 PR -> 去提交柜台。'
-const taskGitTutorialSteps = computed(() => buildGitTutorialSteps(linkPanelTask.value, linkPanelRepository.value))
-const repositoryGitTutorialSteps = computed(() => buildGitTutorialSteps(linkPanelTask.value, selectedRepository.value))
 const feedbackArchiveStats = computed(() => {
   const counts = reviewFeedbacks.reduce(
     (summary, feedback) => {
@@ -559,61 +530,7 @@ const selectedTaskFlowContext = computed(() => {
     viewer: effectiveUserName.value,
   }
 })
-const linkPanelTask = computed(() => {
-  if (selectedTask.value) return selectedTask.value
-  if (!selectedRepository.value) return null
-
-  return (
-    selectedRepositoryTasks.value.find((task) => task.workflowState !== 'completed') ??
-    selectedRepositoryTasks.value[0] ??
-    null
-  )
-})
-const linkPanelRepository = computed(() =>
-  repositoryList.value.find((repository) => repository.name === linkPanelTask.value?.repository) ?? selectedRepository.value,
-)
-const linkPanelPullRequest = computed(() => {
-  if (!linkPanelTask.value) return null
-
-  return (
-    pullRequestList.value.find(
-      (pullRequest) => pullRequest.taskId === linkPanelTask.value.id || pullRequest.id === linkPanelTask.value.prNumber,
-    ) ?? null
-  )
-})
-const linkPanelChecks = computed(() => {
-  if (!linkPanelTask.value) return []
-
-  return [
-    {
-      label: '任务分支',
-      passed: Boolean(linkPanelTask.value.branch),
-      detail: linkPanelTask.value.branch || '还没有创建任务分支。',
-    },
-    {
-      label: '最近 commit',
-      passed: linkPanelTask.value.recentCommit !== '待上传',
-      detail: linkPanelTask.value.recentCommit || '还没有上传提交。',
-    },
-    {
-      label: 'PR 与检查',
-      passed: Boolean(linkPanelTask.value.prNumber) && !linkPanelTask.value.checkResult.includes('未通过'),
-      detail: linkPanelTask.value.prNumber
-        ? `${linkPanelTask.value.prNumber} · ${linkPanelTask.value.prState} · ${linkPanelTask.value.checkResult}`
-        : '还没有创建 PR。',
-    },
-    {
-      label: '提交柜台',
-      passed: ['待登记成果', '需重新提交', '已登记成果', '已归档'].includes(linkPanelTask.value.counterLink),
-      detail: linkPanelTask.value.counterDetail,
-    },
-  ]
-})
-const canOpenSubmissionCounter = computed(() => {
-  if (!linkPanelTask.value) return false
-
-  return isGitActionReady('submit', linkPanelTask.value)
-})
+const linkPanelTask = computed(() => selectedTask.value ?? null)
 const selectedFeedbackFlowContext = computed(() => {
   if (!selectedFeedback.value) return {}
 
@@ -642,7 +559,6 @@ const activeRoleLabel = computed(() => effectiveRole.value)
 function selectTask(task) {
   selectedTaskId.value = task.id
   selectedEmailId.value = null
-  selectedRepositoryName.value = null
   selectedNotificationText.value = null
   selectedFeedbackId.value = null
   isGrowthDetailOpen.value = false
@@ -655,7 +571,6 @@ function selectTask(task) {
 function selectEmail(email) {
   selectedEmailId.value = email.id
   selectedTaskId.value = null
-  selectedRepositoryName.value = null
   selectedNotificationText.value = null
   selectedFeedbackId.value = null
   isGrowthDetailOpen.value = false
@@ -667,24 +582,10 @@ function selectEmail(email) {
   }
 }
 
-function selectRepository(repository) {
-  selectedRepositoryName.value = repository.name
-  selectedTaskId.value = null
-  selectedEmailId.value = null
-  selectedNotificationText.value = null
-  selectedFeedbackId.value = null
-  isGrowthDetailOpen.value = false
-  operationResult.value = {
-    title: `${repository.name} 已打开`,
-    body: '中间区域正在显示该仓库的同步状态、分支、Issue、PR 和常用 Git 操作。',
-  }
-}
-
 function selectNotification(notification) {
   selectedNotificationText.value = notification.text
   selectedTaskId.value = null
   selectedEmailId.value = null
-  selectedRepositoryName.value = null
   selectedFeedbackId.value = null
   isGrowthDetailOpen.value = false
   isMailboxOpen.value = false
@@ -702,7 +603,6 @@ function selectLiveNotification(notice) {
   selectedNotificationText.value = null
   selectedTaskId.value = null
   selectedEmailId.value = null
-  selectedRepositoryName.value = null
   selectedFeedbackId.value = null
   isGrowthDetailOpen.value = false
   isMailboxOpen.value = false
@@ -733,7 +633,6 @@ function showGrowthDetails(source = '个人成长档案') {
   isGrowthDetailOpen.value = true
   selectedTaskId.value = null
   selectedEmailId.value = null
-  selectedRepositoryName.value = null
   selectedNotificationText.value = null
   selectedFeedbackId.value = null
   operationResult.value = {
@@ -770,7 +669,6 @@ function selectFeedbackArchive(feedback) {
   selectedFeedbackId.value = feedback.id
   selectedTaskId.value = null
   selectedEmailId.value = null
-  selectedRepositoryName.value = null
   selectedNotificationText.value = null
   isGrowthDetailOpen.value = false
   isMailboxOpen.value = false
@@ -829,10 +727,6 @@ function findTaskRecord(taskId) {
   return findTaskGroup(taskId)?.tasks.find((task) => task.id === taskId) ?? null
 }
 
-function getPullRequestTask(pullRequest) {
-  return pullRequest?.taskId ? findTaskRecord(pullRequest.taskId) : null
-}
-
 function findRepositoryRecord(repositoryName) {
   return repositoryList.value.find((repository) => repository.name === repositoryName) ?? null
 }
@@ -848,19 +742,6 @@ function findRepositoryForTask(task) {
 
 function getRepositoryUrl(repository) {
   return toBrowsableGiteaUrl(repository?.giteaUrl || repository?.sourceUrl || repository?.url || '')
-}
-
-function normalizeRepositoryName(name = '') {
-  return name.toLowerCase().replace(/\s+/g, '')
-}
-
-function findRepositoryFromSource(source = '') {
-  const normalizedSource = normalizeRepositoryName(source)
-  return repositoryList.value.find((repository) => normalizedSource.includes(normalizeRepositoryName(repository.name))) ?? null
-}
-
-function hasSyncWarning(repository) {
-  return Boolean(repository?.syncStatus?.toLowerCase().includes('warning'))
 }
 
 function hasTaskCommit(task) {
@@ -889,36 +770,6 @@ function toPullRequestStatusLabel(status) {
     CHANGES_REQUESTED: '退回修改',
   }
   return statusMap[String(status ?? '').toUpperCase()] ?? status ?? '打开'
-}
-
-function buildGitTutorialSteps(task, repository) {
-  const repositoryUrl = getRepositoryUrl(repository) || 'Gitea 仓库地址'
-  const defaultBranch = repository?.defaultBranch || 'main'
-  const branch = task?.branch || `feature/${(task?.id || 'qst-0000').toLowerCase()}`
-  const commitMessage = task?.id ? `${task.id}: complete task` : 'complete task'
-
-  return [
-    {
-      title: '打开或克隆仓库',
-      body: '点击“查看仓库”进入 Gitea；如果本地还没有代码，先克隆仓库。',
-      command: `git clone ${repositoryUrl}`,
-    },
-    {
-      title: '创建任务分支',
-      body: `从 ${defaultBranch} 拉出一个任务分支，分支名建议能看出任务编号。`,
-      command: `git checkout -b ${branch}`,
-    },
-    {
-      title: '提交并推送代码',
-      body: '完成修改后生成 commit，并把任务分支推送到 Gitea。',
-      command: `git add . && git commit -m "${commitMessage}" && git push -u origin ${branch}`,
-    },
-    {
-      title: '发起并同步 PR',
-      body: `在 Gitea 创建 ${branch} -> ${defaultBranch} 的 PR，然后回到这里点击“同步 PR 状态”。`,
-      command: '',
-    },
-  ]
 }
 
 function isGitActionReady(actionType, task = linkPanelTask.value) {
@@ -958,31 +809,8 @@ function getGitActionDisabledReason(actionType, task = linkPanelTask.value) {
   return reasonMap[actionType] ?? '当前状态暂不可执行。'
 }
 
-function getGitActionButtonTitle(actionType, task = linkPanelTask.value) {
-  return getGitActionDisabledReason(actionType, task) || '点击执行当前 Git 操作'
-}
-
-function openRepositoryExternal(repository) {
-  const url = getRepositoryUrl(repository)
-  if (!url) return false
-  window.open(url, '_blank', 'noopener,noreferrer')
-  return true
-}
-
-function openPullRequestStatus(pullRequest) {
-  if (pullRequest?.url) {
-    window.open(pullRequest.url, '_blank', 'noopener,noreferrer')
-    return
-  }
-  runAction({ type: 'pr-view' }, `${pullRequest.id} ${pullRequest.title}`)
-}
-
 function findActionTaskRecord() {
-  if (selectedTask.value) return findTaskRecord(selectedTask.value.id)
-  if (!selectedRepository.value) return null
-
-  const task = selectedRepositoryTasks.value.find((item) => item.workflowState !== 'completed') ?? selectedRepositoryTasks.value[0]
-  return task ? findTaskRecord(task.id) : null
+  return selectedTask.value ? findTaskRecord(selectedTask.value.id) : null
 }
 
 function updateRepositoryActivity(task) {
@@ -1264,28 +1092,8 @@ async function runAction(action, source = '当前事项') {
     return
   }
 
-  if (action.type === 'repository') {
-    const repository = selectedTaskRepository.value ?? selectedRepository.value ?? findRepositoryFromSource(source)
-    if (repository) {
-      if (!selectedRepository.value) selectRepository(repository)
-      const opened = openRepositoryExternal(repository)
-      operationResult.value = {
-        title: opened ? '仓库已打开' : '仓库视图已打开',
-        body: opened
-          ? `${repository.name} 已在新窗口打开。完成分支、commit 和 PR 后，请回到工作台同步 PR 状态。`
-          : `${repository.name} 缺少可打开的 Gitea URL；请检查仓库导入记录。`,
-      }
-      return
-    }
-  }
-
-  if (action.type === 'repository' && selectedTaskRepository.value && !selectedRepository.value) {
-    selectRepository(selectedTaskRepository.value)
-    return
-  }
-
   if (action.type === 'exception') {
-    const repository = selectedRepository.value ?? selectedTaskRepository.value ?? findRepositoryFromSource(source)
+    const repository = selectedTaskRepository.value
     if (repository) {
       const previousStatus = repository.syncStatus
       repository.syncStatus = 'Synced'
@@ -1303,7 +1111,6 @@ async function runAction(action, source = '当前事项') {
 
   const resultMap = {
     feedback: ['反馈已打开', `${source} 的退回意见已定位到审核反馈区。`],
-    repository: ['仓库视图已打开', `${source} 的分支、提交、Issue 和 PR 摘要已定位。`],
     history: ['提交记录已打开', `${source} 的最近提交记录已定位。`],
     'pr-view': ['PR 状态已打开', `${source} 的 PR 检查状态已定位。`],
     contribution: ['贡献记录已打开', `${source} 已完成并写入个人贡献记录。`],
@@ -1378,22 +1185,6 @@ function openFeedback(feedbackId, source = '审核反馈') {
           <dd>{{ stat.value }}</dd>
         </div>
       </dl>
-
-      <div class="repository-shortcuts" aria-label="仓库快捷入口">
-        <span>仓库</span>
-        <button
-          v-for="repository in repositoryList"
-          :key="repository.name"
-          class="repository-chip"
-          :class="{ active: selectedRepositoryName === repository.name }"
-          type="button"
-          :title="repository.name"
-          @click="selectRepository(repository)"
-        >
-          <strong>{{ repository.name.replace('git-guild / ', '') }}</strong>
-          <small :class="{ warning: hasSyncWarning(repository) }">{{ repository.syncStatus }}</small>
-        </button>
-      </div>
 
       <div class="mailbox-area">
         <button
@@ -1795,12 +1586,6 @@ function openFeedback(feedbackId, source = '审核反馈') {
             compact
           />
 
-          <WorkbenchRepositoryPanel
-            v-if="selectedTaskRepository"
-            :repository="selectedTaskRepository"
-            :task="selectedTask"
-          />
-
           <article class="detail-card wide task-clone-card">
             <div class="clone-head">
               <div>
@@ -1867,71 +1652,6 @@ function openFeedback(feedbackId, source = '审核反馈') {
               </button>
               <button class="primary-action" type="button" @click="goSubmissionCounter">去提交柜台</button>
             </div>
-          </article>
-        </div>
-      </section>
-
-      <section v-else-if="selectedRepository" class="workbench-panel task-detail-panel repository-detail-panel">
-        <div class="panel-head inline">
-          <div>
-            <p class="kicker">Repository Detail</p>
-            <h2>{{ selectedRepository.name }}</h2>
-          </div>
-          <span class="status-pill" :class="{ warning: hasSyncWarning(selectedRepository) }">
-            {{ selectedRepository.syncStatus }}
-          </span>
-        </div>
-
-        <div class="repository-detail-grid">
-          <WorkbenchRepositoryPanel :repository="selectedRepository" variant="repository" />
-
-          <WorkbenchPrLinkPanel
-            :task="linkPanelTask"
-            :checks="linkPanelChecks"
-            :pull-requests="selectedRepositoryPullRequests"
-            :repository-tasks="selectedRepositoryTasks"
-            :counter-ready="canOpenSubmissionCounter"
-            :resolve-pull-request-task="getPullRequestTask"
-            empty-mode="repository"
-            show-task-strip
-            @select-task="selectTask"
-            @open-pr="openPullRequestStatus"
-          />
-
-          <WorkbenchGitOperationPanel
-            class="repository-actions-card"
-            :task="linkPanelTask"
-            :actions="repositoryGitActions"
-            :counter-ready="canOpenSubmissionCounter"
-            :helper="repositoryGitOperationHelper"
-            :tutorial-steps="repositoryGitTutorialSteps"
-            :source="selectedRepository.name"
-            :is-action-ready="isGitActionReady"
-            :get-action-title="getGitActionButtonTitle"
-            @run-action="runAction"
-          />
-
-          <article class="detail-card repository-sync-detail">
-            <h3>同步状态</h3>
-            <p v-if="hasSyncWarning(selectedRepository)">
-              最近同步存在异常，Issue 或 PR 状态可能不是最新。可以先手动同步，再查看异常日志。
-            </p>
-            <p v-else>
-              仓库数据已同步，分支、Issue、PR 和最近提交可用于任务协作。
-            </p>
-            <div class="card-actions detail-actions">
-              <button class="quiet-action" type="button" @click="runAction({ type: 'repository' }, `${selectedRepository.name} 同步日志`)">
-                查看同步日志
-              </button>
-              <button class="quiet-action" type="button" @click="runAction({ type: 'exception' }, `${selectedRepository.name} 手动同步`)">
-                手动同步
-              </button>
-            </div>
-          </article>
-
-          <article class="detail-card repository-operation-card">
-            <h3>{{ operationResult.title }}</h3>
-            <p>{{ operationResult.body }}</p>
           </article>
         </div>
       </section>
@@ -2323,65 +2043,6 @@ function openFeedback(feedbackId, source = '审核反馈') {
 .workbench-stat-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-}
-
-.repository-shortcuts {
-  display: grid;
-  grid-template-columns: auto repeat(auto-fill, minmax(150px, 1fr));
-  align-items: stretch;
-  gap: 8px;
-  min-width: 0;
-}
-
-.repository-shortcuts > span {
-  color: rgba(255, 231, 183, 0.66);
-  font-size: 0.78rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.repository-chip {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  min-height: 54px;
-  border: 1px solid rgba(240, 198, 118, 0.2);
-  border-radius: 6px;
-  padding: 8px 10px;
-  color: #ffe8b9;
-  text-align: left;
-  background: rgba(11, 6, 3, 0.34);
-  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
-}
-
-.repository-chip:hover,
-.repository-chip:focus-visible,
-.repository-chip.active {
-  border-color: var(--gold-bright);
-  background: rgba(82, 45, 16, 0.56);
-  transform: translateY(-1px);
-}
-
-.repository-chip strong {
-  display: -webkit-box;
-  overflow: hidden;
-  font-size: 0.86rem;
-  line-height: 1.15;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.repository-chip small {
-  color: rgba(255, 231, 183, 0.66);
-  font-size: 0.72rem;
-  line-height: 1;
-}
-
-.repository-chip small.warning {
-  color: #ffd7c9;
 }
 
 .workbench-stat-grid div,
@@ -3287,115 +2948,6 @@ dd {
   background: rgba(110, 42, 36, 0.48);
 }
 
-.repository-panel {
-  overflow: auto;
-}
-
-.repository-row {
-  display: grid;
-  gap: 6px;
-  width: 100%;
-  border: 1px solid rgba(240, 198, 118, 0.2);
-  border-radius: 5px;
-  margin-top: 7px;
-  padding: 9px 10px;
-  color: #ffe8b9;
-  text-align: left;
-  background: rgba(11, 6, 3, 0.34);
-  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
-}
-
-.repository-row:hover,
-.repository-row:focus-visible,
-.repository-row.active {
-  border-color: var(--gold-bright);
-  background: rgba(82, 45, 16, 0.56);
-  transform: translateY(-1px);
-}
-
-.repository-row.active {
-  box-shadow: inset 0 0 0 1px rgba(255, 217, 138, 0.16);
-}
-
-.repository-row div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-}
-
-.repository-row strong {
-  overflow-wrap: anywhere;
-  line-height: 1.2;
-}
-
-.repository-row span {
-  flex: 0 0 auto;
-  border: 1px solid rgba(238, 184, 91, 0.42);
-  border-radius: 999px;
-  padding: 2px 7px;
-  color: #ffe4ad;
-  font-size: 0.7rem;
-  background: rgba(80, 43, 18, 0.44);
-}
-
-.repository-row span.warning {
-  border-color: rgba(204, 95, 65, 0.72);
-  color: #ffd7c9;
-  background: rgba(110, 42, 36, 0.44);
-}
-
-.repository-row small {
-  color: rgba(255, 231, 183, 0.68);
-  font-size: 0.76rem;
-  line-height: 1.35;
-}
-
-.repository-detail-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.66fr);
-  grid-template-areas:
-    "overview overview"
-    "metrics metrics"
-    "link link"
-    "actions actions"
-    "sync operation";
-  gap: 12px;
-  min-height: 0;
-  overflow: auto;
-  padding-right: 3px;
-}
-
-.repository-actions-card {
-  grid-area: actions;
-}
-
-.repository-flow-card {
-  grid-area: flow;
-}
-
-.repository-link-card {
-  grid-area: link;
-}
-
-.repository-sync-detail {
-  grid-area: sync;
-}
-
-.repository-operation-card {
-  grid-area: operation;
-}
-
-.repository-flow-card ol {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding-left: 1.15rem;
-  color: rgba(255, 231, 183, 0.76);
-  line-height: 1.42;
-}
-
 .growth-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.78fr);
@@ -3549,10 +3101,6 @@ dd {
     grid-column: 1 / -1;
   }
 
-  .repository-shortcuts {
-    grid-column: 1 / -1;
-  }
-
   .mailbox-area {
     grid-column: 2;
     grid-row: 1;
@@ -3662,22 +3210,6 @@ dd {
   }
 
   .maintainer-brief-card dl {
-    grid-template-columns: 1fr;
-  }
-
-  .repository-detail-grid {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "overview"
-      "metrics"
-      "actions"
-      "flow"
-      "link"
-      "sync"
-      "operation";
-  }
-
-  .repository-shortcuts {
     grid-template-columns: 1fr;
   }
 
