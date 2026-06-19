@@ -3,6 +3,7 @@ package com.gitguild.backend.quest.dto;
 import com.gitguild.backend.quest.domain.AdminDecision;
 import com.gitguild.backend.quest.domain.Difficulty;
 import com.gitguild.backend.quest.domain.QuestStatus;
+import com.gitguild.backend.review.domain.SubmissionStatus;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -157,8 +158,14 @@ public final class QuestResponses {
             int totalPages) {
     }
 
+    /** 维护者退回修改时留下的一条意见，{@code changeRequests} 按时间升序排列形成历史记录。 */
+    public record ChangeRequestBrief(String summary, OffsetDateTime reviewedAt) {
+    }
+
     /**
      * 工作台"我的待办"单条记录——携带 quest、assigment 状态、仓库、PR 等前端一次性排版所需字段。
+     * {@code latestSubmissionStatus} 是该任务最近一次提交的审核状态（区别于 questStatus——Quest 状态
+     * 在退回修改时仍停留在 IN_REVIEW，只有 Submission 才会变成 CHANGES_REQUESTED）。
      */
     public record MyAssignmentItem(
             Long questId,
@@ -170,7 +177,9 @@ public final class QuestResponses {
             String techStack,
             RepositoryBrief repository,
             IssueBrief issue,
-            PullRequestBrief pr) {
+            PullRequestBrief pr,
+            SubmissionStatus latestSubmissionStatus,
+            List<ChangeRequestBrief> changeRequests) {
     }
 
     /**

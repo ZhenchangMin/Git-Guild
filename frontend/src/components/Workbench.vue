@@ -129,11 +129,11 @@ const taskGroups = computed(() => {
     completed: { id: 'completed', label: '已完成', tasks: [] },
   }
   for (const item of items) {
+    // 「待修改」看 Submission 状态——Quest 状态退回修改时仍停留在 IN_REVIEW，不会单独转出一个状态。
     const status = item.questStatus ?? item.assignmentStatus
-    // Map backend questStatus to group
     let groupId = 'in-progress'
-    if (status === 'IN_REVIEW') groupId = 'in-review'
-    else if (status === 'CHANGES_REQUESTED') groupId = 'changes-requested'
+    if (item.latestSubmissionStatus === 'CHANGES_REQUESTED') groupId = 'changes-requested'
+    else if (status === 'IN_REVIEW') groupId = 'in-review'
     else if (status === 'COMPLETED') groupId = 'completed'
     else if (status === 'IN_PROGRESS') groupId = 'in-progress'
     const task = mapAssignmentToTask(item)
@@ -162,6 +162,8 @@ function mapAssignmentToTask(item) {
     counterDetail: pr ? '已同步到可提交的 PR；请到提交柜台登记成果说明。' : '',
     nextStep: pr ? '去提交柜台登记任务成果' : '按教程创建分支、提交 commit、发起 PR 后同步状态',
     externalUrl: pr?.externalUrl || '',
+    // 维护者每次退回时留下的意见，按时间升序——QuestStatusFlow 用它判断是否允许查看「退回修改」节点并渲染历史。
+    changeRequests: item.changeRequests ?? [],
     actions: [
       { label: '查看仓库', type: 'repository' },
       { label: '同步 PR 状态', type: 'sync-pr' },
@@ -551,6 +553,8 @@ const selectedTaskFlowContext = computed(() => {
         : selectedTask.value.workflowState === 'completed'
           ? '审核通过，已写入成长记录'
           : '等待审核结果或通知',
+    // 维护者每次退回时写的建议，按时间升序；QuestStatusFlow 据此渲染「退回修改」节点的历史记录。
+    feedbackHistory: selectedTask.value.changeRequests ?? [],
     syncStatus: selectedTaskRepository.value?.syncStatus,
     viewer: effectiveUserName.value,
   }

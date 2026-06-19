@@ -38,6 +38,13 @@ import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestCategoryRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.quest.repository.QuestTagRepository;
+import com.gitguild.backend.quest.dto.QuestResponses.ChangeRequestBrief;
+import com.gitguild.backend.review.domain.ReviewDecision;
+import com.gitguild.backend.review.domain.ReviewRecord;
+import com.gitguild.backend.review.domain.Submission;
+import com.gitguild.backend.review.domain.SubmissionStatus;
+import com.gitguild.backend.review.repository.ReviewRecordRepository;
+import com.gitguild.backend.review.repository.SubmissionRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
@@ -97,6 +104,8 @@ public class QuestServiceImpl implements QuestService {
     private final ObjectMapper objectMapper;
     private final GiteaProperties giteaProperties;
     private final AdminReviewRecordRepository adminReviewRecordRepository;
+    private final SubmissionRepository submissionRepository;
+    private final ReviewRecordRepository reviewRecordRepository;
 
     public QuestServiceImpl(
             QuestRepository questRepository,
@@ -111,7 +120,9 @@ public class QuestServiceImpl implements QuestService {
             UserRepository userRepository,
             ObjectMapper objectMapper,
             GiteaProperties giteaProperties,
-            AdminReviewRecordRepository adminReviewRecordRepository) {
+            AdminReviewRecordRepository adminReviewRecordRepository,
+            SubmissionRepository submissionRepository,
+            ReviewRecordRepository reviewRecordRepository) {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.categoryRepository = categoryRepository;
@@ -125,6 +136,8 @@ public class QuestServiceImpl implements QuestService {
         this.objectMapper = objectMapper;
         this.giteaProperties = giteaProperties;
         this.adminReviewRecordRepository = adminReviewRecordRepository;
+        this.submissionRepository = submissionRepository;
+        this.reviewRecordRepository = reviewRecordRepository;
     }
 
     @Override
@@ -306,8 +319,13 @@ public class QuestServiceImpl implements QuestService {
         int inReview = 0;
         int changesRequested = 0;
         int completed = 0;
-        for (QuestAssignment a : assignments) {
-            switch (a.getQuest().getStatus()) {
+        for (MyAssignmentItem item : items) {
+            // 「待修改」看 Submission 状态——Quest 退回修改时仍停留在 IN_REVIEW，不会单独转出一个状态。
+            if (item.latestSubmissionStatus() == SubmissionStatus.CHANGES_REQUESTED) {
+                changesRequested++;
+                continue;
+            }
+            switch (item.questStatus()) {
                 case IN_PROGRESS -> inProgress++;
                 case IN_REVIEW -> inReview++;
                 case COMPLETED -> completed++;
@@ -323,6 +341,20 @@ public class QuestServiceImpl implements QuestService {
         Quest quest = assignment.getQuest();
         CodeRepository repo = quest.getRepository();
         CodeIssue issue = quest.getIssue();
+
+        List<Submission> submissions = submissionRepository
+                .findByQuestAndSubmitterUserIdOrderBySubmittedAtAsc(quest, assignment.getAssignee().getUserId());
+        SubmissionStatus latestSubmissionStatus = submissions.isEmpty()
+                ? null
+                : submissions.get(submissions.size() - 1).getStatus();
+        List<Long> submissionIds = submissions.stream().map(Submission::getSubmissionId).toList();
+        List<ChangeRequestBrief> changeRequests = submissionIds.isEmpty()
+                ? List.of()
+                : reviewRecordRepository.findBySubmissionSubmissionIdIn(submissionIds).stream()
+                        .filter(record -> record.getDecision() == ReviewDecision.CHANGES_REQUESTED)
+                        .sorted(Comparator.comparing(ReviewRecord::getReviewedAt))
+                        .map(record -> new ChangeRequestBrief(record.getSummary(), record.getReviewedAt()))
+                        .toList();
 
         // 查找该 quest 仓库下的 PR，取最新一条
         // 注意：原先用 findAll() 再在 Java 里过滤，等价于每个 assignment 都做一次全表扫描；
@@ -355,7 +387,9 @@ public class QuestServiceImpl implements QuestService {
                 techStack,
                 new RepositoryBrief(repo.getRepositoryId(), repo.getName(), repo.getDefaultBranch(), repo.getSyncStatus(), repoWebUrl(repo)),
                 issueBrief(issue),
-                prBrief);
+                prBrief,
+                latestSubmissionStatus,
+                changeRequests);
     }
 
     private Specification<Quest> toSpecification(QuestSearchCriteria criteria) {

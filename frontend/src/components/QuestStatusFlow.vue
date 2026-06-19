@@ -140,7 +140,25 @@ function jumpToReview() {
   selectedKey.value = 'review'
 }
 
+// 「退回修改」不是线性轴上的必经点，而是「已提交/审核中」的分支：
+// 只有真的被退回过（存在反馈历史）才允许查看，不按线性序号解锁。
+const feedbackHistory = computed(() => props.context.feedbackHistory ?? [])
+const hasFeedbackHistory = computed(() => feedbackHistory.value.length > 0)
+const feedbackHistoryDesc = computed(() => [...feedbackHistory.value].reverse())
+
+function formatDateTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hh = String(date.getHours()).padStart(2, '0')
+  const mm = String(date.getMinutes()).padStart(2, '0')
+  return `${month}-${day} ${hh}:${mm}`
+}
+
 function isReachable(index) {
+  if (flowNodes[index]?.key === 'returned') return hasFeedbackHistory.value
   return currentIndex.value > -1 && index <= currentIndex.value
 }
 
@@ -197,11 +215,16 @@ function selectNode(node, index) {
         <p>已收到你的成果，维护者正在审核，耐心等一等。</p>
       </article>
 
-      <!-- 4：退回修改 — 指回 3 -->
+      <!-- 4：退回修改 — 指回 3，按时间倒序展示历次退回意见 -->
       <article v-else-if="selectedNode.key === 'returned'" class="stage-card stage-feedback tone-returned">
         <span class="stage-emoji" aria-hidden="true">📝</span>
         <h3>收到退回意见</h3>
-        <p v-if="context.feedback">{{ context.feedback }}</p>
+        <ol v-if="feedbackHistoryDesc.length" class="feedback-history">
+          <li v-for="(entry, index) in feedbackHistoryDesc" :key="entry.reviewedAt ?? index">
+            <p>{{ entry.summary }}</p>
+            <time v-if="entry.reviewedAt">{{ formatDateTime(entry.reviewedAt) }}</time>
+          </li>
+        </ol>
         <p v-else>改完代码、更新 PR 后，回到「已提交 / 审核中」重新等待审核。</p>
         <button type="button" class="stage-link-btn" @click="jumpToReview">→ 回到已提交</button>
       </article>
@@ -482,6 +505,36 @@ function selectNode(node, index) {
 .stage-feedback.tone-returned {
   border-color: rgba(214, 142, 56, 0.4);
   background: rgba(110, 67, 24, 0.3);
+}
+
+.feedback-history {
+  display: grid;
+  gap: 10px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-history li {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid #d68e38;
+  padding: 2px 0 2px 10px;
+}
+
+.feedback-history li:first-child p {
+  color: #ffe8b9;
+}
+
+.feedback-history p {
+  margin: 0;
+  color: rgba(255, 231, 183, 0.82);
+  line-height: 1.45;
+}
+
+.feedback-history time {
+  color: rgba(255, 231, 183, 0.5);
+  font-size: 0.74rem;
 }
 
 .stage-link-btn {

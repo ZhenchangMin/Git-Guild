@@ -653,7 +653,7 @@ function formatDateTime(date) {
                   收据已留存。返回工作台等待维护者反馈，反馈会同步回到本柜台。
                 </p>
                 <div class="receipt-actions">
-                  <button class="quiet-action" type="button" @click="closeSheet">关闭柜台</button>
+                  <button class="quiet-action" type="button" @click="closeSheet">返回</button>
                   <button
                     class="primary-action"
                     type="button"

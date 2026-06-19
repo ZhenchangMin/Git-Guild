@@ -37,6 +37,9 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     /** 指定 Quest 集合下的全部提交，供仓库级联删除清理使用。 */
     List<Submission> findByQuestQuestIdIn(Collection<Long> questIds);
 
+    /** 工作台「退回修改」节点：某接取者在某任务下的全部提交，按提交时间升序排列，便于回溯历史。 */
+    List<Submission> findByQuestAndSubmitterUserIdOrderBySubmittedAtAsc(Quest quest, Long submitterId);
+
     @Query("""
             select s
             from Submission s
