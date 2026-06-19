@@ -347,6 +347,7 @@ public class QuestServiceImpl implements QuestService {
         return new MyAssignmentItem(
                 quest.getQuestId(),
                 quest.getTitle(),
+                quest.getStatus(),
                 assignment.getStatus().name(),
                 quest.getDifficulty(),
                 quest.getRewardXp(),

@@ -151,6 +151,7 @@ public final class QuestResponses {
     public record MyAssignmentItem(
             Long questId,
             String questTitle,
+            QuestStatus questStatus,
             String assignmentStatus,
             Difficulty difficulty,
             Integer rewardXp,
