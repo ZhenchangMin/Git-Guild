@@ -317,7 +317,6 @@ onMounted(async () => {
           <ul v-if="reposLoading" class="office-repo-list" aria-hidden="true">
             <li v-for="n in 2" :key="n" class="office-repo-row is-skeleton">
               <span class="sk sk-name"></span>
-              <span class="sk sk-meta"></span>
             </li>
           </ul>
 
@@ -330,9 +329,6 @@ onMounted(async () => {
           <ul v-else class="office-repo-list">
             <li v-for="r in repos" :key="r.repositoryId" class="office-repo-row">
               <span class="office-repo-name">{{ r.name }}</span>
-              <span class="office-repo-meta">
-                {{ r.defaultBranch || 'main' }}
-              </span>
               <span class="office-repo-actions">
                 <button
                   v-if="r.sourceUrl || r.giteaUrl"
@@ -573,9 +569,9 @@ onMounted(async () => {
   border-color: rgba(240, 184, 104, 0.4);
 }
 .office-quest-badge.published {
-  color: #d6f0b6;
-  background: rgba(67, 97, 58, 0.42);
-  border-color: rgba(119, 160, 91, 0.5);
+  color: #fff0c2;
+  background: linear-gradient(160deg, rgba(244, 192, 111, 0.42), rgba(180, 120, 30, 0.26));
+  border-color: rgba(244, 192, 111, 0.65);
 }
 .office-quest-badge.active {
   color: #cfe6ad;
@@ -761,7 +757,7 @@ onMounted(async () => {
 }
 .office-repo-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -773,11 +769,6 @@ onMounted(async () => {
   font-family: var(--font-display);
   font-size: 1.02rem;
   color: #ffe9c4;
-}
-.office-repo-meta {
-  color: rgba(255, 230, 190, 0.55);
-  font-size: 0.82rem;
-  font-variant-numeric: tabular-nums;
 }
 .office-link {
   border: none;
@@ -839,10 +830,6 @@ onMounted(async () => {
 .sk-name {
   width: 42%;
 }
-.sk-meta {
-  width: 88px;
-  justify-self: end;
-}
 @keyframes office-shimmer {
   0% {
     background-position: 200% 0;
@@ -860,9 +847,6 @@ onMounted(async () => {
   .office-repo-row.is-skeleton {
     grid-template-columns: 1fr;
     gap: 4px;
-  }
-  .office-repo-meta {
-    justify-self: start;
   }
 }
 </style>
