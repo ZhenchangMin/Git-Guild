@@ -315,7 +315,8 @@ const selectedTaskPullRequests = computed(() => {
 const realTaskBranch = ref('')
 const branchLoading = ref(false)
 const branchError = ref('')
-const copiedHint = ref('')
+const copiedKey = ref('')
+const copiedOk = ref(true)
 const taskRepoSourceUrl = ref('')
 const taskCloneUrlAuth = ref('') // 带 admin 凭据的克隆地址（来自 ensureTaskBranch），供命令直接 clone+push
 let copiedTimer = 0
@@ -416,7 +417,7 @@ function copyViaFallback(text) {
   return ok
 }
 
-async function copyText(text, label = '内容') {
+async function copyText(text, key) {
   if (!text) return
   let ok = false
   if (navigator.clipboard?.writeText) {
@@ -429,9 +430,10 @@ async function copyText(text, label = '内容') {
   } else {
     ok = copyViaFallback(text)
   }
-  copiedHint.value = ok ? `${label} 已复制` : `${label} 复制失败，请手动选中复制`
+  copiedKey.value = key
+  copiedOk.value = ok
   window.clearTimeout(copiedTimer)
-  copiedTimer = window.setTimeout(() => (copiedHint.value = ''), 1600)
+  copiedTimer = window.setTimeout(() => (copiedKey.value = ''), 1600)
 }
 
 function openTaskRepository() {
@@ -1815,20 +1817,22 @@ function openFeedback(feedbackId, source = '审核反馈') {
                 <code>{{ taskCloneUrl || '—' }}</code>
                 <button
                   class="quiet-action copy-btn"
+                  :class="{ copied: copiedKey === 'clone-url' }"
                   type="button"
                   :disabled="!taskCloneUrl"
-                  @click="copyText(taskCloneUrl, '仓库地址')"
-                >复制</button>
+                  @click="copyText(taskCloneUrl, 'clone-url')"
+                ><span v-if="copiedKey === 'clone-url'">{{ copiedOk ? '✓ 已复制' : '复制失败' }}</span><span v-else>复制</span></button>
               </div>
               <div class="clone-field">
                 <span class="clone-label">任务分支</span>
                 <code>{{ realTaskBranch || (branchLoading ? '创建中…' : '—') }}</code>
                 <button
                   class="quiet-action copy-btn"
+                  :class="{ copied: copiedKey === 'task-branch' }"
                   type="button"
                   :disabled="!realTaskBranch"
-                  @click="copyText(realTaskBranch, '任务分支')"
-                >复制</button>
+                  @click="copyText(realTaskBranch, 'task-branch')"
+                ><span v-if="copiedKey === 'task-branch'">{{ copiedOk ? '✓ 已复制' : '复制失败' }}</span><span v-else>复制</span></button>
               </div>
             </div>
 
@@ -1841,7 +1845,12 @@ function openFeedback(feedbackId, source = '审核反馈') {
               <li v-for="step in taskCloneSteps" :key="step.title">
                 <div class="step-head">
                   <strong>{{ step.title }}</strong>
-                  <button class="quiet-action copy-btn" type="button" @click="copyText(step.command, step.title)">复制命令</button>
+                  <button
+                    class="quiet-action copy-btn"
+                    :class="{ copied: copiedKey === `step-${step.title}` }"
+                    type="button"
+                    @click="copyText(step.command, `step-${step.title}`)"
+                  ><span v-if="copiedKey === `step-${step.title}`">{{ copiedOk ? '✓ 已复制' : '复制失败' }}</span><span v-else>复制命令</span></button>
                 </div>
                 <span>{{ step.body }}</span>
                 <code>{{ step.command }}</code>
@@ -1854,7 +1863,6 @@ function openFeedback(feedbackId, source = '审核反馈') {
               </button>
               <button class="primary-action" type="button" @click="goSubmissionCounter">去提交柜台</button>
             </div>
-            <p v-if="copiedHint" class="copied-hint" role="status">{{ copiedHint }}</p>
           </article>
         </div>
       </section>
@@ -3792,29 +3800,21 @@ dd {
   flex-wrap: wrap;
   gap: 10px;
 }
-.copied-hint {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 60;
-  margin: 0;
-  padding: 10px 16px;
-  border: 1px solid rgba(182, 227, 160, 0.45);
-  border-radius: 8px;
-  background: rgba(20, 36, 14, 0.92);
+.copy-btn.copied {
+  border-color: rgba(182, 227, 160, 0.6);
+  background: rgba(46, 90, 32, 0.55);
   color: #d9f5c8;
-  font-size: 0.84rem;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  animation: copied-hint-pop 180ms ease-out;
+  animation: copy-btn-pop 220ms ease-out;
 }
-@keyframes copied-hint-pop {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
+@keyframes copy-btn-pop {
+  0% {
+    transform: scale(0.92);
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 @media (max-width: 640px) {
