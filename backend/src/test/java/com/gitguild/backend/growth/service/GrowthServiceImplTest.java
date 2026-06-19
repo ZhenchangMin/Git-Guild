@@ -40,7 +40,9 @@ class GrowthServiceImplTest {
     @Mock private Quest quest;
 
     private GrowthServiceImpl service() {
-        return new GrowthServiceImpl(growthProfileRepository, xpTransactionRepository, contributionRecordRepository);
+        return new GrowthServiceImpl(
+                growthProfileRepository, xpTransactionRepository, contributionRecordRepository,
+                new com.fasterxml.jackson.databind.ObjectMapper());
     }
 
     @Test

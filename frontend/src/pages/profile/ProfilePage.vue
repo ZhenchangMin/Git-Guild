@@ -316,6 +316,7 @@ const contributionList = computed(() =>
     xp: c.xp,
     completedAt: (c.completedAt || '').slice(0, 10),
     summary: c.summary,
+    techStack: c.techStack || [],
   })),
 )
 
@@ -329,12 +330,15 @@ const difficultyTrend = computed(() =>
   })),
 )
 
-// 技能标签：按真实贡献所在仓库聚合，贡献次数作为权重（无贡献则为空）
+// 技能标签：按委托真实携带的技术栈聚合（而非仓库名），计数 = 完成过该技术栈任务的次数，
+// 同一任务标了多个技术栈时各记一次——能直观看出"完成了多少次 Markdown 任务"这种统计。
 const derivedSkillTags = computed(() => {
   const counts = new Map()
   for (const c of contributions.value) {
-    if (!c.repository) continue
-    counts.set(c.repository, (counts.get(c.repository) || 0) + 1)
+    for (const name of c.techStack || []) {
+      if (!name) continue
+      counts.set(name, (counts.get(name) || 0) + 1)
+    }
   }
   return [...counts.entries()]
     .map(([name, count]) => ({ name, count }))
@@ -650,7 +654,7 @@ const icons = {
               <em>{{ tag.count }}</em>
             </span>
           </div>
-          <p v-else class="section-empty">完成任务后，会按贡献仓库自动积累你的技术栈标签。</p>
+          <p v-else class="section-empty">完成任务后，会按委托标注的技术栈自动积累你的技能标签。</p>
         </section>
 
         <!-- ═══════ §3.5 Tab 切换内容区 ═══════ -->

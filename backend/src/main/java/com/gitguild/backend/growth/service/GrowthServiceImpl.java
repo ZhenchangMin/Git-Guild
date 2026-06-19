@@ -1,5 +1,7 @@
 package com.gitguild.backend.growth.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.growth.domain.ContributionRecord;
 import com.gitguild.backend.growth.domain.GrowthProfile;
@@ -48,14 +50,17 @@ public class GrowthServiceImpl implements GrowthService {
     private final GrowthProfileRepository growthProfileRepository;
     private final XpTransactionRepository xpTransactionRepository;
     private final ContributionRecordRepository contributionRecordRepository;
+    private final ObjectMapper objectMapper;
 
     public GrowthServiceImpl(
             GrowthProfileRepository growthProfileRepository,
             XpTransactionRepository xpTransactionRepository,
-            ContributionRecordRepository contributionRecordRepository) {
+            ContributionRecordRepository contributionRecordRepository,
+            ObjectMapper objectMapper) {
         this.growthProfileRepository = growthProfileRepository;
         this.xpTransactionRepository = xpTransactionRepository;
         this.contributionRecordRepository = contributionRecordRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -130,7 +135,8 @@ public class GrowthServiceImpl implements GrowthService {
                     String.valueOf(quest.getDifficulty()),
                     quest.getRewardXp(),
                     record.getCompletedAt(),
-                    record.getSummary()));
+                    record.getSummary(),
+                    parseTechStack(quest.getTechStackJson())));
         }
 
         long repoCount = records.stream()
@@ -139,6 +145,20 @@ public class GrowthServiceImpl implements GrowthService {
                 .count();
 
         return new ContributionResponse(items, (int) repoCount);
+    }
+
+    // 技能图谱要按真实技术栈聚合，不能再用仓库名顶替——解析失败（空/脏数据）时返回空列表，
+    // 前端据此跳过该贡献的技能计数，而不是抛出异常影响整页加载。
+    private List<String> parseTechStack(String techStackJson) {
+        if (techStackJson == null || techStackJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(techStackJson, new TypeReference<List<String>>() {
+            });
+        } catch (Exception ex) {
+            return List.of();
+        }
     }
 
     @Override
