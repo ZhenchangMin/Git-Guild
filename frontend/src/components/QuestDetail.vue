@@ -26,6 +26,9 @@ const emit = defineEmits(['open-workbench', 'open-submission'])
 const localWorkflowState = ref('available')
 const inlineNotice = ref('')
 const isAssigning = ref(false)
+const showAcceptConfirm = ref(false)
+const hasReadDetails = ref(false)
+const isSealing = ref(false)
 
 const defaultSubmissionRequirements = [
   '关联任务编号和任务标题。',
@@ -167,18 +170,8 @@ async function handlePrimaryAction() {
     }
 
     if (isAssigning.value) return
-    isAssigning.value = true
-    inlineNotice.value = ''
-
-    try {
-      await questApi.assign(props.quest.questId ?? props.quest.id)
-      localWorkflowState.value = 'in-progress'
-      inlineNotice.value = '已接取该任务，下一步请进入工作台创建任务分支。任务已加入你的工作台待办。'
-    } catch (error) {
-      inlineNotice.value = error?.message || '接取失败，请刷新任务详情后重试。'
-    } finally {
-      isAssigning.value = false
-    }
+    hasReadDetails.value = false
+    showAcceptConfirm.value = true
     return
   }
 
@@ -199,6 +192,31 @@ async function handlePrimaryAction() {
   }
 
   emit('open-workbench')
+}
+
+function cancelAcceptConfirm() {
+  if (isAssigning.value) return
+  showAcceptConfirm.value = false
+}
+
+async function confirmAccept() {
+  if (!hasReadDetails.value || isAssigning.value) return
+  isAssigning.value = true
+  isSealing.value = true
+  inlineNotice.value = ''
+
+  try {
+    await questApi.assign(props.quest.questId ?? props.quest.id)
+    localWorkflowState.value = 'in-progress'
+    inlineNotice.value = '已接取该任务，下一步请进入工作台创建任务分支。任务已加入你的工作台待办。'
+    showAcceptConfirm.value = false
+  } catch (error) {
+    inlineNotice.value = error?.message || '接取失败，请刷新任务详情后重试。'
+    showAcceptConfirm.value = false
+  } finally {
+    isAssigning.value = false
+    isSealing.value = false
+  }
 }
 
 // “查看仓库”跳转到平台 Gitea 仓库页（新标签）；缺地址时回退到工作台。
@@ -374,6 +392,48 @@ function showIssueHint() {
         </section>
       </aside>
     </div>
+
+    <Teleport to="body">
+      <Transition name="contract-fade">
+        <div v-if="showAcceptConfirm" class="accept-overlay" @click.self="cancelAcceptConfirm">
+          <Transition name="contract-rise" appear>
+            <div
+              class="accept-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="accept-dialog-title"
+              :class="{ 'is-sealing': isSealing }"
+            >
+              <span class="accept-dialog-seal" aria-hidden="true"></span>
+              <p class="kicker">接取契约 · 二次确认</p>
+              <h2 id="accept-dialog-title">{{ quest.code ?? quest.id }} · {{ quest.title }}</h2>
+              <p class="accept-dialog-body">
+                接取后任务将记入你的工作台待办，请确认已仔细阅读任务背景、完成标准与提交要求 —— 这不是一份可以随意撂下的契约。
+              </p>
+
+              <label class="accept-dialog-check">
+                <input type="checkbox" v-model="hasReadDetails" :disabled="isAssigning" />
+                <span>我已阅读任务背景与完成标准，确认接取该任务。</span>
+              </label>
+
+              <div class="accept-dialog-actions">
+                <button type="button" class="quiet-action" :disabled="isAssigning" @click="cancelAcceptConfirm">
+                  取消
+                </button>
+                <button
+                  type="button"
+                  class="primary-action accept-confirm-btn"
+                  :disabled="!hasReadDetails || isAssigning"
+                  @click="confirmAccept"
+                >
+                  {{ isAssigning ? '正在盖印…' : '确认接取' }}
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -733,5 +793,130 @@ function showIssueHint() {
   .source-summary {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── 接取契约二次确认弹窗：与任务详情同一蜡封羊皮纸语言，但作为独立浮层呈现 ── */
+.accept-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at 50% 30%, rgba(58, 30, 10, 0.55), rgba(5, 3, 1, 0.82));
+  backdrop-filter: blur(3px);
+}
+
+.accept-dialog {
+  position: relative;
+  width: min(480px, 100%);
+  border: 1px solid rgba(238, 184, 91, 0.65);
+  border-radius: var(--radius);
+  padding: 26px 24px 22px;
+  color: #ffe7b5;
+  background:
+    linear-gradient(180deg, rgba(36, 19, 9, 0.96), rgba(16, 9, 4, 0.96)),
+    linear-gradient(135deg, rgba(216, 154, 50, 0.18), transparent 60%);
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 229, 163, 0.16);
+}
+
+.accept-dialog-seal {
+  position: absolute;
+  top: -16px;
+  right: 22px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe6a6, #b56c22 60%, #6e3c12);
+  box-shadow: 0 6px 12px rgba(40, 18, 4, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.55);
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.accept-dialog.is-sealing .accept-dialog-seal {
+  transform: translateY(6px) scale(0.88) rotate(-8deg);
+}
+
+.accept-dialog h2 {
+  margin: 6px 0 0;
+  font-size: 1.28rem;
+  line-height: 1.3;
+}
+
+.accept-dialog-body {
+  margin: 12px 0 0;
+  color: rgba(255, 231, 183, 0.82);
+  line-height: 1.55;
+}
+
+.accept-dialog-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 18px;
+  border: 1px solid rgba(240, 198, 118, 0.28);
+  border-radius: 7px;
+  padding: 11px 12px;
+  background: rgba(11, 6, 3, 0.4);
+  cursor: pointer;
+}
+
+.accept-dialog-check input {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+  accent-color: var(--green);
+  cursor: pointer;
+}
+
+.accept-dialog-check span {
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.accept-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.accept-dialog-actions .quiet-action,
+.accept-dialog-actions .primary-action {
+  min-height: 38px;
+  padding: 0 16px;
+}
+
+.accept-confirm-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.contract-fade-enter-active,
+.contract-fade-leave-active {
+  transition: opacity 220ms ease;
+}
+
+.contract-fade-enter-from,
+.contract-fade-leave-to {
+  opacity: 0;
+}
+
+.contract-rise-enter-active {
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 320ms ease;
+}
+
+.contract-rise-leave-active {
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.contract-rise-enter-from {
+  opacity: 0;
+  transform: translateY(18px) scale(0.96);
+}
+
+.contract-rise-leave-to {
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
 }
 </style>
