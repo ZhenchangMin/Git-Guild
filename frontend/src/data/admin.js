@@ -8,6 +8,9 @@ export const questStatusMeta = {
   PENDING_ADMIN_REVIEW: { label: '待管理员审核', tone: 'pending' },
   DRAFT: { label: '已退回草稿', tone: 'return' },
   PUBLISHED: { label: '已发布上架', tone: 'approved' },
+  IN_PROGRESS: { label: '已接取 · 进行中', tone: 'approved' },
+  IN_REVIEW: { label: '已接取 · 审核中', tone: 'approved' },
+  COMPLETED: { label: '已完成', tone: 'approved' },
   REJECTED: { label: '已退回补充', tone: 'return' },
   CLOSED: { label: '已下架关闭', tone: 'danger' },
 }
@@ -30,7 +33,8 @@ export const decisionMeta = {
   },
   TAKE_DOWN: {
     label: '下架处理',
-    requires: 'PUBLISHED',
+    // 已接取（进行中/审核中）的委托也允许强制下架——会同步取消接取者的进度。
+    requires: ['PUBLISHED', 'IN_PROGRESS', 'IN_REVIEW'],
     nextStatus: 'CLOSED',
     intent: 'danger',
     message: '任务已下架，不再于悬赏任务板展示，并已通知发布者。',

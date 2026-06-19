@@ -2264,6 +2264,14 @@ h2 {
   background: rgba(138, 127, 108, 0.15);
 }
 
+.admin-chip-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
 .admin-chip.unregistered {
   color: #6e2a26;
   background: rgba(214, 92, 76, 0.2);

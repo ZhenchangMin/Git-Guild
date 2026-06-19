@@ -373,13 +373,13 @@ function readableError(error, fallback) {
   return fallback
 }
 
-// TAKEN 不是后端的真实 questStatus，而是「已上架且已被接取」这一交叉维度的虚拟筛选项。
+// TAKEN 不是后端的真实 questStatus，而是「已接取且仍在进行」这一虚拟筛选项：
+// 接取后 questStatus 会从 PUBLISHED 变为 IN_PROGRESS / IN_REVIEW，不再是 PUBLISHED。
+const TAKEN_STATUSES = ['IN_PROGRESS', 'IN_REVIEW']
 const filteredApplications = computed(() => {
   if (statusFilter.value === 'ALL') return applications.value
   if (statusFilter.value === 'TAKEN') {
-    return applications.value.filter(
-      (application) => application.questStatus === 'PUBLISHED' && application.assignmentActive,
-    )
+    return applications.value.filter((application) => TAKEN_STATUSES.includes(application.questStatus))
   }
   return applications.value.filter((application) => application.questStatus === statusFilter.value)
 })
@@ -400,7 +400,7 @@ const queueStats = computed(() => {
   const counts = applications.value.reduce(
     (summary, application) => {
       summary[application.questStatus] = (summary[application.questStatus] ?? 0) + 1
-      if (application.questStatus === 'PUBLISHED' && application.assignmentActive) {
+      if (TAKEN_STATUSES.includes(application.questStatus)) {
         summary.TAKEN = (summary.TAKEN ?? 0) + 1
       }
       return summary
@@ -421,13 +421,16 @@ function checklistFor(application) {
   return [...application.clarityChecks, ...application.complianceChecks]
 }
 
+function decisionAllowedForStatus(decision, status) {
+  const requires = decisionMeta[decision]?.requires
+  return Array.isArray(requires) ? requires.includes(status) : requires === status
+}
+
 // 当前任务状态允许的管理员决策（业务规则 2-5）。
 const availableDecisions = computed(() => {
   const application = activeApplication.value
   if (!application) return []
-  return Object.keys(decisionMeta).filter(
-    (decision) => decisionMeta[decision].requires === application.questStatus,
-  )
+  return Object.keys(decisionMeta).filter((decision) => decisionAllowedForStatus(decision, application.questStatus))
 })
 
 function statusOf(application) {
@@ -473,7 +476,7 @@ async function submitDecision(decision) {
   if (!application || submitting.value) return
 
   const meta = decisionMeta[decision]
-  if (!meta || meta.requires !== application.questStatus) return
+  if (!meta || !decisionAllowedForStatus(decision, application.questStatus)) return
 
   const trimmed = reason.value.trim()
   if (trimmed.length < 1) {
@@ -675,12 +678,8 @@ async function submitDecision(decision) {
                 <div>
                   <dt>任务标签</dt>
                   <dd>
-                    <span
-                      v-for="tag in activeApplication.tags"
-                      :key="tag.tagId"
-                      class="admin-chip"
-                      :style="{ background: tag.color }"
-                    >
+                    <span v-for="tag in activeApplication.tags" :key="tag.tagId" class="admin-chip">
+                      <span class="admin-chip-dot" :style="{ background: tag.color }" aria-hidden="true"></span>
                       {{ tag.name }}
                     </span>
                     <span v-if="activeApplication.tags.length === 0" class="admin-chip muted">无标签</span>

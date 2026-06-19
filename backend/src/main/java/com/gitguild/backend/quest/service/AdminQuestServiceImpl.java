@@ -67,6 +67,9 @@ public class AdminQuestServiceImpl implements AdminQuestService {
     private static final List<QuestStatus> PIPELINE_STATUSES = List.of(
             QuestStatus.PENDING_ADMIN_REVIEW,
             QuestStatus.PUBLISHED,
+            QuestStatus.IN_PROGRESS,
+            QuestStatus.IN_REVIEW,
+            QuestStatus.COMPLETED,
             QuestStatus.REJECTED,
             QuestStatus.CLOSED);
 
