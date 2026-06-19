@@ -440,6 +440,7 @@ public class QuestServiceImpl implements QuestService {
                 quest.getQuestId(),
                 quest.getTitle(),
                 preview(quest.getDescription()),
+                quest.getCompletionCriteria(),
                 quest.getDifficulty(),
                 fromJson(quest.getTechStackJson()),
                 quest.getRewardXp(),

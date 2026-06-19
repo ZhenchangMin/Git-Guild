@@ -50,6 +50,7 @@ public final class QuestResponses {
             Long questId,
             String title,
             String descriptionPreview,
+            String completionCriteria,
             Difficulty difficulty,
             List<String> techStack,
             Integer rewardXp,

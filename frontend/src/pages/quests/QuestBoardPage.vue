@@ -151,10 +151,10 @@ function normalizeRecommendationItem(item, questMap, index) {
     stack: techStack.length > 0 ? techStack.join(' / ') : fallback.stack ?? '待补充',
     techStack,
     status: fallback.status ?? '可接取',
-    tags: unique([...(fallback.tags ?? []), ...reasons]),
+    tags: unique(fallback.tags ?? []),
     reward: normalizeReward(brief.rewardXp, fallback.reward),
     summary: fallback.summary ?? '推荐算法根据你的技术栈、难度偏好和成长阶段计算出的委托。',
-    criteria: fallback.criteria ?? ['查看任务详情', '确认实现范围', '提交关联 PR'],
+    criteria: fallback.criteria ?? normalizeCriteria(brief.completionCriteria),
     recommendationRank: index,
     recommendationScore: Number(item.score ?? 0),
     strongMatch: Boolean(item.strongMatch),
@@ -347,7 +347,6 @@ function applyRecommendationOrder(baseQuests, recommendedItems) {
       recommendationScore: recommendation.recommendationScore,
       strongMatch: recommendation.strongMatch,
       recommendationReasons: recommendation.recommendationReasons,
-      tags: unique([...(quest.tags ?? []), ...(recommendation.recommendationReasons ?? [])]),
     }
   })
 }

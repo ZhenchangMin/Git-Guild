@@ -90,6 +90,7 @@ class QuestControllerTest {
                                 5001L,
                                 "Implement repository sync panel",
                                 "Show sync status",
+                                "Sync status visible within 2s",
                                 Difficulty.C,
                                 List.of("Vue", "Spring Boot"),
                                 180,
