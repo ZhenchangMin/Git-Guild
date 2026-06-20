@@ -57,6 +57,8 @@ class AdminQuestServiceImplTest {
     private UserRepository userRepository;
     @Mock
     private QuestTechStackRepository techStackRepository;
+    @Mock
+    private com.gitguild.backend.notification.service.NotificationService notificationService;
 
     private AdminQuestServiceImpl adminQuestService;
 
@@ -68,7 +70,8 @@ class AdminQuestServiceImplTest {
                 assignmentRepository,
                 userRepository,
                 techStackRepository,
-                new ObjectMapper());
+                new ObjectMapper(),
+                notificationService);
     }
 
     /** APPROVE_PUBLISH 测试默认前提：委托技术栈词表里的所有项均已登记（标准写法与委托一致）。 */

@@ -4,11 +4,10 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
   loadNotifications,
   markAllNotificationsRead,
-  markNotificationRead,
   notificationStore,
-  startNotificationPolling,
-  stopNotificationPolling,
+  openNotification,
 } from '../stores/notificationStore'
+import { notificationMeta } from '../data/notificationMeta'
 
 const open = ref(false)
 const root = ref(null)
@@ -17,16 +16,9 @@ const unreadCount = computed(() => notificationStore.unreadCount)
 const badgeText = computed(() => (unreadCount.value > 99 ? '99+' : String(unreadCount.value)))
 const items = computed(() => notificationStore.items)
 
-// 通知类型 → 左侧色条语义（通过 / 待审核 中性 / 需修改 / 驳回）。
-const TYPE_TONE = {
-  REVIEW_APPROVED: 'tone-approved',
-  SUBMISSION_RECEIVED: 'tone-pending',
-  REVIEW_CHANGES_REQUESTED: 'tone-changes',
-  REVIEW_REJECTED: 'tone-rejected',
-}
-
+// 左侧色条语义沿用全局通知元数据，避免类型新增时两处文案/配色不同步。
 function toneClass(type) {
-  return TYPE_TONE[type] ?? 'tone-pending'
+  return notificationMeta(type).tone
 }
 
 function toggle() {
@@ -37,9 +29,9 @@ function toggle() {
 }
 
 function onItemClick(item) {
-  if (item.status === 'UNREAD') {
-    markNotificationRead(item.notificationId)
-  }
+  // 点开通知 → 打开详情弹窗（内部会标记已读 + 提供动作按钮）。
+  open.value = false
+  openNotification(item)
 }
 
 function onMarkAll() {
@@ -69,13 +61,13 @@ function onKeydown(event) {
 }
 
 onMounted(() => {
-  startNotificationPolling()
+  // 轮询由全局 NotificationCenter 统一负责；铃铛打开时主动拉一次保证最新。
+  loadNotifications()
   document.addEventListener('click', onDocumentClick)
   document.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
-  stopNotificationPolling()
   document.removeEventListener('click', onDocumentClick)
   document.removeEventListener('keydown', onKeydown)
 })

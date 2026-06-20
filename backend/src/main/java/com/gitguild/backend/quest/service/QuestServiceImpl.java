@@ -11,6 +11,8 @@ import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
 import com.gitguild.backend.codehost.service.CodeIssueService;
+import com.gitguild.backend.notification.domain.NotificationType;
+import com.gitguild.backend.notification.service.NotificationService;
 import com.gitguild.backend.quest.service.QuestTaskBranchService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
@@ -106,6 +108,7 @@ public class QuestServiceImpl implements QuestService {
     private final AdminReviewRecordRepository adminReviewRecordRepository;
     private final SubmissionRepository submissionRepository;
     private final ReviewRecordRepository reviewRecordRepository;
+    private final NotificationService notificationService;
 
     public QuestServiceImpl(
             QuestRepository questRepository,
@@ -122,7 +125,8 @@ public class QuestServiceImpl implements QuestService {
             GiteaProperties giteaProperties,
             AdminReviewRecordRepository adminReviewRecordRepository,
             SubmissionRepository submissionRepository,
-            ReviewRecordRepository reviewRecordRepository) {
+            ReviewRecordRepository reviewRecordRepository,
+            NotificationService notificationService) {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.categoryRepository = categoryRepository;
@@ -138,6 +142,7 @@ public class QuestServiceImpl implements QuestService {
         this.adminReviewRecordRepository = adminReviewRecordRepository;
         this.submissionRepository = submissionRepository;
         this.reviewRecordRepository = reviewRecordRepository;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -294,6 +299,22 @@ public class QuestServiceImpl implements QuestService {
         QuestAssignment assignment = assignmentRepository.save(new QuestAssignment(quest, assignee));
         quest.markInProgress();
         questRepository.save(quest);
+
+        // 通知委托人：有人接取了你的委托。best-effort；发布者与接取者同人时跳过。
+        User publisher = quest.getPublisher();
+        if (publisher != null && !publisher.getUserId().equals(assignee.getUserId())) {
+            try {
+                notificationService.notify(
+                        publisher,
+                        NotificationType.QUEST_ACCEPTED,
+                        String.format("冒险家 %s 接取了你的委托《%s》。", assignee.getUsername(), quest.getTitle()),
+                        "QUEST",
+                        quest.getQuestId());
+            } catch (RuntimeException ex) {
+                log.warn("发送委托被接取通知失败 questId={}, publisherId={}", quest.getQuestId(), publisher.getUserId(), ex);
+            }
+        }
+
         return new AssignmentResponse(
                 assignment.getAssignmentId(),
                 quest.getQuestId(),

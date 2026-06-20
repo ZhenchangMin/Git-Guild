@@ -13,12 +13,17 @@ import com.gitguild.backend.growth.dto.LeaderboardResponse;
 import com.gitguild.backend.growth.repository.ContributionRecordRepository;
 import com.gitguild.backend.growth.repository.GrowthProfileRepository;
 import com.gitguild.backend.growth.repository.XpTransactionRepository;
+import com.gitguild.backend.notification.domain.NotificationType;
+import com.gitguild.backend.notification.service.NotificationService;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.user.domain.User;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.ToIntFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -43,24 +48,40 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class GrowthServiceImpl implements GrowthService {
 
+    private static final Logger log = LoggerFactory.getLogger(GrowthServiceImpl.class);
+
     private static final String REASON_QUEST_COMPLETED = "QUEST_COMPLETED";
     private static final String PERIOD_ALL_TIME = "ALL_TIME";
     private static final int DEFAULT_LEVEL = 1;
+
+    /** 徽章规则的唯一来源：徽章展示（getBadges）与解锁通知（detect-on-completion）共用，避免阈值漂移。 */
+    private static final List<BadgeRule> BADGE_RULES = List.of(
+            new BadgeRule("FIRST_COMPLETION", "首次贡献", "完成第一个任务后获得",
+                    "完成任务数量 >= 1", GrowthSnapshot::completedQuestCount, 1),
+            new BadgeRule("XP_APPRENTICE", "XP 学徒", "累计 XP 达到 100 后获得",
+                    "累计 XP >= 100", GrowthSnapshot::totalXp, 100),
+            new BadgeRule("QUEST_EXPLORER", "任务探索者", "完成 3 个任务后获得",
+                    "完成任务数量 >= 3", GrowthSnapshot::completedQuestCount, 3),
+            new BadgeRule("LEVEL_RISER", "等级新星", "用户等级达到 3 后获得",
+                    "用户等级 >= 3", GrowthSnapshot::level, 3));
 
     private final GrowthProfileRepository growthProfileRepository;
     private final XpTransactionRepository xpTransactionRepository;
     private final ContributionRecordRepository contributionRecordRepository;
     private final ObjectMapper objectMapper;
+    private final NotificationService notificationService;
 
     public GrowthServiceImpl(
             GrowthProfileRepository growthProfileRepository,
             XpTransactionRepository xpTransactionRepository,
             ContributionRecordRepository contributionRecordRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            NotificationService notificationService) {
         this.growthProfileRepository = growthProfileRepository;
         this.xpTransactionRepository = xpTransactionRepository;
         this.contributionRecordRepository = contributionRecordRepository;
         this.objectMapper = objectMapper;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -74,6 +95,8 @@ public class GrowthServiceImpl implements GrowthService {
 
         GrowthProfile profile = growthProfileRepository.findByUserUserId(userId)
                 .orElseGet(() -> new GrowthProfile(submitter));
+        // 本次发放前的快照：用于判断是否升级、是否解锁了新徽章。
+        GrowthSnapshot before = snapshotOf(profile);
         profile.recordQuestCompletion(quest.getRewardXp());
         growthProfileRepository.save(profile);
 
@@ -82,6 +105,33 @@ public class GrowthServiceImpl implements GrowthService {
 
         contributionRecordRepository.save(new ContributionRecord(
                 submitter, quest, quest.getRepository(), quest.getTitle(), OffsetDateTime.now()));
+
+        notifyGrowthMilestones(submitter, quest, before, snapshotOf(profile));
+    }
+
+    private GrowthSnapshot snapshotOf(GrowthProfile profile) {
+        return new GrowthSnapshot(profile.getLevel(), profile.getTotalXp(), profile.getCompletedQuestCount());
+    }
+
+    /**
+     * 完成任务后，比较前后快照，向冒险家祝贺「升级」与「解锁新徽章」。
+     * best-effort：通知失败仅记日志，绝不回滚成长发放（与上层审核事务解耦）。
+     */
+    private void notifyGrowthMilestones(User user, Quest quest, GrowthSnapshot before, GrowthSnapshot after) {
+        try {
+            if (after.level() > before.level()) {
+                notificationService.notify(user, NotificationType.LEVEL_UP,
+                        String.format("恭喜！你升到了 Lv.%d，继续加油！", after.level()), null, null);
+            }
+            for (BadgeRule rule : BADGE_RULES) {
+                if (!rule.earned(before) && rule.earned(after)) {
+                    notificationService.notify(user, NotificationType.BADGE_UNLOCKED,
+                            String.format("解锁新徽章「%s」：%s。", rule.name(), rule.description()), null, null);
+                }
+            }
+        } catch (RuntimeException ex) {
+            log.warn("发送成长里程碑通知失败 userId={}, questId={}", user.getUserId(), quest.getQuestId(), ex);
+        }
     }
 
     @Override
@@ -172,15 +222,20 @@ public class GrowthServiceImpl implements GrowthService {
                 .map(ContributionRecord::getCompletedAt)
                 .orElse(null);
 
-        return new BadgeResponse(List.of(
-                badge("FIRST_COMPLETION", "首次贡献", "完成第一个任务后获得",
-                        "完成任务数量 >= 1", snapshot.completedQuestCount(), 1, firstContributionAt),
-                badge("XP_APPRENTICE", "XP 学徒", "累计 XP 达到 100 后获得",
-                        "累计 XP >= 100", snapshot.totalXp(), 100, firstContributionAt),
-                badge("QUEST_EXPLORER", "任务探索者", "完成 3 个任务后获得",
-                        "完成任务数量 >= 3", snapshot.completedQuestCount(), 3, firstContributionAt),
-                badge("LEVEL_RISER", "等级新星", "用户等级达到 3 后获得",
-                        "用户等级 >= 3", snapshot.level(), 3, firstContributionAt)));
+        return new BadgeResponse(BADGE_RULES.stream()
+                .map(rule -> {
+                    boolean earned = rule.earned(snapshot);
+                    return new BadgeResponse.BadgeItem(
+                            rule.id(),
+                            rule.name(),
+                            rule.description(),
+                            rule.condition(),
+                            earned,
+                            earned ? firstContributionAt : null,
+                            rule.metric().applyAsInt(snapshot),
+                            rule.target());
+                })
+                .toList());
     }
 
     private String normalizePeriod(String period) {
@@ -207,26 +262,20 @@ public class GrowthServiceImpl implements GrowthService {
         }
     }
 
-    private BadgeResponse.BadgeItem badge(
-            String badgeId,
+    private record GrowthSnapshot(int level, int totalXp, int completedQuestCount) {
+    }
+
+    /** 徽章规则：阈值条件 + 进度取值器；earned() 判断在给定快照下是否达成。 */
+    private record BadgeRule(
+            String id,
             String name,
             String description,
             String condition,
-            int progress,
-            int target,
-            OffsetDateTime firstContributionAt) {
-        boolean earned = progress >= target;
-        return new BadgeResponse.BadgeItem(
-                badgeId,
-                name,
-                description,
-                condition,
-                earned,
-                earned ? firstContributionAt : null,
-                progress,
-                target);
-    }
+            ToIntFunction<GrowthSnapshot> metric,
+            int target) {
 
-    private record GrowthSnapshot(int level, int totalXp, int completedQuestCount) {
+        boolean earned(GrowthSnapshot snapshot) {
+            return metric.applyAsInt(snapshot) >= target;
+        }
     }
 }

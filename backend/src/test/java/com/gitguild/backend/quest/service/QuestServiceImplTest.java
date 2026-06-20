@@ -86,6 +86,9 @@ class QuestServiceImplTest {
     @Mock
     private com.gitguild.backend.review.repository.ReviewRecordRepository reviewRecordRepository;
 
+    @Mock
+    private com.gitguild.backend.notification.service.NotificationService notificationService;
+
     private QuestServiceImpl questService;
 
     @BeforeEach
@@ -105,7 +108,8 @@ class QuestServiceImplTest {
                 new com.gitguild.backend.codehost.gitea.GiteaProperties("http://localhost:3000", "test-token", "spike-admin", null),
                 adminReviewRecordRepository,
                 submissionRepository,
-                reviewRecordRepository);
+                reviewRecordRepository,
+                notificationService);
     }
 
     @Test

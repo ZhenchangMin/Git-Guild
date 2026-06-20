@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gitguild.backend.common.BusinessException;
+import com.gitguild.backend.notification.domain.NotificationType;
+import com.gitguild.backend.notification.service.NotificationService;
 import com.gitguild.backend.quest.domain.AdminDecision;
 import com.gitguild.backend.quest.domain.AdminReviewRecord;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
@@ -33,10 +35,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AdminQuestServiceImpl implements AdminQuestService {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminQuestServiceImpl.class);
 
     /** APPROVE_PUBLISH 必须提交的检查清单项数（清晰度 3 项 + 合规性 3 项）。 */
     private static final int REQUIRED_CHECKLIST_SIZE = 6;
@@ -47,6 +53,7 @@ public class AdminQuestServiceImpl implements AdminQuestService {
     private final UserRepository userRepository;
     private final QuestTechStackRepository techStackRepository;
     private final ObjectMapper objectMapper;
+    private final NotificationService notificationService;
 
     public AdminQuestServiceImpl(
             QuestRepository questRepository,
@@ -54,13 +61,15 @@ public class AdminQuestServiceImpl implements AdminQuestService {
             QuestAssignmentRepository assignmentRepository,
             UserRepository userRepository,
             QuestTechStackRepository techStackRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            NotificationService notificationService) {
         this.questRepository = questRepository;
         this.reviewRecordRepository = reviewRecordRepository;
         this.assignmentRepository = assignmentRepository;
         this.userRepository = userRepository;
         this.techStackRepository = techStackRepository;
         this.objectMapper = objectMapper;
+        this.notificationService = notificationService;
     }
 
     /** 管理员控制台「全部」视图覆盖的审核流水线状态（排除尚未提交的 DRAFT）。 */
@@ -128,6 +137,8 @@ public class AdminQuestServiceImpl implements AdminQuestService {
                 toChecklistJson(request.getChecklist()));
         reviewRecordRepository.save(record);
         questRepository.save(quest);
+
+        notifyPublisherOfDecision(quest, request.getDecision(), request.getReason());
 
         return new AdminReviewResponse(
                 record.getAdminReviewId(),
@@ -281,6 +292,51 @@ public class AdminQuestServiceImpl implements AdminQuestService {
                 quest.reopen();
             }
         }
+    }
+
+    /**
+     * 管理员决策后给委托人（发布者）推送站内通知。best-effort：失败仅记日志，绝不回滚审核结果。
+     */
+    private void notifyPublisherOfDecision(Quest quest, AdminDecision decision, String reason) {
+        User publisher = quest.getPublisher();
+        if (publisher == null) {
+            return;
+        }
+        NotificationType type;
+        String content;
+        String title = quest.getTitle();
+        switch (decision) {
+            case APPROVE_PUBLISH -> {
+                type = NotificationType.QUEST_APPROVED;
+                content = String.format("你的委托《%s》已通过管理员审核并上架到悬赏板。", title);
+            }
+            case REJECT_PUBLISH -> {
+                type = NotificationType.QUEST_REJECTED;
+                content = String.format("你的委托《%s》未通过上架审核：%s。请修改后重新提交。", title, reasonOrDefault(reason));
+            }
+            case TAKE_DOWN -> {
+                type = NotificationType.QUEST_TAKEN_DOWN;
+                content = (reason == null || reason.isBlank())
+                        ? String.format("你的委托《%s》已被管理员下架。", title)
+                        : String.format("你的委托《%s》已被管理员下架。原因：%s。", title, reason);
+            }
+            case REOPEN -> {
+                type = NotificationType.QUEST_REOPENED;
+                content = String.format("你的委托《%s》已被重新上架，恢复可见。", title);
+            }
+            default -> {
+                return;
+            }
+        }
+        try {
+            notificationService.notify(publisher, type, content, "QUEST", quest.getQuestId());
+        } catch (RuntimeException ex) {
+            log.warn("发送委托审核通知失败 questId={}, publisherId={}", quest.getQuestId(), publisher.getUserId(), ex);
+        }
+    }
+
+    private String reasonOrDefault(String reason) {
+        return (reason == null || reason.isBlank()) ? "请查看审核意见" : reason;
     }
 
     private AdminQuestSummaryResponse toSummary(Quest quest) {
