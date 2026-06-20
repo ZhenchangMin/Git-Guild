@@ -129,8 +129,15 @@ function mapSubmissionToReview(submission) {
   const completionCriteria = buildCompletionCriteria(submission)
   const repositoryBranchName = pullRequest.sourceBranch || repository.defaultBranch || 'main'
   const repositoryUrl = toBrowsableGiteaUrl(repository.sourceUrl) || null
-  // 审核时要核对的是分支的提交内容，直接跳到提交列表而不是仓库首页。
-  const repositoryBranchUrl = repositoryUrl ? `${repositoryUrl}/commits/branch/${repositoryBranchName}` : null
+  // 分支源码视图：跳到该分支下的文件树，而不是仓库默认分支首页。
+  const repositoryBranchUrl = repositoryUrl
+    ? `${repositoryUrl}/src/branch/${encodeURIComponent(repositoryBranchName).replace(/%2F/g, '/')}/`
+    : null
+  // PR 详情页：优先用后端回传的真实 PR 链接（同样要把内网回环地址换成可浏览地址），
+  // 缺失时按仓库地址 + externalPrId 兜底拼接。
+  const pullRequestUrl =
+    toBrowsableGiteaUrl(pullRequest.externalUrl) ||
+    (repositoryUrl && externalPrId ? `${repositoryUrl}/pulls/${externalPrId}` : '')
 
   return {
     id: `SUB-${padId(submission.submissionId)}`,
@@ -142,7 +149,7 @@ function mapSubmissionToReview(submission) {
     repositoryBranch: repositoryBranchName,
     repositoryBranchUrl,
     pullRequest: prLabel,
-    pullRequestUrl: pullRequest.externalUrl || '',
+    pullRequestUrl,
     pullRequestTitle: pullRequest.title || '未命名 PR',
     prState: pullRequest.status || 'UNKNOWN',
     branch,
@@ -154,9 +161,9 @@ function mapSubmissionToReview(submission) {
     rewardXp: submission.rewardXp ?? 0,
     summary: submission.description || '该提交没有填写成果说明。',
     completionCriteria,
+    // 佐证材料：只放真正的外部佐证链接（成果说明已单独展示，不再重复塞进来）。
     evidence: [
-      pullRequest.externalUrl ? `PR 链接：${pullRequest.externalUrl}` : '',
-      submission.description ? `成果说明：${submission.description}` : '',
+      pullRequestUrl ? `PR 链接：${pullRequestUrl}` : '',
     ].filter(Boolean),
     suggestedSummary: completionCriteria.every((item) => item.passed)
       ? 'PR 与成果说明已核对，符合通过条件。'
@@ -424,7 +431,6 @@ onMounted(loadReviewQueue)
                 :busy="isSubmittingReview"
                 @submit-review="submitReview"
                 @save-draft="saveDraft"
-                @open-pr="openPullRequest"
               />
             </div>
           </section>

@@ -43,15 +43,26 @@ function prStateLabel(state) {
             <dd>{{ review.submittedAt }}</dd>
           </div>
         </dl>
-        <a
-          v-if="review.repositoryBranchUrl"
-          class="branch-commits-link"
-          :href="review.repositoryBranchUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          前往 {{ review.repositoryBranch }} 分支查看提交 ↗
-        </a>
+        <div class="gitea-link-row">
+          <a
+            v-if="review.pullRequestUrl"
+            class="gitea-btn"
+            :href="review.pullRequestUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            前往 Gitea 查看 PR ↗
+          </a>
+          <a
+            v-if="review.repositoryBranchUrl"
+            class="gitea-btn"
+            :href="review.repositoryBranchUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            前往分支查看提交 ↗
+          </a>
+        </div>
       </div>
       <aside>
         <span>{{ review.status }}</span>
@@ -60,6 +71,20 @@ function prStateLabel(state) {
     </div>
 
     <div class="detail-grid">
+      <article class="detail-card deliverable-card">
+        <h2>成果材料</h2>
+        <div class="deliverable-block">
+          <span class="deliverable-label">成果说明</span>
+          <p class="deliverable-note">{{ review.summary }}</p>
+        </div>
+        <div v-if="review.evidence.length" class="deliverable-block">
+          <span class="deliverable-label">佐证材料</span>
+          <ul class="deliverable-evidence">
+            <li v-for="item in review.evidence" :key="item">{{ item }}</li>
+          </ul>
+        </div>
+      </article>
+
       <article class="detail-card pr-card">
         <h2>PR 状态</h2>
         <dl>
@@ -86,37 +111,6 @@ function prStateLabel(state) {
           </template>
           <small v-else>无可合并的 PR。</small>
         </div>
-      </article>
-
-      <article class="detail-card criteria-card">
-        <div class="section-head">
-          <div>
-            <h2>完成标准逐项检查</h2>
-          </div>
-          <span>{{ review.completionCriteria.filter((item) => item.passed).length }} / {{ review.completionCriteria.length }} 通过</span>
-        </div>
-
-        <div class="criteria-list">
-          <section
-            v-for="item in review.completionCriteria"
-            :key="item.checkpoint"
-            class="criteria-row"
-            :class="{ passed: item.passed, failed: !item.passed }"
-          >
-            <div>
-              <strong>{{ item.checkpoint }}</strong>
-              <span>{{ item.passed ? '通过' : '需修改' }}</span>
-            </div>
-            <p>{{ item.comment }}</p>
-          </section>
-        </div>
-      </article>
-
-      <article class="detail-card evidence-card">
-        <h2>成果材料</h2>
-        <ul>
-          <li v-for="item in review.evidence" :key="item">{{ item }}</li>
-        </ul>
       </article>
     </div>
   </section>
@@ -185,22 +179,43 @@ function prStateLabel(state) {
   overflow-wrap: anywhere;
 }
 
-.branch-commits-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.gitea-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
   margin-top: 14px;
-  color: #ffe2a0;
-  font-size: 0.86rem;
-  text-decoration: underline;
-  text-decoration-color: rgba(255, 226, 160, 0.4);
-  transition: color 150ms ease, text-decoration-color 150ms ease;
 }
 
-.branch-commits-link:hover,
-.branch-commits-link:focus-visible {
-  color: #ffe8b9;
-  text-decoration-color: rgba(255, 232, 185, 0.8);
+.gitea-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 22px;
+  border: 1px solid rgba(238, 184, 91, 0.56);
+  border-radius: 6px;
+  color: #ffe4ad;
+  font-family: var(--font-display);
+  font-size: 0.94rem;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(80, 43, 18, 0.74), rgba(50, 24, 8, 0.84));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.34);
+  transition: filter 150ms ease, transform 120ms ease, box-shadow 150ms ease;
+}
+
+.gitea-btn:hover,
+.gitea-btn:focus-visible {
+  filter: brightness(1.14);
+  transform: translateY(-1px);
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(255, 204, 105, 0.14), 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.gitea-btn:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .detail-hero aside {
@@ -230,15 +245,58 @@ function prStateLabel(state) {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "pr"
-    "criteria"
-    "evidence";
+    "deliverable"
+    "pr";
   gap: 14px;
 }
 
 .detail-card {
   padding: 15px;
   background: rgba(10, 5, 2, 0.5);
+}
+
+.deliverable-card {
+  grid-area: deliverable;
+}
+
+.deliverable-block {
+  margin-top: 12px;
+}
+
+.deliverable-label {
+  display: inline-block;
+  margin-bottom: 6px;
+  color: rgba(255, 231, 183, 0.56);
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+}
+
+.deliverable-note {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(240, 198, 118, 0.16);
+  border-radius: 8px;
+  color: rgba(255, 233, 187, 0.9);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: rgba(7, 4, 2, 0.34);
+}
+
+.deliverable-evidence {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  color: rgba(255, 231, 183, 0.78);
+  list-style: none;
+}
+
+.deliverable-evidence li {
+  border-left: 2px solid rgba(240, 198, 118, 0.3);
+  padding-left: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .pr-card {
@@ -325,79 +383,6 @@ function prStateLabel(state) {
   margin: 0;
   color: #ffe2a0;
   overflow-wrap: anywhere;
-}
-
-.section-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.section-head span {
-  align-self: start;
-  border: 1px solid rgba(255, 222, 161, 0.28);
-  border-radius: 999px;
-  padding: 6px 10px;
-  color: #ffe2a0;
-  background: rgba(7, 4, 2, 0.34);
-}
-
-.criteria-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.criteria-row {
-  border: 1px solid rgba(240, 198, 118, 0.16);
-  border-radius: 8px;
-  padding: 12px;
-  background: rgba(7, 4, 2, 0.28);
-}
-
-.criteria-row div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.criteria-row strong {
-  color: #ffe8b9;
-}
-
-.criteria-row span {
-  border-radius: 999px;
-  padding: 4px 8px;
-  color: #261306;
-  background: #a9d07b;
-  font-size: 0.76rem;
-  font-weight: 800;
-}
-
-.criteria-row.failed span {
-  background: #f0a06d;
-}
-
-.criteria-row p {
-  margin: 8px 0 0;
-  color: rgba(255, 231, 183, 0.72);
-  line-height: 1.5;
-}
-
-.evidence-card ul {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0 0;
-  padding: 0;
-  color: rgba(255, 231, 183, 0.76);
-  list-style: none;
-}
-
-.evidence-card li {
-  border-left: 2px solid rgba(240, 198, 118, 0.3);
-  padding-left: 10px;
-  line-height: 1.5;
 }
 
 @media (max-width: 980px) {
