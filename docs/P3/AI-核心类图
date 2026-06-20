@@ -1,0 +1,132 @@
+classDiagram
+    %% 用户与认证模块 (User & Auth Module)
+    class User {
+        +Long userId
+        +String username
+        +String email
+        +Role role
+        +String giteaAccountId
+        +login()
+        +register()
+        +bindGitea()
+    }
+    class Role {
+        <<enumeration>>
+        BEGINNER
+        MAINTAINER
+        ADMIN
+    }
+
+    %% 代码托管底座适配模块 (Code Host Adapter Module)
+    class Repository {
+        +Long repoId
+        +String name
+        +String githubUrl
+        +String syncStatus
+        +importFromGithub()
+        +sync()
+    }
+    class Issue {
+        +Long issueId
+        +String title
+        +String description
+        +String status
+        +syncFromHost()
+    }
+    class PullRequest {
+        +Long prId
+        +String title
+        +String sourceBranch
+        +String targetBranch
+        +String status
+        +merge()
+        +close()
+    }
+
+    %% 任务与悬赏模块 (Task & Bounty Module)
+    class Quest {
+        +Long questId
+        +String title
+        +String description
+        +String techStack
+        +Integer difficulty
+        +Integer bounty
+        +QuestStatus status
+        +publish()
+        +accept(User assignee)
+        +updateStatus()
+    }
+    class QuestStatus {
+        <<enumeration>>
+        PENDING_ADMIN_REVIEW
+        PUBLISHED
+        IN_PROGRESS
+        IN_REVIEW
+        REJECTED
+        COMPLETED
+    }
+
+    %% 提交与审核反馈模块 (Submission & Review Module)
+    class Submission {
+        +Long submissionId
+        +String submitDescription
+        +DateTime submitTime
+        +String status
+        +submit()
+        +linkPR(PullRequest pr)
+    }
+    class ReviewRecord {
+        +Long reviewId
+        +String conclusion
+        +String feedback
+        +DateTime reviewTime
+        +approve()
+        +requestChanges()
+    }
+
+    %% 新手引导与项目理解模块 (Beginner Guide Module)
+    class ProjectGuide {
+        +Long guideId
+        +String content
+        +String projectStructure
+        +String runInstructions
+        +getGuideContent()
+    }
+
+    %% 通知模块 (Notification Module)
+    class Notification {
+        +Long notificationId
+        +String type
+        +String content
+        +Boolean isRead
+        +send()
+        +markAsRead()
+    }
+
+    %% 推荐匹配模块 (Recommendation Module)
+    class RecommendationService {
+        <<service>>
+        +recommendQuests(User user) List~Quest~
+        +generateReason(User user, Quest quest) String
+    }
+
+    %% 关系定义 (Relationships)
+    User --> Role : has
+    User "1" -- "*" Quest : creates (Maintainer)
+    User "1" -- "*" Quest : accepts (Beginner)
+    
+    Repository "1" *-- "*" Issue : contains
+    Repository "1" *-- "*" PullRequest : contains
+    Repository "1" *-- "1" ProjectGuide : owns
+    
+    Issue "1" -- "0..1" Quest : converts to
+    
+    Quest "1" *-- "*" Submission : receives
+    Submission "1" -- "1" PullRequest : links to
+    Submission "1" *-- "*" ReviewRecord : has
+    
+    ReviewRecord "*" -- "1" User : reviewed by (Maintainer/Admin)
+    User "1" *-- "*" Notification : receives
+    
+    RecommendationService ..> Quest : evaluates
+    RecommendationService ..> User : evaluates

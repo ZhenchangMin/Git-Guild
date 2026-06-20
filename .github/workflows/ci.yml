@@ -2,71 +2,111 @@ name: CI
 
 on:
   push:
-    branches: [ '**' ]
+    branches:
+      - main
+      - P4
+      - front
+      - 'feat/**'
+      - 'feature/**'
   pull_request:
-    branches: [ main, master ]
+    branches:
+      - main
+      - P4
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # 前端构建任务
-  frontend:
-    name: Frontend Build & Lint
+  quality:
+    name: Static and format checks
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend  # 关键：所有命令在 frontend/ 目录执行
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json  # 关键：指定锁文件路径
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Run linter
-        run: npm run lint || true  # 如果没有 lint 脚本，暂时忽略错误
-      
-      - name: Build frontend
-        run: npm run build || true  # 如果前端还没配置 build，暂时忽略
+          node-version: '22'
 
-  # 后端构建任务（你们的核心）
-  backend:
-    name: Backend Build & Test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend  # 关键：所有命令在 backend/ 目录执行
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
-      
-      - name: Build with Maven
-        run: mvn -B clean package --file pom.xml
-      
-      - name: Run tests
-        run: mvn test
+      - name: Run static and format checks
+        run: node scripts/ci-static-check.mjs
 
-  # 安全审计（仅前端，暂时）
-  security:
-    name: Security Audit
+  frontend:
+    name: Frontend build
     runs-on: ubuntu-latest
+    needs: quality
     defaults:
       run:
         working-directory: frontend
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      - run: npm ci
-      - run: npm audit --audit-level=high || true
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  backend:
+    name: Backend verify and package
+    runs-on: ubuntu-latest
+    needs: quality
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Make Maven wrapper executable
+        run: chmod +x ./mvnw
+
+      - name: Run backend verify
+        run: ./mvnw -B verify
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: backend/target/*.jar
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jacoco-report
+          path: backend/target/site/jacoco/
+          if-no-files-found: warn
+          retention-days: 7

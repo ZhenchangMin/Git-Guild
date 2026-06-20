@@ -1,0 +1,19 @@
+# GitGuild 前端生产镜像（多阶段：Vite 构建 → nginx 托管 + 反代）
+# 构建上下文 = 仓库根目录（compose 里 context: .）
+
+# ── 构建阶段 ──────────────────────────────────────────────────────────────────
+FROM node:20-alpine AS build
+WORKDIR /build
+# 先装依赖，利用 Docker 层缓存（仅源码改动时不重装）。
+COPY frontend/package.json frontend/package-lock.json ./
+# 如服务器拉 npm 慢，可改为： RUN npm ci --registry=https://registry.npmmirror.com
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
+# ── 运行阶段 ──────────────────────────────────────────────────────────────────
+FROM nginx:1.27-alpine
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /build/dist /usr/share/nginx/html
+EXPOSE 80

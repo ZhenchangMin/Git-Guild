@@ -13,3 +13,32 @@ Thumbs.db
 .project
 .classpath
 .settings/
+
+# --------------- Secrets ---------------
+.env
+deploy/.env.prod
+*.pem
+*.key
+
+# --------------- Prod deploy runtime ---------------
+/uploads/
+
+# --------------- Backend (Maven / Spring Boot) ---------------
+backend/target/
+backend/uploads/
+backend/!.mvn/wrapper/maven-wrapper.jar
+backend/!**/src/main/**/target/
+backend/!**/src/test/**/target/
+*.jar
+*.war
+*.class
+
+# --------------- Frontend (Node / Vite) ---------------
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/auto-imports.d.ts
+frontend/components.d.ts
+
+# --------------- Docker ---------------
+docker-volumes/

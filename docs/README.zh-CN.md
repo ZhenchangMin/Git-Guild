@@ -1,123 +1,242 @@
 # Git Guild
+
 <div align="center">
 
-<h3>Language / 语言</h3>
-
-[**English**](README.md) | [简体中文](docs/README.zh-CN.md)
+[English](../README.md) | **简体中文**
 
 </div>
 
-> SEC II 课程项目
+Git Guild 是 Software Engineering II 课程项目。项目把本地 Gitea 代码协作流程与“冒险者公会”式委托系统结合起来：委托人把真实工程任务发布为委托，冒险家通过分支和 Pull Request 完成委托，平台记录审核、XP、成长档案、通知和排行榜。
 
-**一个融合代码托管与游戏化悬赏协作的平台，让开源新手通过真实任务持续升级成长。**
+当前项目处于 P4 集成阶段。主要流程已经接入真实后端接口，数据落在 MySQL 中，并与本地种子 Gitea 实例集成，不再只是前端 mock 。
 
-Git-Guild 将 **GitHub/Gitee 风格的代码托管能力**（仓库、Issue、Pull Request、代码评审）与“冒险者公会”成长体系结合。  
-项目维护者可以从真实工程工作中发布任务，新手开发者可以接取任务、提交代码、获得反馈，并通过 XP、等级和徽章完成成长闭环。
+## P4 当前能力
 
+### 角色
 
+- **管理员**：审核委托上架申请，维护平台分类与标签配置，查看异常处理页面。
+- **委托人**：导入或同步仓库，基于 Issue 发布委托，审核冒险家提交成果，合并 Pull Request，也可以进入完成工作台像冒险家一样接取并完成委托。
+- **冒险家**：浏览委托板，接取委托，基于任务分支完成代码，提交成果，接收反馈，并通过 XP 与贡献记录成长。
 
----
+### 核心流程
 
-## 功能亮点
+- 登录与基于角色的导航。
+- 委托板使用真实委托、分类、标签、难度和技术栈过滤。
+- 通过 Gitea 导入与同步仓库。
+- 从仓库 Issue 发布委托，并经过管理员审核后上架。
+- 接取委托、准备 task branch、生成提交草稿。
+- 提交成果时自动创建或复用 Pull Request。
+- 委托人审核成果，支持通过、要求修改、拒绝。
+- Pull Request 合并与审核通过拆分为两个独立动作。
+- 成长档案、XP 流水、贡献记录、头像同步、通知与排行榜。
+- CI/CD 覆盖静态检查、前端构建、后端 verify、后端制品与 JaCoCo 报告上传。
 
-### 代码托管能力（GitHub/Gitee 风格）
-
-- 创建/导入仓库，管理公开性与协作者
-- 在 Web 页面浏览分支、提交记录、文件与差异（Diff）
-- 提供 Issue + Pull Request 协作流程与评审评论
-- 通过 Webhook 事件实现自动化与任务状态联动
-
-### 面向冒险者（初级开发者）
-
-- 浏览 **任务看板（Quest Board）**，按难度、技术栈、奖励与标签筛选任务
-- 接取与真实 Issue 关联的任务并提交 PR/代码
-- 获取可执行的审核反馈与学习建议
-- 通过 RPG 式成长系统获得 **XP**、升级并解锁徽章
-
-### 面向公会导师（项目维护者）
-
-- 将仓库中的 Issue 结构化发布为任务
-- 设置完成标准、奖励规则与评审检查点
-- 使用 approve / request-changes 工作流审核提交内容
-
-### 平台与成长能力
-
-- 用户系统：注册、登录、个人资料管理
-- **排行榜（Leaderboard）**：周榜、月榜与总榜
-- 生涯统计：XP、等级、完成任务数、获得徽章等
-- 新手引导：贡献流程说明、模板与教程支持
-
-## 开发状态
-
-- `进行中`：代码托管核心能力（Repo/Issue/PR 集成）、任务流程、XP 成长系统
-- `规划中`：推荐引擎、导师机制、高级数据看板
-
----
-
-## 当前仓库技术栈
+## 技术栈
 
 | 层级 | 技术 |
-| ---- | ---- |
-| 前端 | Vue 3 + Vite |
-| 后端 | Spring Boot 3 |
-| 数据库 | MySQL |
-| DevOps | Docker、Docker Compose、GitHub Actions |
+| --- | --- |
+| 前端 | Vue 3、Vite、Vue Router |
+| 后端 | Spring Boot 3、Spring Security、Spring Data JPA |
+| 数据库 | 本地 MySQL 8、后端测试 H2 |
+| 代码托管 | 本地 Gitea 1.22 容器 |
+| 基础设施 | Docker Compose、Redis、GitHub Actions |
+| 测试 | JUnit 5、Mockito、Spring MVC 测试、集成测试 |
 
----
+## 项目结构
 
-## 当前项目结构
-
-```
+```text
 Git-Guild/
-├── README.md
-├── .gitignore
-│
-├── docs/                         # 文档与设计资料
-│
-├── .github/                      # GitHub Actions 工作流
-│
-├── backend/                      # Spring Boot 应用
-│
-└── frontend/                     # Vue 3 应用
-
+├── README.md                    # 英文 README
+├── docs/README.zh-CN.md         # 中文 README
+├── CONTEXT.md                   # 领域语言词典
+├── .github/workflows/           # GitHub Actions CI
+├── .gitlab-ci.yml               # GitLab CI 镜像
+├── docker-compose.yml           # 本地开发
+├── docker-compose.prod.yml      # 生产环境 compose
+├── .env.example                 # 可选本地环境变量覆盖
+├── deploy/                      # Dockerfile、nginx.conf、probe.sh
+├── scripts/                     # CI 辅助脚本（ci-static-check.mjs）
+├── seed/                        # MySQL 种子数据 + Gitea 快照
+├── backend/                     # Spring Boot 3 后端
+└── frontend/                    # Vue 3 + Vite 前端
 ```
 
----
+## 环境要求
 
-## 贡献指南
+- Docker Desktop 或带 Compose v2 的 Docker Engine；旧版 `docker-compose` v1 也可使用。
+- JDK 17。
+- 推荐 Node.js 22，与 CI 保持一致。
+- npm。
 
-欢迎贡献！你可以按以下步骤开始：
+## 本地快速启动
 
-1. Fork（复制）本仓库
-2. 创建功能分支：`git checkout -b feat/your-feature`
-3. 使用 Conventional Commits 提交：`git commit -m "feat: add quest filter by language"`
-4. 推送并发起 Pull Request（合并请求）
+在项目根目录启动基础设施：
 
-请遵循现有代码风格，并为新功能补充测试。
+```bash
+docker compose up -d
+```
 
-### 分支命名规范
+该命令会启动：
 
-| 前缀 | 用途 |
-| ---- | ---- |
-| `feat/` | 新功能 |
-| `fix/` | Bug 修复 |
-| `docs/` | 文档更新 |
-| `refactor/` | 代码重构 |
-| `test/` | 新增或更新测试 |
+| 服务 | 地址 / 端口 | 说明 |
+| --- | --- | --- |
+| Gitea | http://localhost:3000 | 已带种子数据的本地代码托管 |
+| MySQL | localhost:3307 | 数据库 `gitguild` |
+| Redis | localhost:6379 | 通知与会话辅助服务 |
 
----
+启动后端：
+
+```bash
+cd backend
+./mvnw spring-boot:run
+```
+
+Windows PowerShell：
+
+```powershell
+cd backend
+.\mvnw.cmd spring-boot:run
+```
+
+启动前端：
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+打开前端页面：
+
+```text
+http://localhost:5173
+```
+
+后端启动后可访问 API 文档：
+
+```text
+http://localhost:8080/swagger-ui.html
+http://localhost:8080/api-docs
+```
+
+## 种子演示账号
+
+所有种子账号密码均为 `admin123`。
+
+| 角色 | 用户名 | 用途 |
+| --- | --- | --- |
+| 管理员 | `admin` | 审核委托上架，维护平台配置 |
+| 委托人 | `guild` | 导入仓库，发布委托，审核提交，合并 PR |
+| 冒险家 | `advent` | 接取委托，推送代码，提交成果，获得 XP |
+
+## 推荐演示路径
+
+1. 使用 `guild` 登录。
+2. 进入委托人工作台，如需要可导入或同步仓库。
+3. 基于已有仓库 Issue 发布委托。
+4. 使用 `admin` 登录，在管理员审核页批准委托上架。
+5. 使用 `advent` 登录，在委托板接取委托。
+6. 进入工作台，准备 task branch，克隆仓库，提交并推送代码。
+7. 进入提交柜台并提交成果。后端会自动创建或复用 Pull Request。
+8. 切回 `guild`，进入审核台审核成果，再单独执行合并 PR。
+9. 查看冒险家的成长档案、通知和排行榜变化。
+
+委托人也可以通过“完成工作台”进入同一套冒险家式流程，接取并完成委托。
+
+## 重置本地演示数据
+
+本地演示数据来自仓库内提交的种子快照。删除 Docker 卷后重新启动即可恢复干净状态：
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+`down -v` 会删除本地 MySQL、Redis、Gitea 数据卷；下一次 `up` 会重新载入种子数据。
+
+## 验证命令
+
+以下命令与 CI 的核心检查保持一致：
+
+```bash
+node scripts/ci-static-check.mjs
+```
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+```bash
+cd backend
+./mvnw -B verify
+```
+
+Windows PowerShell 后端验证：
+
+```powershell
+cd backend
+.\mvnw.cmd -B verify
+```
+
+## CI/CD
+
+GitHub Actions 会在推送到 `main`、`P4`、`front`、`feat/**`、`feature/**`，以及向 `main` 或 `P4` 发起 Pull Request 时运行。
+
+流水线包括：
+
+- 通过 `scripts/ci-static-check.mjs` 执行静态与格式检查。
+- 安装前端依赖并执行生产构建。
+- 执行后端 Maven verify 与打包。
+- 上传前端 `dist/` 构建产物。
+- 上传后端 JAR 与 JaCoCo 覆盖率报告。
+
+## 常见问题
+
+### localhost 或代理问题
+
+如果 Gitea、后端或 Vite 无法通过 `localhost` 连接，检查系统代理是否拦截本地流量。建议把以下地址加入代理绕过列表：
+
+```text
+localhost,127.0.0.1,::1
+```
+
+WSL 用户也可以启用 mirrored networking：
+
+```text
+[wsl2]
+networkingMode=mirrored
+```
+
+然后在 PowerShell 中执行 `wsl --shutdown`，再重新打开 WSL。
+
+### Gitea Token
+
+后端默认配置了与种子 Gitea 快照匹配的本地演示 token。它只用于本地 demo。如果切换到自己的 Gitea 实例，请通过 `GITEA_TOKEN` 覆盖。
+
+### 端口占用
+
+默认端口如下：
+
+- 前端开发服务：`5173`
+- 前端预览服务：`4173`
+- 后端：`8080`
+- Gitea：`3000`
+- MySQL：`3307`
+- Redis：`6379`
+
+如果端口被占用，请关闭冲突进程或调整本地服务端口。
 
 ## 团队
 
-|  成员  |    角色    |
-| :----: | :--------: |
-| 闵振昌 | 需求负责人 |
-| 阳旅帆 | 架构负责人 |
-|  王炜  | 开发负责人 |
-| 谭咏俊 | 测试负责人 |
+| 成员  | 职责  |
+| --- | --- |
+| 闵振昌 | 需求  |
+| 阳旅帆 | 架构  |
+| 王炜  | 开发  |
+| 谭咏俊 | 测试  |
 
 ---
 
-<p align="center">
-  <i>每位专家都曾是初学者。今天就开启你的冒险任务吧。</i>
-</p>
+每位专家都曾是初学者。今天就开始你的委托吧。

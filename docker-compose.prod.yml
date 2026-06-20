@@ -1,0 +1,138 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# GitGuild 生产部署（IP:端口直连，全容器化）
+#
+# 一条命令拉起全栈（在仓库根目录执行）：
+#   docker compose --env-file deploy/.env.prod -f docker-compose.prod.yml up -d --build
+#
+# 详细步骤见 deploy/README.md。
+#
+# 设计要点：
+#   - MySQL / Redis 不对外暴露端口，仅容器内网互通（更安全）。
+#   - 对外端口全部走 .env.prod 变量：HTTP_PORT / GITEA_PORT / GITEA_SSH_PORT / BACKEND_PORT，
+#     探测服务器端口占用后按需改，无需动 compose。
+#   - 前端 nginx 同源反代 /api 与 /uploads，因此无 CORS、IP 变化无需改前端。
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: gitguild-mysql-prod
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: gitguild
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: gitguild-redis-prod
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  gitea:
+    image: gitea/gitea:1.22
+    container_name: gitguild-gitea-prod
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__database__PATH=/data/gitea/gitea.db
+      - GITEA__security__INSTALL_LOCK=true
+      # 对外访问地址：用户在浏览器看到的 clone URL / 链接由此生成，必须是公网可达的 IP:端口。
+      - GITEA__server__ROOT_URL=http://${SERVER_IP}:${GITEA_PORT}/
+      - GITEA__server__HTTP_PORT=3000
+      - GITEA__webhook__ALLOWED_HOST_LIST=*
+      # 迁移外部公网仓库需联网；服务器能直连则留空（默认）。需代理时在 .env.prod 设 GITEA_PROXY_URL。
+      - http_proxy=${GITEA_PROXY_URL:-}
+      - https_proxy=${GITEA_PROXY_URL:-}
+      - HTTP_PROXY=${GITEA_PROXY_URL:-}
+      - HTTPS_PROXY=${GITEA_PROXY_URL:-}
+      - no_proxy=localhost,127.0.0.1,::1,mysql,redis,gitea,backend
+      - NO_PROXY=localhost,127.0.0.1,::1,mysql,redis,gitea,backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${GITEA_PORT:-3000}:3000"
+      - "${GITEA_SSH_PORT:-2222}:22"
+    volumes:
+      - gitea-data:/data
+      - ./seed:/seed:ro
+    # 自播种：卷为空（无 gitea.db）时先还原随仓库分发的快照（含 spike-admin + token），再正常启动。
+    # 幂等：已有数据则跳过。与本地 dev compose 同一套机制，保证 GITEA_TOKEN 一致可用。
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'if [ ! -f /data/gitea/gitea.db ]; then echo "[seed] restore gitea snapshot (spike-admin)..."; tar xzf /seed/gitea-data.tar.gz -C /data && chown -R 1000:1000 /data && echo "[seed] done"; fi; exec /usr/bin/entrypoint /bin/s6-svscan /etc/s6'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.backend
+    container_name: gitguild-backend-prod
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      gitea:
+        condition: service_started
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      # 用 update 让 Hibernate 按 JPA 实体精确建表，绕开 prod 默认 validate 对手写 schema 的漂移校验。
+      # 表结构稳定后想严格校验可改回 validate（并先用 docs/P4/database/init.sql 建库）。
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      # 覆盖 prod 默认 datasource（localhost:3306 + useSSL=true）→ 指向 mysql 容器、内网免 SSL。
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/gitguild?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - SPRING_DATA_REDIS_HOST=redis
+      # 后端→Gitea 走容器内网；prod profile 无 gitea 默认值，必须由此注入。
+      - GITEA_BASE_URL=http://gitea:3000
+      - GITEA_TOKEN=${GITEA_TOKEN}
+      - GITEA_ADMIN_USERNAME=${GITEA_ADMIN_USERNAME:-spike-admin}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRATION_MS=${JWT_EXPIRATION_MS:-86400000}
+    volumes:
+      # uploads 写在后端工作目录 /app/uploads（头像等），挂卷持久化。
+      - ./uploads:/app/uploads
+    ports:
+      # 仅供调试 / Swagger（http://IP:BACKEND_PORT/swagger-ui.html）。生产流量走前端 nginx 反代。
+      - "${BACKEND_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.frontend
+    container_name: gitguild-frontend-prod
+    depends_on:
+      - backend
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:
+  gitea-data:
