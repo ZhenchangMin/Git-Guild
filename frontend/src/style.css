@@ -2223,21 +2223,21 @@ h2 {
 }
 
 .admin-decision-toggle-btn.approved.active {
-  border-color: rgba(67, 97, 58, 0.7);
-  background: rgba(67, 97, 58, 0.18);
-  color: #2c4423;
+  border-color: rgba(67, 97, 58, 0.9);
+  background: rgba(67, 97, 58, 0.34);
+  color: #233d18;
 }
 
 .admin-decision-toggle-btn.return.active {
-  border-color: rgba(214, 142, 56, 0.7);
-  background: rgba(214, 142, 56, 0.2);
-  color: #6e3a10;
+  border-color: rgba(168, 95, 26, 0.85);
+  background: rgba(214, 142, 56, 0.34);
+  color: #5e3208;
 }
 
 .admin-decision-toggle-btn.danger.active {
-  border-color: rgba(202, 104, 88, 0.7);
-  background: rgba(168, 57, 43, 0.16);
-  color: #6e2418;
+  border-color: rgba(150, 47, 31, 0.85);
+  background: rgba(150, 47, 31, 0.26);
+  color: #5a1c12;
 }
 
 /* 未选中态也带上各自语气的底色，让通过(绿)/退回(橙)/下架(红) 一眼可辨。 */
@@ -2275,19 +2275,22 @@ h2 {
   filter: brightness(1.06);
 }
 .admin-decision-action.approved {
-  border-color: rgba(67, 97, 58, 0.85);
-  background: linear-gradient(180deg, #6f9a55, #46673a);
-  color: #f4ffe8;
+  border-color: rgba(95, 140, 60, 0.85);
+  background: linear-gradient(180deg, #5c8a36, #2f4a1c);
+  color: #f1ffd9;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
 }
 .admin-decision-action.return {
-  border-color: #e6a23c;
-  background: linear-gradient(180deg, #ffce6e, #d6884a);
+  border-color: #c8862f;
+  background: linear-gradient(180deg, #e0a23c, #a85f1a);
   color: #2a1505;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
 }
 .admin-decision-action.danger {
-  border-color: rgba(202, 104, 88, 0.85);
-  background: linear-gradient(180deg, #c0584a, #8a2f20);
-  color: #ffe6df;
+  border-color: rgba(238, 120, 82, 0.62);
+  background: linear-gradient(180deg, #d8634a, #962f1f);
+  color: #ffe7d2;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
 }
 
 .admin-decision-copy {
