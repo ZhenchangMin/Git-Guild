@@ -1,5 +1,7 @@
 <script setup>
-defineProps({
+import { ref } from 'vue'
+
+const props = defineProps({
   review: {
     type: Object,
     required: true,
@@ -9,7 +11,7 @@ defineProps({
     default: false,
   },
 })
-defineEmits(['merge-pr'])
+const emit = defineEmits(['merge-pr'])
 
 const PR_STATE_LABELS = {
   OPEN: '待合并',
@@ -21,6 +23,25 @@ const PR_STATE_LABELS = {
 
 function prStateLabel(state) {
   return PR_STATE_LABELS[state] ?? state ?? '未知'
+}
+
+// 合并 PR 二次确认弹窗开关
+const mergeConfirmOpen = ref(false)
+
+function requestMerge() {
+  if (props.merging) return
+  mergeConfirmOpen.value = true
+}
+
+function cancelMerge() {
+  if (props.merging) return
+  mergeConfirmOpen.value = false
+}
+
+function confirmMerge() {
+  if (props.merging) return
+  mergeConfirmOpen.value = false
+  emit('merge-pr')
 }
 </script>
 
@@ -104,7 +125,7 @@ function prStateLabel(state) {
         <div class="pr-merge-row">
           <span v-if="review.prState === 'MERGED'" class="pr-merged-badge">已合并</span>
           <template v-else-if="review.prState === 'OPEN'">
-            <button class="pr-merge-btn" type="button" :disabled="merging" @click="$emit('merge-pr')">
+            <button class="pr-merge-btn" type="button" :disabled="merging" @click="requestMerge">
               {{ merging ? '合并中…' : '合并 PR' }}
             </button>
             <small>接受提交不会自动合并；是否合并由你决定。</small>
@@ -113,6 +134,39 @@ function prStateLabel(state) {
         </div>
       </article>
     </div>
+
+    <!-- 合并 PR 二次确认：取消在左、确认在右，站内统一弹窗风格 -->
+    <transition name="reject-pop">
+      <div
+        v-if="mergeConfirmOpen"
+        class="confirm-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="merge-confirm-title"
+        @click.self="cancelMerge"
+      >
+        <div class="confirm-card">
+          <button class="confirm-close" type="button" aria-label="关闭" :disabled="merging" @click="cancelMerge">×</button>
+          <span class="confirm-icon" aria-hidden="true">⤥</span>
+          <p class="kicker">Confirm Merge</p>
+          <h2 id="merge-confirm-title">确认合并这个 PR？</h2>
+          <p class="confirm-quest">{{ review.pullRequest }} · {{ review.pullRequestTitle }}</p>
+
+          <div class="confirm-body-box">
+            <p class="confirm-body">
+              合并后 <strong>{{ review.branch }}</strong> 的改动将进入目标分支，该操作不可在平台撤销，请确认无误。
+            </p>
+          </div>
+
+          <div class="confirm-actions">
+            <button class="quiet-action" type="button" :disabled="merging" @click="cancelMerge">取消</button>
+            <button class="primary-action" type="button" :disabled="merging" @click="confirmMerge">
+              {{ merging ? '合并中…' : '确认合并' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </section>
 </template>
 
@@ -383,6 +437,139 @@ function prStateLabel(state) {
   margin: 0;
   color: #ffe2a0;
   overflow-wrap: anywhere;
+}
+
+/* ── 合并 PR 二次确认弹窗（站内统一风格） ── */
+.confirm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 5, 3, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.confirm-card {
+  position: relative;
+  width: min(460px, 100%);
+  padding: 34px 30px 26px;
+  text-align: center;
+  border: 1px solid rgba(238, 184, 91, 0.46);
+  border-radius: 14px;
+  color: #ffe9c4;
+  background: linear-gradient(168deg, rgba(54, 30, 12, 0.96), rgba(24, 13, 6, 0.98));
+  box-shadow: 0 26px 64px rgba(0, 0, 0, 0.55);
+}
+
+.confirm-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 224, 178, 0.7);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.confirm-close:hover:not(:disabled) {
+  background: rgba(240, 198, 118, 0.18);
+  color: #ffe0b0;
+}
+
+.confirm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: rgba(86, 120, 60, 0.34);
+  color: #c4e29a;
+  font-size: 1.5rem;
+}
+
+.kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255, 224, 178, 0.6);
+}
+
+.confirm-card h2 {
+  margin: 8px 0 4px;
+  font-family: var(--font-display);
+  color: #ffe8c8;
+}
+
+.confirm-quest {
+  margin: 0 0 16px;
+  color: rgba(255, 230, 190, 0.7);
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+.confirm-body-box {
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid rgba(240, 198, 118, 0.28);
+  border-radius: 10px;
+  background: rgba(15, 8, 5, 0.5);
+}
+
+.confirm-body {
+  margin: 0;
+  font-size: 0.94rem;
+  line-height: 1.7;
+  color: #ffe6cf;
+}
+
+.confirm-body strong {
+  color: #ffd79a;
+  overflow-wrap: anywhere;
+}
+
+.confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.confirm-actions button {
+  min-height: 42px;
+}
+
+.reject-pop-enter-active,
+.reject-pop-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.reject-pop-enter-active .confirm-card,
+.reject-pop-leave-active .confirm-card {
+  transition: transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 180ms ease;
+}
+
+.reject-pop-enter-from,
+.reject-pop-leave-to {
+  opacity: 0;
+}
+
+.reject-pop-enter-from .confirm-card,
+.reject-pop-leave-to .confirm-card {
+  transform: translateY(12px) scale(0.96);
+  opacity: 0;
 }
 
 @media (max-width: 980px) {

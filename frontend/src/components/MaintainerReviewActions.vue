@@ -38,11 +38,13 @@ const isReject = computed(() => form.decision === 'REJECTED')
 
 // 意见框文案：退回修改填「修改意见」，驳回提交填「驳回原因」
 const opinionLabel = computed(() => (isReject.value ? '驳回原因' : '修改意见'))
-const opinionPlaceholder = computed(() =>
-  isReject.value
+// 占位提示：优先用系统给出的建议总结作为底层提示，缺省再用通用文案
+const opinionPlaceholder = computed(() => {
+  if (props.review.suggestedSummary?.trim()) return props.review.suggestedSummary.trim()
+  return isReject.value
     ? '说明驳回该提交的原因，冒险家会看到这条说明'
-    : '写明需要修改的地方，冒险家会据此修改后重新提交',
-)
+    : '写明需要修改的地方，冒险家会据此修改后重新提交'
+})
 
 // 主操作是否可提交：通过需勾选确认，退回/驳回需填写意见
 const canSubmit = computed(() => {
@@ -68,7 +70,8 @@ const confirmBody = computed(() => {
 
 function resetForm(review) {
   form.decision = review.completionCriteria.every((item) => item.passed) ? 'APPROVED' : 'CHANGES_REQUESTED'
-  form.summary = review.suggestedSummary || ''
+  // 不再预填总结文字：改为以建议总结作为文本框底层提示（placeholder），保持输入框为空
+  form.summary = ''
   form.approveConfirmed = false
 }
 

@@ -11,7 +11,7 @@ const router = useRouter()
 const mode = ref('create')
 
 const createForm = ref({
-  name: 'gitguild-demo',
+  name: '',
   description: '',
 })
 
@@ -125,6 +125,8 @@ const notice = computed(() => {
 const issueOptions = computed(() => repositoryIssues.value.filter((issue) => issue.status !== 'CLOSED'))
 const canImport = computed(() => repositoryForm.value.sourceUrl.trim() && repositoryForm.value.name.trim() && !loading.value)
 const canCreate = computed(() => createForm.value.name.trim() && !loading.value)
+// 已成功创建 / 导入 / 命中重复副本 —— 视为本次接入已完成，禁用提交按钮避免重复操作干扰用户
+const completed = computed(() => ['created', 'imported', 'duplicate'].includes(stage.value))
 
 function inferRepositoryName(sourceUrl) {
   const clean = sourceUrl.trim().replace(/\.git$/i, '')
@@ -509,15 +511,20 @@ onBeforeUnmount(stopCreep)
         </div>
         <label>
           仓库名称
-          <input v-model.trim="createForm.name" placeholder="gitguild-demo" required />
+          <input v-model.trim="createForm.name" placeholder="例：gitguild-demo" required />
           <small class="field-hint">仅字母、数字、连字符；将作为本地 Gitea 仓库名。</small>
         </label>
         <label>
           仓库描述
           <input v-model.trim="createForm.description" placeholder="可选，简述这个仓库的用途" />
         </label>
-        <button class="primary-action section-action" type="submit" :disabled="!canCreate">
-          {{ loading ? '正在创建仓库…' : '创建空仓库' }}
+        <button
+          class="primary-action section-action"
+          type="submit"
+          :class="{ 'action-done': completed }"
+          :disabled="!canCreate || completed"
+        >
+          {{ completed ? '仓库已创建' : loading ? '正在创建仓库…' : '创建空仓库' }}
         </button>
       </section>
 
@@ -549,8 +556,13 @@ onBeforeUnmount(stopCreep)
             </select>
           </label>
         </div>
-        <button class="primary-action section-action" type="submit" :disabled="!canImport">
-          {{ loading ? '正在导入仓库…' : '导入仓库并同步' }}
+        <button
+          class="primary-action section-action"
+          type="submit"
+          :class="{ 'action-done': completed }"
+          :disabled="!canImport || completed"
+        >
+          {{ completed ? '仓库已接入' : loading ? '正在导入仓库…' : '导入仓库并同步' }}
         </button>
 
         <button
@@ -1049,6 +1061,13 @@ onBeforeUnmount(stopCreep)
 .primary-action:disabled {
   cursor: wait;
   opacity: 0.68;
+}
+
+/* 接入完成后的提交按钮：明显置灰且禁止点击，避免用户重复创建/导入 */
+.primary-action.action-done:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  filter: grayscale(0.5);
 }
 
 /* 停止导入：红褐警示，立即中断本次导入并丢弃已产生的副本 */
