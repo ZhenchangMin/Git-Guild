@@ -29,6 +29,9 @@ const isAssigning = ref(false)
 const showAcceptConfirm = ref(false)
 const hasReadDetails = ref(false)
 const isSealing = ref(false)
+// 委托已被他人抢先接取（任务板未及时刷新）时弹出的引导浮层。
+const showTakenModal = ref(false)
+const takenModalBody = ref('')
 
 const defaultSubmissionRequirements = [
   '关联任务编号和任务标题。',
@@ -211,12 +214,25 @@ async function confirmAccept() {
     inlineNotice.value = '已接取该任务，下一步请进入工作台创建任务分支。任务已加入你的工作台待办。'
     showAcceptConfirm.value = false
   } catch (error) {
-    inlineNotice.value = error?.message || '接取失败，请刷新任务详情后重试。'
     showAcceptConfirm.value = false
+    // 后端在委托已非「可接取」状态时回 QUEST_NOT_ACCEPTABLE（多为他人抢先接取，
+    // 而本地任务板尚未刷新）。这种情况下用独立浮层引导用户回到委托板，而非塞进角落提示。
+    if (error?.code === 'QUEST_NOT_ACCEPTABLE') {
+      takenModalBody.value = '这份委托刚刚已被其他冒险家接取，你看到的任务板可能还没来得及刷新。返回委托板即可查看最新的可接取委托。'
+      showTakenModal.value = true
+      localWorkflowState.value = 'in-progress'
+    } else {
+      inlineNotice.value = error?.message || '接取失败，请刷新任务详情后重试。'
+    }
   } finally {
     isAssigning.value = false
     isSealing.value = false
   }
+}
+
+function backToQuestBoard() {
+  showTakenModal.value = false
+  router.push({ name: 'quest-board' })
 }
 
 // “查看仓库”跳转到平台 Gitea 仓库页（新标签）；缺地址时回退到工作台。
@@ -427,6 +443,32 @@ function showIssueHint() {
                   @click="confirmAccept"
                 >
                   {{ isAssigning ? '正在盖印…' : '确认接取' }}
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="contract-fade">
+        <div v-if="showTakenModal" class="accept-overlay" @click.self="backToQuestBoard">
+          <Transition name="contract-rise" appear>
+            <div
+              class="accept-dialog taken-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="taken-dialog-title"
+            >
+              <span class="taken-dialog-seal" aria-hidden="true"></span>
+              <p class="kicker">委托已被接取</p>
+              <h2 id="taken-dialog-title">慢了一步</h2>
+              <p class="accept-dialog-body">{{ takenModalBody }}</p>
+
+              <div class="accept-dialog-actions">
+                <button type="button" class="primary-action" @click="backToQuestBoard">
+                  返回委托板 →
                 </button>
               </div>
             </div>
@@ -890,6 +932,44 @@ function showIssueHint() {
 .accept-confirm-btn:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* ── 委托已被接取浮层：与接取契约同骨架，但换成「断裂蜡封」的告警语气 ── */
+.taken-dialog {
+  border-color: rgba(214, 120, 92, 0.6);
+  background:
+    linear-gradient(180deg, rgba(40, 18, 12, 0.96), rgba(18, 8, 5, 0.96)),
+    linear-gradient(135deg, rgba(196, 86, 58, 0.2), transparent 62%);
+}
+
+.taken-dialog .kicker {
+  color: #f0a18f;
+}
+
+/* 断裂的蜡封：用一道裂缝把圆形封蜡劈成两半，呼应「来晚了」。 */
+.taken-dialog-seal {
+  position: absolute;
+  top: -16px;
+  right: 22px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e8a48f, #a8412a 60%, #6e2412);
+  box-shadow: 0 6px 12px rgba(40, 10, 4, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+
+.taken-dialog-seal::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background: linear-gradient(
+    105deg,
+    transparent calc(50% - 1.4px),
+    rgba(20, 6, 3, 0.85) calc(50% - 1.4px),
+    rgba(20, 6, 3, 0.85) calc(50% + 1.4px),
+    transparent calc(50% + 1.4px)
+  );
+  border-radius: 50%;
 }
 
 .contract-fade-enter-active,
