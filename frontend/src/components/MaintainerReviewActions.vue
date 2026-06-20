@@ -158,6 +158,9 @@ watch(
     </label>
 
     <div class="action-buttons">
+      <button class="quiet-action" type="button" :disabled="busy" @click="emit('save-draft', buildPayload())">
+        保存草稿
+      </button>
       <button
         class="primary-action"
         :class="{ 'danger-action': isReject }"
@@ -166,9 +169,6 @@ watch(
         @click="requestConfirm"
       >
         {{ busy ? '提交中...' : selectedDecision.label }}
-      </button>
-      <button class="quiet-action" type="button" :disabled="busy" @click="emit('save-draft', buildPayload())">
-        保存草稿
       </button>
     </div>
 

@@ -33,14 +33,6 @@ const isSealing = ref(false)
 const showTakenModal = ref(false)
 const takenModalBody = ref('')
 
-const defaultSubmissionRequirements = [
-  '关联任务编号和任务标题。',
-  '关联 PR 链接。',
-  '成果说明，说明本次修改解决了什么问题。',
-  '完成标准逐项自检。',
-  '测试说明或运行截图；MVP 中附件可以为空。',
-]
-
 // Map each workflow status label to a seal colour, matching the quest board so
 // the same state reads identically across the board and the detail scroll.
 const STATUS_TONE = {
@@ -75,11 +67,9 @@ const pullRequest = computed(
       status: 'Not started',
     },
 )
-const beginnerTags = computed(() => (props.quest.tags ?? []).filter((tag) => tag.includes('新手') || tag === '教程'))
 const estimatedHours = computed(() => props.quest.estimatedHours ?? null)
 const estimatedHoursLabel = computed(() => (estimatedHours.value === null ? '未提供' : `${estimatedHours.value}h`))
 const description = computed(() => props.quest.description ?? props.quest.summary)
-const submissionRequirements = computed(() => props.quest.submissionRequirements ?? defaultSubmissionRequirements)
 const hasPullRequest = computed(() => pullRequest.value.number !== 'Not created')
 const isAcceptIntent = computed(() => props.intent === 'accept' && localWorkflowState.value === 'available')
 
@@ -89,7 +79,7 @@ const metaChips = computed(() => [
   { key: 'reward', label: '奖励', value: props.quest.reward },
   { key: 'hours', label: '预计时长', value: estimatedHoursLabel.value },
   { key: 'stack', label: '技术栈', value: props.quest.stack },
-  { key: 'beginner', label: '新手标签', value: beginnerTags.value.length ? beginnerTags.value.join(' / ') : '普通任务' },
+  { key: 'tags', label: '标签', value: (props.quest.tags ?? []).length ? props.quest.tags.join(' / ') : '暂无标签' },
 ])
 
 // Single most-relevant exception hint surfaced on the action rail.
@@ -265,8 +255,15 @@ function handleSecondaryAction() {
   emit('open-workbench')
 }
 
-function showIssueHint() {
-  inlineNotice.value = `已定位 Issue ${issue.value.number}：${issue.value.title}。可进入工作台查看仓库与 Issue 上下文。`
+// 「查看 Issue」直接跳转到平台 Gitea 上对应的 Issue 页（新标签）；
+// 没有可用地址时回退为内联提示，避免点击无反馈。
+function viewIssue() {
+  const url = issue.value.webUrl
+  if (url) {
+    window.open(url, '_blank', 'noopener')
+    return
+  }
+  inlineNotice.value = `Issue ${issue.value.number}：${issue.value.title} 暂无可跳转的链接。`
 }
 </script>
 
@@ -309,15 +306,11 @@ function showIssueHint() {
         </li>
       </ul>
 
-      <p class="workflow-boundary">
-        项目操作在工作台完成：创建分支、上传文件生成 commit、发起 PR。任务成果提交在提交柜台完成：关联 PR、填写成果说明、完成标准自检、提交审核。
-      </p>
     </header>
 
     <div class="quest-detail-grid">
       <main class="quest-main-column">
         <section class="quest-detail-card">
-          <p class="kicker">任务背景</p>
           <h2>任务背景</h2>
           <p>{{ description }}</p>
           <dl class="source-summary">
@@ -333,9 +326,7 @@ function showIssueHint() {
         </section>
 
         <section class="quest-detail-card">
-          <p class="kicker">验收清单</p>
           <h2>完成标准</h2>
-          <p class="section-note">提交前请逐项确认。这里检查任务完成结果，不替代工作台中的 commit 和 PR 操作。</p>
           <div class="criteria-list">
             <label v-for="line in quest.criteria" :key="line">
               <input type="checkbox" disabled />
@@ -344,12 +335,7 @@ function showIssueHint() {
           </div>
         </section>
 
-        <QuestJourney
-          :quest="quest"
-          :workflow-state="localWorkflowState"
-          :repository="repository"
-          :pull-request="pullRequest"
-        />
+        <QuestJourney :workflow-state="localWorkflowState" />
       </main>
 
       <aside class="quest-side-column">
@@ -393,18 +379,9 @@ function showIssueHint() {
             </div>
           </dl>
           <div class="side-actions">
+            <button class="quiet-action" type="button" @click="viewIssue">查看 Issue</button>
             <button class="primary-action" type="button" @click="viewRepository">查看仓库</button>
-            <button class="quiet-action" type="button" @click="showIssueHint">查看 Issue</button>
           </div>
-        </section>
-
-        <section class="quest-detail-card side-card">
-          <p class="kicker">提交柜台</p>
-          <h2>提交要求</h2>
-          <ul class="submission-requirements">
-            <li v-for="item in submissionRequirements" :key="item">{{ item }}</li>
-          </ul>
-          <p class="counter-boundary">提交柜台只登记任务成果和审核材料，不负责创建 commit 或发起 PR。</p>
         </section>
       </aside>
     </div>
@@ -645,15 +622,6 @@ function showIssueHint() {
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6);
 }
 
-.workflow-boundary {
-  margin: 16px 0 0;
-  border-left: 3px solid rgba(242, 192, 111, 0.8);
-  padding: 10px 12px;
-  color: rgba(255, 231, 183, 0.78);
-  line-height: 1.48;
-  background: rgba(9, 5, 2, 0.28);
-}
-
 .quest-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(310px, 0.42fr);
@@ -676,9 +644,7 @@ function showIssueHint() {
   font-size: 1.18rem;
 }
 
-.quest-detail-card p,
-.section-note,
-.submission-requirements {
+.quest-detail-card p {
   color: rgba(255, 231, 183, 0.78);
   line-height: 1.48;
 }
@@ -726,8 +692,10 @@ function showIssueHint() {
   align-items: start;
   border: 1px solid rgba(240, 198, 118, 0.16);
   border-radius: 5px;
-  padding: 10px;
+  padding: 12px;
   color: #ffe8b9;
+  font-size: 1.04rem;
+  line-height: 1.5;
   background: rgba(11, 6, 3, 0.3);
 }
 
@@ -753,26 +721,6 @@ function showIssueHint() {
 .side-actions .quiet-action {
   min-height: 36px;
   padding: 0 12px;
-}
-
-.submission-requirements {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.submission-requirements li {
-  border-bottom: 1px solid rgba(240, 198, 118, 0.16);
-  padding-bottom: 7px;
-}
-
-.counter-boundary {
-  border: 1px solid rgba(240, 198, 118, 0.16);
-  border-radius: 5px;
-  padding: 10px;
-  background: rgba(11, 6, 3, 0.28);
 }
 
 /* Orchestrated page-load: the scroll unfurls top-to-bottom, cards rise in.

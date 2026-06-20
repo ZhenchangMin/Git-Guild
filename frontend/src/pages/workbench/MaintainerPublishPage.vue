@@ -699,8 +699,14 @@ function unwrapItems(payload) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 16px;
   margin-top: 4px;
+}
+/* 发布按钮固定在右下角；错误提示挤到左侧同一行，窄屏自动换行。 */
+.writ-actions .writ-banner {
+  order: -1;
+  margin-right: auto;
 }
 .writ-banner {
   margin: 0;

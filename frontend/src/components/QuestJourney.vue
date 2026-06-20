@@ -1,23 +1,10 @@
 <script setup>
-import BeginnerQuestChecklist from './BeginnerQuestChecklist.vue'
 import QuestStepper from './QuestStepper.vue'
 
 defineProps({
-  quest: {
-    type: Object,
-    required: true,
-  },
   workflowState: {
     type: String,
     default: 'available',
-  },
-  repository: {
-    type: Object,
-    default: () => ({}),
-  },
-  pullRequest: {
-    type: Object,
-    default: () => ({}),
   },
 })
 </script>
@@ -27,19 +14,10 @@ defineProps({
     <header class="journey-head">
       <p class="kicker">Contribution Journey</p>
       <h2>贡献流程</h2>
-      <p class="journey-sub">先看清你在整条链路的哪一步，再按下方清单逐项推进。</p>
+      <p class="journey-sub">先看清你在整条链路所处的位置；具体每一步的操作指引在工作台内提供。</p>
     </header>
 
     <QuestStepper :status="workflowState" />
-
-    <hr class="journey-divider" />
-
-    <BeginnerQuestChecklist
-      :quest="quest"
-      :workflow-state="workflowState"
-      :repository="repository"
-      :pull-request="pullRequest"
-    />
   </section>
 </template>
 
@@ -67,13 +45,5 @@ defineProps({
   margin: 8px 0 0;
   color: rgba(255, 231, 183, 0.78);
   line-height: 1.48;
-}
-
-.journey-divider {
-  height: 1px;
-  width: 100%;
-  margin: 0;
-  border: 0;
-  background: linear-gradient(90deg, transparent, rgba(238, 184, 91, 0.32), transparent);
 }
 </style>

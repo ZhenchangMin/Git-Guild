@@ -30,6 +30,54 @@ function isImageEvidence(file) {
   return (file?.mimeType || '').startsWith('image/')
 }
 
+// 把 base64 的 data: URL 还原成 Blob。
+// 直接用 <a target="_blank" href="data:..."> 打开会被现代浏览器拦截（落到 about:blank），
+// 必须先转成 blob: URL 再打开 / 下载。
+function dataUrlToBlob(dataUrl) {
+  const [header, base64 = ''] = String(dataUrl).split(',')
+  const mimeMatch = header.match(/data:([^;]+)/)
+  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream'
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return new Blob([bytes], { type: mime })
+}
+
+// 打开佐证文件：图片在新标签预览，文档触发下载。统一走 blob: URL 规避 data: 拦截。
+function openEvidence(file) {
+  if (!file?.content) return
+
+  const content = String(file.content)
+  // 兼容历史数据：若已是普通链接（http/blob），直接打开。
+  if (!content.startsWith('data:')) {
+    window.open(content, '_blank', 'noopener')
+    return
+  }
+
+  let objectUrl
+  try {
+    objectUrl = URL.createObjectURL(dataUrlToBlob(content))
+  } catch {
+    return
+  }
+
+  if (isImageEvidence(file)) {
+    window.open(objectUrl, '_blank', 'noopener')
+  } else {
+    const anchor = document.createElement('a')
+    anchor.href = objectUrl
+    anchor.download = file.name || 'evidence'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }
+
+  // 留足新标签 / 下载读取时间后回收，避免内存泄漏。
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+}
+
 // 合并 PR 二次确认弹窗开关
 const mergeConfirmOpen = ref(false)
 
@@ -113,13 +161,11 @@ function confirmMerge() {
           <span class="deliverable-label">冒险家上传的佐证文件（{{ review.evidenceFiles.length }}）</span>
           <ul class="evidence-file-grid">
             <li v-for="(file, idx) in review.evidenceFiles" :key="idx" class="evidence-file">
-              <a
+              <button
+                type="button"
                 class="evidence-file-link"
-                :href="file.content"
-                :download="isImageEvidence(file) ? null : file.name"
-                :target="isImageEvidence(file) ? '_blank' : null"
-                rel="noopener noreferrer"
                 :title="isImageEvidence(file) ? `点击查看大图：${file.name}` : `点击下载：${file.name}`"
+                @click="openEvidence(file)"
               >
                 <img
                   v-if="isImageEvidence(file)"
@@ -129,7 +175,7 @@ function confirmMerge() {
                 />
                 <span v-else class="evidence-doc-glyph" aria-hidden="true">⤓</span>
                 <span class="evidence-file-name">{{ file.name }}</span>
-              </a>
+              </button>
             </li>
           </ul>
         </div>
@@ -395,10 +441,14 @@ function confirmMerge() {
   display: grid;
   gap: 6px;
   justify-items: center;
+  width: 100%;
   padding: 8px;
   border: 1px solid rgba(240, 198, 118, 0.28);
   border-radius: 8px;
   text-decoration: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
   background: rgba(7, 4, 2, 0.34);
   transition: border-color 150ms ease, transform 120ms ease, box-shadow 150ms ease;
 }

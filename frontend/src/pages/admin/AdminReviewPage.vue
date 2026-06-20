@@ -465,11 +465,16 @@ function decisionAllowedForStatus(decision, status) {
   return Array.isArray(requires) ? requires.includes(status) : requires === status
 }
 
-// 当前任务状态允许的管理员决策（业务规则 2-5）。
+// 决策按钮的展示顺序：退回补充在前、通过上架在后（其余依次）。
+const DECISION_ORDER = ['REJECT_PUBLISH', 'APPROVE_PUBLISH', 'TAKE_DOWN', 'REOPEN']
+
+// 当前任务状态允许的管理员决策（业务规则 2-5），按 DECISION_ORDER 排列。
 const availableDecisions = computed(() => {
   const application = activeApplication.value
   if (!application) return []
-  return Object.keys(decisionMeta).filter((decision) => decisionAllowedForStatus(decision, application.questStatus))
+  return DECISION_ORDER.filter(
+    (decision) => decisionMeta[decision] && decisionAllowedForStatus(decision, application.questStatus),
+  )
 })
 
 function statusOf(application) {
@@ -958,13 +963,8 @@ async function submitDecision(decision) {
                   <div class="admin-action-buttons">
                     <button
                       type="button"
-                      :class="
-                        decisionMeta[selectedDecision].intent === 'primary'
-                          ? 'primary-action'
-                          : decisionMeta[selectedDecision].intent === 'danger'
-                            ? 'quiet-action danger'
-                            : 'quiet-action'
-                      "
+                      class="admin-decision-action"
+                      :class="recordTone(selectedDecision)"
                       :disabled="submitting"
                       @click="submitDecision(selectedDecision)"
                     >

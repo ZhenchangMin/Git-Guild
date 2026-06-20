@@ -2240,6 +2240,56 @@ h2 {
   color: #6e2418;
 }
 
+/* 未选中态也带上各自语气的底色，让通过(绿)/退回(橙)/下架(红) 一眼可辨。 */
+.admin-decision-toggle-btn.approved {
+  border-color: rgba(67, 97, 58, 0.5);
+  background: rgba(67, 97, 58, 0.09);
+  color: #3a5a2c;
+}
+.admin-decision-toggle-btn.return {
+  border-color: rgba(214, 142, 56, 0.5);
+  background: rgba(214, 142, 56, 0.1);
+  color: #8a4d15;
+}
+.admin-decision-toggle-btn.danger {
+  border-color: rgba(202, 104, 88, 0.5);
+  background: rgba(168, 57, 43, 0.08);
+  color: #8a2f20;
+}
+
+/* 提交按钮：按结论上色的实心按钮（通过=绿 / 退回=橙 / 下架=红）。 */
+.admin-action-buttons .admin-decision-action {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 11px 16px;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.96rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.admin-action-buttons .admin-decision-action:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+.admin-decision-action.approved {
+  border-color: rgba(67, 97, 58, 0.85);
+  background: linear-gradient(180deg, #6f9a55, #46673a);
+  color: #f4ffe8;
+}
+.admin-decision-action.return {
+  border-color: #e6a23c;
+  background: linear-gradient(180deg, #ffce6e, #d6884a);
+  color: #2a1505;
+}
+.admin-decision-action.danger {
+  border-color: rgba(202, 104, 88, 0.85);
+  background: linear-gradient(180deg, #c0584a, #8a2f20);
+  color: #ffe6df;
+}
+
 .admin-decision-copy {
   margin: 12px 0 0;
   padding: 8px 10px;
