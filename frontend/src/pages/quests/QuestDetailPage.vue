@@ -156,6 +156,14 @@ function goBack() {
 }
 
 function openWorkbench() {
+  // 游客点「进入工作台」：先跳登录，登录后直达工作台（redirect 指向受保护的工作台路径）。
+  if (sessionStore.role === 'VISITOR') {
+    router.push({
+      name: 'login',
+      query: { redirect: router.resolve({ name: 'adventurer-workbench' }).fullPath },
+    })
+    return
+  }
   router.push({
     name: sessionStore.role === 'ADVENTURER' || sessionStore.role === 'MAINTAINER'
       ? 'adventurer-workbench'

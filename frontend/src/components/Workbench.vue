@@ -23,9 +23,9 @@ import {
   loadNotifications,
   markNotificationRead,
   notificationStore,
-  startNotificationPolling,
-  stopNotificationPolling,
+  openNotification,
 } from '../stores/notificationStore'
+import { notificationMeta } from '../data/notificationMeta'
 
 const emit = defineEmits(['open-submission', 'open-id-card', 'open-review-desk'])
 
@@ -289,8 +289,8 @@ const liveNotifications = computed(() =>
   })),
 )
 const noticeList = computed(() => (liveNotifications.value.length > 0 ? liveNotifications.value : notifications))
-// 信箱整体未读 = 未读邮件（mock 演示）+ 真实未读通知。
-const totalUnreadCount = computed(() => unreadMailCount.value + notificationStore.unreadCount)
+// 信箱未读数直接取真实站内通知的未读数（信箱现在只展示真实通知）。
+const totalUnreadCount = computed(() => notificationStore.unreadCount)
 const displayStats = computed(() =>
   liveStats.value.map((stat) => (stat.label === '未读邮件' ? { ...stat, value: unreadMailCount.value } : stat)),
 )
@@ -620,14 +620,23 @@ function toggleMailbox() {
   }
 }
 
-onMounted(() => {
-  // 进入工作台即拉取并轮询真实通知，使信箱未读数与公会大厅通知铃保持一致。
-  startNotificationPolling()
-  fetchWorkbenchData()
-})
+// 点信箱里的某条通知：关掉信箱，弹出与公会大厅同款的「信笺」详情弹窗（含动作按钮，自动标记已读）。
+function openMailNotification(item) {
+  isMailboxOpen.value = false
+  openNotification(item)
+}
 
-onUnmounted(() => {
-  stopNotificationPolling()
+function mailTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+onMounted(() => {
+  // 轮询由全局 NotificationCenter 统一负责；这里只主动拉一次，保证信箱首屏未读数最新。
+  loadNotifications()
+  fetchWorkbenchData()
 })
 
 function showGrowthDetails(source = '个人成长档案') {
@@ -1202,41 +1211,26 @@ function openFeedback(feedbackId, source = '审核反馈') {
           <span v-if="totalUnreadCount > 0" class="mail-alert" aria-label="有未读消息">!</span>
         </button>
 
-        <section v-if="isMailboxOpen" class="mailbox-popover" aria-label="信箱与站内通知">
+        <section v-if="isMailboxOpen" class="mailbox-popover" aria-label="站内通知">
           <div class="mailbox-head">
             <div>
               <p class="kicker">Mailbox</p>
-              <h2>信箱与通知</h2>
+              <h2>站内通知</h2>
             </div>
             <span>{{ totalUnreadCount }} 未读</span>
           </div>
 
+          <p v-if="notificationStore.items.length === 0" class="mailbox-empty">暂无通知</p>
           <button
-            v-for="email in mailboxMessages"
-            :key="email.id"
+            v-for="item in notificationStore.items"
+            :key="item.notificationId"
             class="mail-preview"
-            :class="{ unread: email.unread, active: selectedEmailId === email.id }"
+            :class="[notificationMeta(item.type).tone, { unread: item.status === 'UNREAD' }]"
             type="button"
-            @click="selectEmail(email)"
+            @click="openMailNotification(item)"
           >
-            <span>{{ email.from }} · {{ email.receivedAt }}</span>
-            <strong>{{ email.subject }}</strong>
-            <small>{{ email.preview }}</small>
-          </button>
-
-          <div class="mailbox-section-title">系统通知</div>
-          <button
-            v-for="notice in noticeList"
-            :key="notice.id ?? notice.text"
-            class="mail-preview notice-preview"
-            :class="{ unread: notice.unread, active: !notice.live && selectedNotificationText === notice.text }"
-            type="button"
-            @click="notice.live ? selectLiveNotification(notice) : selectNotification(notice)"
-          >
-            <span>{{ notice.type }}</span>
-            <strong>{{ notice.text }}</strong>
-            <small v-if="notice.live">{{ notice.unread ? '未读' : '已读' }}</small>
-            <small v-else>操作：{{ notice.action }}</small>
+            <span>{{ notificationMeta(item.type).title }} · {{ mailTime(item.createdAt) }}</span>
+            <strong>{{ item.content }}</strong>
           </button>
         </section>
       </div>
@@ -1906,6 +1900,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
   gap: 5px;
   width: 100%;
   border: 1px solid rgba(240, 198, 118, 0.18);
+  border-left-width: 3px;
   border-radius: 5px;
   margin-top: 8px;
   padding: 10px;
@@ -1913,6 +1908,19 @@ function openFeedback(feedbackId, source = '审核反馈') {
   text-align: left;
   background: rgba(11, 6, 3, 0.38);
   transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+/* 通知类型色条，与公会大厅通知保持一致 */
+.mail-preview.tone-approved { border-left-color: #a9d07b; }
+.mail-preview.tone-pending { border-left-color: #f0b868; }
+.mail-preview.tone-changes { border-left-color: #f0a06d; }
+.mail-preview.tone-rejected { border-left-color: #dc826e; }
+
+.mailbox-empty {
+  margin: 12px 0 4px;
+  color: rgba(255, 231, 183, 0.6);
+  font-size: 0.84rem;
+  text-align: center;
 }
 
 .mail-preview:hover,

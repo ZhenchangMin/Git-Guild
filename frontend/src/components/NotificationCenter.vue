@@ -132,8 +132,8 @@ onUnmounted(stopNotificationPolling)
 /* ── 角落瞬时提示 ───────────────────────────────────────── */
 .toast-stack {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
+  left: 20px;
+  top: 20px;
   z-index: 2000;
   display: grid;
   gap: 10px;
@@ -238,11 +238,11 @@ onUnmounted(stopNotificationPolling)
   position: relative;
 }
 .toast-pop-enter-from {
-  transform: translateX(40px) scale(0.96);
+  transform: translateX(-40px) scale(0.96);
   opacity: 0;
 }
 .toast-pop-leave-to {
-  transform: translateX(40px);
+  transform: translateX(-40px);
   opacity: 0;
 }
 
