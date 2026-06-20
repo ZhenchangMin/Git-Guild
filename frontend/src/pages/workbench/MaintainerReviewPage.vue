@@ -70,7 +70,7 @@ function mapSubmissionStatus(status) {
   return {
     PENDING_REVIEW: { label: '待审核', tone: 'review' },
     APPROVED: { label: '审核通过', tone: 'approved' },
-    CHANGES_REQUESTED: { label: '已请求修改', tone: 'warning' },
+    CHANGES_REQUESTED: { label: '已要求修改', tone: 'warning' },
     REJECTED: { label: '已驳回', tone: 'danger' },
   }[status] ?? { label: status || '未知状态', tone: 'review' }
 }
@@ -215,7 +215,7 @@ function updateReviewStatus(decision) {
   if (!selectedReview.value) return
 
   const nextStatus =
-    decision === 'APPROVED' ? '审核通过' : decision === 'REJECTED' ? '已驳回' : '已请求修改'
+    decision === 'APPROVED' ? '审核通过' : decision === 'REJECTED' ? '已驳回' : '已要求修改'
   const nextTone = decision === 'APPROVED' ? 'approved' : decision === 'REJECTED' ? 'danger' : 'warning'
 
   reviews.value = reviews.value.map((review) =>

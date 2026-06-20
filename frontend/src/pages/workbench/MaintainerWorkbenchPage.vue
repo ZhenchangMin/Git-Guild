@@ -34,22 +34,31 @@ const QUEST_STATUS = {
   IN_PROGRESS: { label: '进行中', tone: 'active' },
   IN_REVIEW: { label: '审核中', tone: 'pending' },
   COMPLETED: { label: '已完成', tone: 'done' },
-  REJECTED: { label: '已退回修改', tone: 'rejected' },
+  REJECTED: { label: '被退回', tone: 'rejected' },
   CLOSED: { label: '已下架', tone: 'rejected' },
+  // 提交级状态：委托人把冒险家的提交退回要求修改（Quest 仍停留在 IN_REVIEW，靠 latestSubmissionStatus 体现）
+  CHANGES_REQUESTED: { label: '已要求修改', tone: 'changes' },
 }
 function questStatus(status) {
   return QUEST_STATUS[status] ?? { label: status || '未知', tone: 'draft' }
 }
 
+// 展示用的有效状态：委托人退回提交时 Quest 仍是 IN_REVIEW，但语义上应显示为「已要求修改」，
+// 因此最近一次提交为 CHANGES_REQUESTED 时优先以提交状态展示。
+function effectiveStatus(quest) {
+  if (quest?.latestSubmissionStatus === 'CHANGES_REQUESTED') return 'CHANGES_REQUESTED'
+  return quest?.status
+}
+
 // 状态筛选：'ALL' 表示不过滤。chip 列表只展示当前委托里实际出现过的状态，避免空选项。
 const questStatusFilter = ref('ALL')
 const questStatusFilterOptions = computed(() => {
-  const present = new Set(myQuests.value.map((q) => q.status))
+  const present = new Set(myQuests.value.map((q) => effectiveStatus(q)))
   return Object.keys(QUEST_STATUS).filter((status) => present.has(status))
 })
 const filteredMyQuests = computed(() => {
   if (questStatusFilter.value === 'ALL') return myQuests.value
-  return myQuests.value.filter((q) => q.status === questStatusFilter.value)
+  return myQuests.value.filter((q) => effectiveStatus(q) === questStatusFilter.value)
 })
 function setQuestStatusFilter(status) {
   questStatusFilter.value = status
@@ -330,14 +339,14 @@ onUnmounted(() => {
                 type="button"
                 class="office-quest-badge is-clickable"
                 :class="questStatus(q.status).tone"
-                title="点击查看被驳回的原因"
+                title="点击查看被退回的原因"
                 @click="openRejection(q)"
               >
                 {{ questStatus(q.status).label }}
                 <span class="office-quest-badge-peek" aria-hidden="true">查看原因 ›</span>
               </button>
-              <span v-else class="office-quest-badge" :class="questStatus(q.status).tone">
-                {{ questStatus(q.status).label }}
+              <span v-else class="office-quest-badge" :class="questStatus(effectiveStatus(q)).tone">
+                {{ questStatus(effectiveStatus(q)).label }}
               </span>
             </li>
           </ul>
@@ -659,6 +668,11 @@ onUnmounted(() => {
   color: #f0a890;
   background: rgba(110, 42, 36, 0.3);
   border-color: rgba(220, 130, 110, 0.4);
+}
+.office-quest-badge.changes {
+  color: #ffc98a;
+  background: rgba(150, 78, 20, 0.32);
+  border-color: rgba(240, 160, 90, 0.42);
 }
 
 /* 可点击的「已驳回」徽标：悬停时浮现「查看原因 ›」并加深底色，暗示可交互。 */
