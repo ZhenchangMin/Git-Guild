@@ -32,8 +32,8 @@ const repositoryIssues = ref([])
 const errorMessage = ref('')
 // 导入失败弹窗：null = 不显示；否则为 { title, reason, hints, detail, sourceUrl }
 const failure = ref(null)
-// 导入二次确认弹窗：null = 不显示；否则为待确认的 { sourceUrl, name, hostType }
-const importConfirm = ref(null)
+// 新建/导入二次确认弹窗：null = 不显示；否则为 { kind: 'create'|'import', ...待确认字段 }
+const repoConfirm = ref(null)
 
 // 迁移进度：后端是单次异步调用、不流式回传百分比，所以进度绑定真实阶段边界
 // （迁移 → 同步 Issue → 读取 Issue → 完成）；长耗时的迁移阶段用渐近爬升避免“卡死感”。
@@ -153,20 +153,36 @@ function syncNameFromUrl() {
 // 提交前先弹二次确认：展示用户填写的仓库基本信息，避免误填地址直接触发迁移。
 function requestImportConfirm() {
   if (!canImport.value) return
-  importConfirm.value = {
+  repoConfirm.value = {
+    kind: 'import',
     sourceUrl: repositoryForm.value.sourceUrl.trim(),
     name: repositoryForm.value.name.trim(),
     hostType: repositoryForm.value.hostType,
   }
 }
 
-function cancelImportConfirm() {
-  importConfirm.value = null
+// 新建空仓库同样先弹二次确认：展示将要创建的仓库名称/描述，避免误触直接建库。
+function requestCreateConfirm() {
+  if (!canCreate.value) return
+  repoConfirm.value = {
+    kind: 'create',
+    name: createForm.value.name.trim(),
+    description: createForm.value.description.trim(),
+  }
 }
 
-function confirmImport() {
-  importConfirm.value = null
-  importRepository()
+function cancelRepoConfirm() {
+  repoConfirm.value = null
+}
+
+function confirmRepoAction() {
+  const kind = repoConfirm.value?.kind
+  repoConfirm.value = null
+  if (kind === 'create') {
+    createRepository()
+  } else {
+    importRepository()
+  }
 }
 
 async function importRepository() {
@@ -460,7 +476,7 @@ onBeforeUnmount(stopCreep)
       </ol>
     </section>
 
-    <form class="frontdesk-pocket import-panel" @submit.prevent="mode === 'create' ? createRepository() : requestImportConfirm()">
+    <form class="frontdesk-pocket import-panel" @submit.prevent="mode === 'create' ? requestCreateConfirm() : requestImportConfirm()">
       <div class="pocket-head">
         <div>
           <p class="kicker">Repository Intake</p>
@@ -631,35 +647,55 @@ onBeforeUnmount(stopCreep)
 
     <transition name="failure-pop">
       <div
-        v-if="importConfirm"
+        v-if="repoConfirm"
         class="import-confirm-modal"
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="import-confirm-title"
-        @click.self="cancelImportConfirm"
+        aria-labelledby="repo-confirm-title"
+        @click.self="cancelRepoConfirm"
       >
         <div class="confirm-card">
-          <button class="confirm-close" type="button" aria-label="关闭" @click="cancelImportConfirm">×</button>
-          <p class="kicker">Confirm Import</p>
-          <h2 id="import-confirm-title">确认导入这个仓库？</h2>
-          <p class="confirm-lead">迁移开始后会把以下来源仓库迁入平台并同步 Issue，请核对信息无误。</p>
-          <dl class="confirm-meta">
+          <button class="confirm-close" type="button" aria-label="关闭" @click="cancelRepoConfirm">×</button>
+          <p class="kicker">{{ repoConfirm.kind === 'create' ? 'Confirm Create' : 'Confirm Import' }}</p>
+          <h2 id="repo-confirm-title">
+            {{ repoConfirm.kind === 'create' ? '确认创建这个空仓库？' : '确认导入这个仓库？' }}
+          </h2>
+          <p class="confirm-lead">
+            {{
+              repoConfirm.kind === 'create'
+                ? '创建后会在平台本地 Gitea 生成一个空仓库，请核对名称无误。'
+                : '迁移开始后会把以下来源仓库迁入平台并同步 Issue，请核对信息无误。'
+            }}
+          </p>
+          <dl v-if="repoConfirm.kind === 'create'" class="confirm-meta">
+            <div>
+              <dt>仓库名称</dt>
+              <dd>{{ repoConfirm.name }}</dd>
+            </div>
+            <div>
+              <dt>仓库描述</dt>
+              <dd>{{ repoConfirm.description || '（未填写）' }}</dd>
+            </div>
+          </dl>
+          <dl v-else class="confirm-meta">
             <div>
               <dt>仓库地址</dt>
-              <dd>{{ importConfirm.sourceUrl }}</dd>
+              <dd>{{ repoConfirm.sourceUrl }}</dd>
             </div>
             <div>
               <dt>平台仓库名称</dt>
-              <dd>{{ importConfirm.name }}</dd>
+              <dd>{{ repoConfirm.name }}</dd>
             </div>
             <div>
               <dt>托管类型</dt>
-              <dd>{{ importConfirm.hostType === 'GITEA' ? 'Gitea / GitHub' : importConfirm.hostType }}</dd>
+              <dd>{{ repoConfirm.hostType === 'GITEA' ? 'Gitea / GitHub' : repoConfirm.hostType }}</dd>
             </div>
           </dl>
           <div class="confirm-actions">
-            <button class="quiet-action" type="button" @click="cancelImportConfirm">取消</button>
-            <button class="primary-action" type="button" @click="confirmImport">确认导入</button>
+            <button class="quiet-action" type="button" @click="cancelRepoConfirm">取消</button>
+            <button class="primary-action" type="button" @click="confirmRepoAction">
+              {{ repoConfirm.kind === 'create' ? '确认创建' : '确认导入' }}
+            </button>
           </div>
         </div>
       </div>

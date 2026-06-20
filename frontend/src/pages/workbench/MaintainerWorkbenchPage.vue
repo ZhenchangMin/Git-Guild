@@ -130,21 +130,31 @@ async function loadRepos() {
   }
 }
 
-// 删除已接入仓库：二次确认后调用后端级联删除，成功则刷新列表与「我发布的委托」。
-async function deleteRepo(repo) {
+// 删除仓库二次确认弹窗：null = 不显示；否则为 { repo, error }
+const deleteConfirm = ref(null)
+
+function requestDeleteRepo(repo) {
   if (deletingRepoId.value) return
-  const confirmed = window.confirm(
-    `确定删除仓库「${repo.name}」吗？\n\n` +
-      '该仓库下的所有委托、提交、审核记录及平台 Gitea 副本都会被一并删除，且不可恢复。',
-  )
-  if (!confirmed) return
+  deleteConfirm.value = { repo, error: '' }
+}
+
+function cancelDeleteRepo() {
+  if (deletingRepoId.value) return
+  deleteConfirm.value = null
+}
+
+// 删除已接入仓库：二次确认后调用后端级联删除，成功则刷新列表与「我发布的委托」。
+async function confirmDeleteRepo() {
+  const repo = deleteConfirm.value?.repo
+  if (!repo || deletingRepoId.value) return
 
   deletingRepoId.value = repo.repositoryId
   try {
     await repositoryApi.remove(repo.repositoryId)
+    deleteConfirm.value = null
     await Promise.all([loadRepos(), loadMyQuests()])
   } catch (err) {
-    window.alert(err?.message || '删除失败，请稍后重试。')
+    if (deleteConfirm.value) deleteConfirm.value.error = err?.message || '删除失败，请稍后重试。'
   } finally {
     deletingRepoId.value = null
   }
@@ -342,7 +352,7 @@ onMounted(async () => {
                   class="office-link office-link-danger"
                   type="button"
                   :disabled="deletingRepoId === r.repositoryId"
-                  @click="deleteRepo(r)"
+                  @click="requestDeleteRepo(r)"
                 >
                   {{ deletingRepoId === r.repositoryId ? '删除中…' : '删除' }}
                 </button>
@@ -380,6 +390,40 @@ onMounted(async () => {
           <div class="reject-actions">
             <button class="quiet-action" type="button" @click="closeRejection">返回工作台</button>
             <button class="primary-action" type="button" @click="republishFromRejection">重新发布委托 →</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 删除仓库二次确认：列出仓库名称与级联影响范围，取消在左、确认在右。 -->
+    <transition name="reject-pop">
+      <div
+        v-if="deleteConfirm"
+        class="delete-repo-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-repo-title"
+        @click.self="cancelDeleteRepo"
+      >
+        <div class="delete-repo-card">
+          <button class="reject-close" type="button" aria-label="关闭" :disabled="!!deletingRepoId" @click="cancelDeleteRepo">×</button>
+          <span class="reject-icon" aria-hidden="true">⊘</span>
+          <p class="kicker">Delete Repository</p>
+          <h2 id="delete-repo-title">确认删除这个仓库？</h2>
+          <p class="reject-quest-title">{{ deleteConfirm.repo?.name }}</p>
+
+          <div class="reject-reason-box">
+            <p class="reject-reason">
+              该仓库下的所有委托、提交、审核记录及平台 Gitea 副本都会被一并删除，且<strong>不可恢复</strong>。
+            </p>
+            <p v-if="deleteConfirm.error" class="reject-reason danger">{{ deleteConfirm.error }}</p>
+          </div>
+
+          <div class="reject-actions">
+            <button class="quiet-action" type="button" :disabled="!!deletingRepoId" @click="cancelDeleteRepo">取消</button>
+            <button class="danger-action" type="button" :disabled="!!deletingRepoId" @click="confirmDeleteRepo">
+              {{ deletingRepoId ? '删除中…' : '确认删除' }}
+            </button>
           </div>
         </div>
       </div>
@@ -727,6 +771,51 @@ onMounted(async () => {
 .reject-pop-leave-to .reject-card {
   transform: translateY(12px) scale(0.96);
   opacity: 0;
+}
+
+/* ── 删除仓库二次确认弹窗（与驳回原因弹窗同款式，红色基调强调破坏性） ── */
+.delete-repo-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 5, 3, 0.62);
+  backdrop-filter: blur(2px);
+}
+.delete-repo-card {
+  position: relative;
+  width: min(460px, 100%);
+  padding: 34px 30px 26px;
+  text-align: center;
+  border: 1px solid rgba(220, 130, 110, 0.42);
+  border-radius: 14px;
+  color: #ffe9c4;
+  background: linear-gradient(168deg, rgba(60, 26, 20, 0.96), rgba(28, 14, 9, 0.98));
+  box-shadow: 0 26px 64px rgba(0, 0, 0, 0.55);
+}
+.danger-action {
+  min-height: 42px;
+  border: 1px solid rgba(238, 120, 82, 0.62);
+  border-radius: 4px;
+  padding: 0 16px;
+  color: #ffe7d2;
+  background: linear-gradient(180deg, #d8634a, #962f1f);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
+  cursor: pointer;
+  transition: transform 150ms ease, filter 150ms ease;
+}
+.danger-action:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+.danger-action:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+  opacity: 0.65;
+  transform: none;
 }
 
 /* ── 受托仓库 ───────────────────────────────────────────── */
