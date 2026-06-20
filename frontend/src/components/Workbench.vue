@@ -119,10 +119,11 @@ const taskGroups = computed(() => {
   const items = liveAssignments.value
   if (items.length === 0) return fallbackTaskGroups
 
+  // 顺序：进行中 → 待修改 → 审核中 → 已完成（Object.values 保留插入顺序）
   const groups = {
     'in-progress': { id: 'in-progress', label: '进行中', tasks: [] },
-    'in-review': { id: 'in-review', label: '审核中', tasks: [] },
     'changes-requested': { id: 'changes-requested', label: '待修改', tasks: [] },
+    'in-review': { id: 'in-review', label: '审核中', tasks: [] },
     completed: { id: 'completed', label: '已完成', tasks: [] },
   }
   for (const item of items) {
@@ -1268,70 +1269,6 @@ function openFeedback(feedbackId, source = '审核反馈') {
           </button>
         </section>
       </div>
-
-      <section class="feedback-archive-card" aria-label="反馈归档">
-        <header class="archive-head">
-          <div>
-            <p class="kicker">Feedback Archive</p>
-            <h3>反馈归档</h3>
-          </div>
-          <span>{{ filteredFeedbacks.length }} 条</span>
-        </header>
-
-        <dl class="archive-stat-grid">
-          <div v-for="stat in feedbackArchiveStats" :key="stat.label">
-            <dt>{{ stat.label }}</dt>
-            <dd>{{ stat.value }}</dd>
-          </div>
-        </dl>
-
-        <div class="archive-filter-group">
-          <span>按任务</span>
-          <select
-            :value="feedbackTaskFilter"
-            aria-label="按任务筛选反馈"
-            @change="setFeedbackTaskFilter($event.target.value)"
-          >
-            <option v-for="option in feedbackTaskOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </div>
-
-        <div class="archive-filter-group">
-          <span>按状态</span>
-          <div class="archive-filter-chips">
-            <button
-              v-for="option in feedbackStatusOptions"
-              :key="option.value"
-              type="button"
-              :class="{ active: feedbackStatusFilter === option.value }"
-              :aria-pressed="feedbackStatusFilter === option.value"
-              @click="setFeedbackStatusFilter(option.value)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-        </div>
-
-        <div v-if="filteredFeedbacks.length > 0" class="feedback-archive-list">
-          <button
-            v-for="feedback in filteredFeedbacks"
-            :key="feedback.id"
-            class="feedback-archive-row"
-            :class="[{ active: selectedFeedbackId === feedback.id }, getFeedbackStatusMeta(feedback.status).tone]"
-            type="button"
-            @click="selectFeedbackArchive(feedback)"
-          >
-            <span>{{ feedback.questId }} · {{ getFeedbackStatusMeta(feedback.status).label }}</span>
-            <strong>{{ feedback.questTitle }}</strong>
-            <small>{{ feedback.reviewedAt }} · {{ feedback.pullRequest }}</small>
-            <small>{{ feedback.archiveNote }}</small>
-          </button>
-        </div>
-
-        <p v-else class="archive-empty">当前筛选没有匹配反馈，切换任务或状态即可恢复归档列表。</p>
-      </section>
     </aside>
 
     <main class="workbench-main">
@@ -1586,7 +1523,8 @@ function openFeedback(feedbackId, source = '审核反馈') {
             compact
           />
 
-          <article class="detail-card wide task-clone-card">
+          <!-- 「已提交/审核中」阶段不再需要克隆并推送的命令提示，隐藏整张卡片 -->
+          <article v-if="selectedTask.workflowState !== 'in-review'" class="detail-card wide task-clone-card">
             <div class="clone-head">
               <div>
                 <p class="kicker">Clone &amp; Push</p>

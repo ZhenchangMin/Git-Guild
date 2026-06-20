@@ -136,10 +136,6 @@ function getNodeClass(node, index) {
   }
 }
 
-function jumpToReview() {
-  selectedKey.value = 'review'
-}
-
 // 「退回修改」不是线性轴上的必经点，而是「已提交/审核中」的分支：
 // 只有真的被退回过（存在反馈历史）才允许查看，不按线性序号解锁。
 const feedbackHistory = computed(() => props.context.feedbackHistory ?? [])
@@ -225,8 +221,7 @@ function selectNode(node, index) {
             <time v-if="entry.reviewedAt">{{ formatDateTime(entry.reviewedAt) }}</time>
           </li>
         </ol>
-        <p v-else>改完代码、更新 PR 后，回到「已提交 / 审核中」重新等待审核。</p>
-        <button type="button" class="stage-link-btn" @click="jumpToReview">→ 回到已提交</button>
+        <p v-else>改完代码、更新 PR 后，回到提交柜台重新提交，即可再次进入审核。</p>
       </article>
 
       <!-- 5：通过 — 终点祝贺 -->

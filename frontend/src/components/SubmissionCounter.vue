@@ -139,6 +139,16 @@ async function fetchDraftFromBackend() {
     if (data.branch) {
       form.branch = data.branch
     }
+    // 维护者退回要求修改后：旧回执仍存在 localStorage 里会把柜台锁在「已交付」态，
+    // 导致无法重新提交。后端回传最近一次提交为 CHANGES_REQUESTED 时，解锁回到草稿态，
+    // 并覆盖掉带 receipt 的旧草稿，避免下次开页又被锁。
+    if (data.latestSubmissionStatus === 'CHANGES_REQUESTED' && stage.value === 'submitted') {
+      receipt.value = null
+      stage.value = 'draft'
+      errorMessage.value = ''
+      submitError.value = null
+      persistDraft()
+    }
   } catch {
     // Silently ignore — local draft is sufficient
   }
