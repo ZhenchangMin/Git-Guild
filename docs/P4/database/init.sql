@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS submissions (
                              submitter_id BIGINT NOT NULL,
                              pull_request_id BIGINT NOT NULL,
                              description TEXT NOT NULL,
+                             evidence LONGTEXT NULL,
                              status VARCHAR(32) NOT NULL DEFAULT 'PENDING_REVIEW',
                              submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                              created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

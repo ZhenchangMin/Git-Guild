@@ -165,6 +165,8 @@ function mapSubmissionToReview(submission) {
     evidence: [
       pullRequestUrl ? `PR 链接：${pullRequestUrl}` : '',
     ].filter(Boolean),
+    // 冒险家上传的佐证文件（{name, mimeType, content=base64 dataURL}），供委托人在审核台预览/下载。
+    evidenceFiles: Array.isArray(submission.evidence) ? submission.evidence : [],
     suggestedSummary: completionCriteria.every((item) => item.passed)
       ? 'PR 与成果说明已核对，符合通过条件。'
       : 'PR 尚未满足全部通过条件，请根据未通过项给出修改意见。',

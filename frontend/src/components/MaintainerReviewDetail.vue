@@ -25,6 +25,11 @@ function prStateLabel(state) {
   return PR_STATE_LABELS[state] ?? state ?? '未知'
 }
 
+// 佐证文件是否为图片：是则在审核台直接出缩略图预览，否则按文档走下载。
+function isImageEvidence(file) {
+  return (file?.mimeType || '').startsWith('image/')
+}
+
 // 合并 PR 二次确认弹窗开关
 const mergeConfirmOpen = ref(false)
 
@@ -102,6 +107,30 @@ function confirmMerge() {
           <span class="deliverable-label">佐证材料</span>
           <ul class="deliverable-evidence">
             <li v-for="item in review.evidence" :key="item">{{ item }}</li>
+          </ul>
+        </div>
+        <div v-if="review.evidenceFiles?.length" class="deliverable-block">
+          <span class="deliverable-label">冒险家上传的佐证文件（{{ review.evidenceFiles.length }}）</span>
+          <ul class="evidence-file-grid">
+            <li v-for="(file, idx) in review.evidenceFiles" :key="idx" class="evidence-file">
+              <a
+                class="evidence-file-link"
+                :href="file.content"
+                :download="isImageEvidence(file) ? null : file.name"
+                :target="isImageEvidence(file) ? '_blank' : null"
+                rel="noopener noreferrer"
+                :title="isImageEvidence(file) ? `点击查看大图：${file.name}` : `点击下载：${file.name}`"
+              >
+                <img
+                  v-if="isImageEvidence(file)"
+                  class="evidence-thumb"
+                  :src="file.content"
+                  :alt="file.name"
+                />
+                <span v-else class="evidence-doc-glyph" aria-hidden="true">⤓</span>
+                <span class="evidence-file-name">{{ file.name }}</span>
+              </a>
+            </li>
           </ul>
         </div>
       </article>
@@ -351,6 +380,65 @@ function confirmMerge() {
   padding-left: 10px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+.evidence-file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evidence-file-link {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 8px;
+  border: 1px solid rgba(240, 198, 118, 0.28);
+  border-radius: 8px;
+  text-decoration: none;
+  background: rgba(7, 4, 2, 0.34);
+  transition: border-color 150ms ease, transform 120ms ease, box-shadow 150ms ease;
+}
+
+.evidence-file-link:hover,
+.evidence-file-link:focus-visible {
+  border-color: rgba(255, 224, 157, 0.7);
+  transform: translateY(-1px);
+  outline: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.36);
+}
+
+.evidence-thumb {
+  width: 100%;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.evidence-doc-glyph {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 72px;
+  border-radius: 5px;
+  color: #ffe4ad;
+  font-size: 1.6rem;
+  background: rgba(80, 43, 18, 0.5);
+}
+
+.evidence-file-name {
+  width: 100%;
+  color: rgba(255, 233, 187, 0.86);
+  font-size: 0.74rem;
+  line-height: 1.3;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pr-card {

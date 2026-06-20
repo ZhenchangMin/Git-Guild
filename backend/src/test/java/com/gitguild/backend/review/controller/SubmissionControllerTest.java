@@ -173,6 +173,7 @@ class SubmissionControllerTest {
                         SubmissionStatus.PENDING_REVIEW,
                         180,
                         "Completion criteria",
+                        List.of(),
                         OffsetDateTime.parse("2026-05-29T11:00:00+08:00"))));
 
         TestingAuthenticationToken authentication = new TestingAuthenticationToken(

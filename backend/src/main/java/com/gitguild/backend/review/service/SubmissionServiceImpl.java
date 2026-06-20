@@ -29,6 +29,9 @@ import com.gitguild.backend.review.repository.SubmissionRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +55,7 @@ public class SubmissionServiceImpl implements SubmissionService {
     private final CodePullRequestSyncService pullRequestSyncService;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final ObjectMapper objectMapper;
 
     public SubmissionServiceImpl(
             SubmissionRepository submissionRepository,
@@ -62,7 +66,8 @@ public class SubmissionServiceImpl implements SubmissionService {
             QuestPullRequestService questPullRequestService,
             CodePullRequestSyncService pullRequestSyncService,
             UserRepository userRepository,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            ObjectMapper objectMapper) {
         this.submissionRepository = submissionRepository;
         this.reviewRecordRepository = reviewRecordRepository;
         this.questRepository = questRepository;
@@ -72,6 +77,7 @@ public class SubmissionServiceImpl implements SubmissionService {
         this.pullRequestSyncService = pullRequestSyncService;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -105,7 +111,9 @@ public class SubmissionServiceImpl implements SubmissionService {
                 "[Quest #" + quest.getQuestId() + "] " + quest.getTitle(),
                 buildPrBody(quest, request.getDescription()));
 
-        Submission saved = submissionRepository.save(new Submission(quest, submitter, pullRequest, request.getDescription()));
+        Submission submission = new Submission(quest, submitter, pullRequest, request.getDescription());
+        submission.setEvidence(serializeEvidence(request.getEvidenceFiles()));
+        Submission saved = submissionRepository.save(submission);
         quest.markInReview();
         questRepository.save(quest);
 
@@ -170,6 +178,37 @@ public class SubmissionServiceImpl implements SubmissionService {
                 .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", HttpStatus.NOT_FOUND, "User not found", "userId=" + userId));
     }
 
+    /** 把请求里的佐证文件序列化为 JSON 存库；空列表存 null，避免落一行空数组。 */
+    private String serializeEvidence(List<CreateSubmissionRequest.EvidenceFile> files) {
+        if (files == null || files.isEmpty()) {
+            return null;
+        }
+        List<SubmissionResponses.EvidenceFileResponse> payload = files.stream()
+                .map(file -> new SubmissionResponses.EvidenceFileResponse(
+                        file.getName(), file.getMimeType(), file.getContent()))
+                .toList();
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException ex) {
+            log.warn("序列化佐证材料失败，本次提交将不带佐证文件", ex);
+            return null;
+        }
+    }
+
+    /** 把库里的佐证 JSON 反序列化为响应对象；解析失败时降级为空列表，绝不让审核台 500。 */
+    private List<SubmissionResponses.EvidenceFileResponse> deserializeEvidence(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(
+                    json, new TypeReference<List<SubmissionResponses.EvidenceFileResponse>>() {});
+        } catch (JsonProcessingException ex) {
+            log.warn("反序列化佐证材料失败，按无佐证处理", ex);
+            return List.of();
+        }
+    }
+
     /** 组装平台代理创建 PR 的正文：成果说明 + 完成标准，标注由工作台代理创建。 */
     private String buildPrBody(Quest quest, String description) {
         StringBuilder body = new StringBuilder();
@@ -231,6 +270,7 @@ public class SubmissionServiceImpl implements SubmissionService {
                 submission.getDescription(),
                 submission.getStatus(),
                 submission.getSubmittedAt(),
+                deserializeEvidence(submission.getEvidence()),
                 records.stream().map(this::toReviewResponse).toList());
     }
 
@@ -272,6 +312,7 @@ public class SubmissionServiceImpl implements SubmissionService {
                 submission.getStatus(),
                 quest.getRewardXp(),
                 quest.getCompletionCriteria(),
+                deserializeEvidence(submission.getEvidence()),
                 submission.getSubmittedAt());
     }
 

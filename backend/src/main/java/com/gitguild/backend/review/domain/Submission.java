@@ -42,6 +42,13 @@ public class Submission {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
 
+    /**
+     * 冒险家提交的佐证材料，存为 JSON 数组：[{name, mimeType, content(base64 data URL)}]。
+     * 用 LONGTEXT 承载图片/文档的内联 base64，供委托人在审核台查看其上传的文件。
+     */
+    @Column(name = "evidence", columnDefinition = "LONGTEXT")
+    private String evidence;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private SubmissionStatus status;
@@ -113,6 +120,14 @@ public class Submission {
 
     public String getDescription() {
         return description;
+    }
+
+    public String getEvidence() {
+        return evidence;
+    }
+
+    public void setEvidence(String evidence) {
+        this.evidence = evidence;
     }
 
     public SubmissionStatus getStatus() {

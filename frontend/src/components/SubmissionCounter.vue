@@ -274,11 +274,14 @@ async function submitForReview() {
       checklist: Object.entries(checks)
         .filter(([, checked]) => checked)
         .map(([label]) => label),
-      // 后端 evidenceUrls 每项上限 512 字符，无法承载文件二进制；这里登记「文件名 · 大小」
-      // 作为佐证清单（真正的文件存储需后端单独的上传接口，暂未提供）。
-      evidenceUrls: evidence.value
-        .map((item) => `${item.name} · ${formatSize(item.size)}`.slice(0, 512))
-        .filter(Boolean),
+      // 佐证文件随提交内联上传（文件名 + MIME + base64），后端持久化后供委托人在审核台查看。
+      evidenceFiles: evidence.value
+        .filter((item) => item.content)
+        .map((item) => ({
+          name: item.name,
+          mimeType: item.mimeType || 'application/octet-stream',
+          content: item.content,
+        })),
     })
     const submittedAt = new Date()
     const newReceipt = {
@@ -431,6 +434,16 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// 把文件读成 base64 data URL，以便随提交内联上传，委托人在审核台可直接预览/下载。
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
 // 点击「选择文件上传」→ 触发隐藏的原生文件浏览器
 function pickEvidenceFiles() {
   if (isLocked.value) return
@@ -441,7 +454,7 @@ function pickEvidenceFiles() {
   fileInput.value?.click()
 }
 
-function onEvidenceFilesPicked(event) {
+async function onEvidenceFilesPicked(event) {
   const picked = Array.from(event.target.files ?? [])
   // 重置 input，确保再次选择同一文件也能触发 change
   event.target.value = ''
@@ -464,15 +477,22 @@ function onEvidenceFilesPicked(event) {
   }
 
   for (const file of accepted) {
-    evidence.value = [
-      ...evidence.value,
-      {
-        id: `EV-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`.toUpperCase(),
-        type: file.type.startsWith('image/') ? 'screenshot' : 'doc',
-        name: file.name,
-        size: file.size,
-      },
-    ]
+    try {
+      const content = await readFileAsDataUrl(file)
+      evidence.value = [
+        ...evidence.value,
+        {
+          id: `EV-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`.toUpperCase(),
+          type: file.type.startsWith('image/') ? 'screenshot' : 'doc',
+          name: file.name,
+          size: file.size,
+          mimeType: file.type || 'application/octet-stream',
+          content,
+        },
+      ]
+    } catch {
+      showToast(`「${file.name}」读取失败，请重试`)
+    }
   }
 
   if (tooLarge) {

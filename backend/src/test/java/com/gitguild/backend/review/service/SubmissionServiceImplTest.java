@@ -78,7 +78,8 @@ class SubmissionServiceImplTest {
                 questPullRequestService,
                 pullRequestSyncService,
                 userRepository,
-                notificationService);
+                notificationService,
+                new com.fasterxml.jackson.databind.ObjectMapper());
     }
 
     @Test

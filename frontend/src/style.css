@@ -4045,11 +4045,10 @@ h2 {
   position: relative;
   z-index: 1;
   display: grid;
-  /* Body row is `minmax(0, 1fr)` so the footer is anchored at the bottom of
-     the sheet — never pushed down into the body content. Without `1fr`, a
-     tall body would shove the footer past the sheet's intended bottom and
-     visually overlap the review-note callout. */
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* 行都按内容高度（auto），让整张委托单随内容自然变高，由最外层 .submission-modal-layer
+     提供唯一滚动条——委托单内部不再单独出现第二条滚动条。aspect-ratio 仍作为内容较少时的
+     基准比例，内容超出时委托单整体增高。 */
+  grid-template-rows: auto auto auto;
   /* Sheet is now allowed to grow to fit content, then the modal layer
      scrolls if the result exceeds viewport height. We re-add aspect-ratio so
      the parchment image is no longer stretched (it was previously visibly
@@ -4194,10 +4193,8 @@ h2 {
      rhythm without busting the budget. */
   gap: 14px 22px;
   padding: 14px 0 12px;
-  /* Safety net: if a user piles on lots of evidence and the body still
-     overflows the available track, the body shows its own thin scrollbar
-     rather than letting content collide with the footer. */
-  overflow: auto;
+  /* 委托单内部不再单独滚动：内容直接撑开整张委托单，滚动统一交给最外层。 */
+  overflow: visible;
 }
 
 /* ── Strip every inner "card" from the four content sections ───────────

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import deskImg from '../../assets/desk.webp'
@@ -34,8 +34,8 @@ const QUEST_STATUS = {
   IN_PROGRESS: { label: '进行中', tone: 'active' },
   IN_REVIEW: { label: '审核中', tone: 'pending' },
   COMPLETED: { label: '已完成', tone: 'done' },
-  REJECTED: { label: '已驳回', tone: 'rejected' },
-  CLOSED: { label: '已关闭', tone: 'rejected' },
+  REJECTED: { label: '已退回修改', tone: 'rejected' },
+  CLOSED: { label: '已下架', tone: 'rejected' },
 }
 function questStatus(status) {
   return QUEST_STATUS[status] ?? { label: status || '未知', tone: 'draft' }
@@ -117,14 +117,14 @@ function openRepo(repo) {
   if (url) window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-async function loadRepos() {
-  reposLoading.value = true
+async function loadRepos({ silent = false } = {}) {
+  if (!silent) reposLoading.value = true
   try {
     const res = await repositoryApi.myRepositories()
     const data = res?.data
     repos.value = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
   } catch {
-    repos.value = []
+    if (!silent) repos.value = []
   } finally {
     reposLoading.value = false
   }
@@ -160,13 +160,13 @@ async function confirmDeleteRepo() {
   }
 }
 
-async function loadMyQuests() {
-  myQuestsLoading.value = true
+async function loadMyQuests({ silent = false } = {}) {
+  if (!silent) myQuestsLoading.value = true
   try {
     const res = await questApi.myPublished()
     myQuests.value = Array.isArray(res?.data) ? res.data : []
   } catch {
-    myQuests.value = []
+    if (!silent) myQuests.value = []
   } finally {
     myQuestsLoading.value = false
   }
@@ -176,7 +176,7 @@ function isPendingReviewSubmission(item) {
   return item?.status === 'PENDING_REVIEW'
 }
 
-onMounted(async () => {
+async function loadPendingReviews() {
   try {
     const res = await submissionApi.reviewQueue()
     const items = Array.isArray(res?.data) ? res.data : []
@@ -184,8 +184,35 @@ onMounted(async () => {
   } catch {
     pendingReviews.value = null
   }
+}
 
-  await Promise.all([loadRepos(), loadMyQuests()])
+// 统一刷新工作台数据。silent=true 用于后台自动刷新，不闪现骨架屏。
+async function refreshWorkbench({ silent = false } = {}) {
+  await Promise.all([
+    loadPendingReviews(),
+    loadRepos({ silent }),
+    loadMyQuests({ silent }),
+  ])
+}
+
+// 管理员在别处改了委托状态后，委托人这边需要无刷新同步：回到本页（可见/聚焦）即静默拉取，
+// 另加一个轻量轮询兜底，避免一直停在本页时状态长期不更新。
+let pollTimer = null
+function handleVisibility() {
+  if (document.visibilityState === 'visible') refreshWorkbench({ silent: true })
+}
+
+onMounted(async () => {
+  await refreshWorkbench()
+  document.addEventListener('visibilitychange', handleVisibility)
+  window.addEventListener('focus', handleVisibility)
+  pollTimer = window.setInterval(() => refreshWorkbench({ silent: true }), 20000)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibility)
+  window.removeEventListener('focus', handleVisibility)
+  if (pollTimer) window.clearInterval(pollTimer)
 })
 </script>
 
