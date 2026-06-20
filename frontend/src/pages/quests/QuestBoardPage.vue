@@ -403,16 +403,8 @@ async function loadTaxonomyFilterOptions() {
 }
 
 function openQuestDetail(questId, intent = 'view') {
-  // Guests can browse but must sign in before accepting a commission — send
-  // them to the gate, preserving the accept intent so the detail page picks
-  // up where they left off after login.
-  if (intent === 'accept' && sessionStore.role === 'VISITOR') {
-    router.push({
-      name: 'login',
-      query: { redirect: `/quests/${questId}?intent=accept` },
-    })
-    return
-  }
+  // 任务板上「接取委托」只负责进入详情（带 accept 意图）；游客真正在详情里点接取时
+  // 才跳登录——保证看清完成标准后再决定，登录回流也回到该详情。
   router.push({
     name: 'quest-detail',
     params: { questId },
