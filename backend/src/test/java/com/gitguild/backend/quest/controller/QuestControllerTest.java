@@ -99,6 +99,7 @@ class QuestControllerTest {
                                 new CategoryBrief(2L, "Backend"),
                                 List.of(),
                                 new RepositoryBrief(1001L, "git-guild", "main", "SYNCED", "http://gitea.local:3000/spike-admin/git-guild"),
+                                null,
                                 OffsetDateTime.parse("2026-06-02T10:00:00+08:00"))),
                         2,
                         8,

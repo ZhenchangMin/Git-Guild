@@ -60,6 +60,9 @@ public final class QuestResponses {
             CategoryBrief category,
             List<TagBrief> tags,
             RepositoryBrief repository,
+            // 最近一次提交的审核状态：仅「我发布的委托」会填充，用于在 Quest 仍为 IN_REVIEW
+            // 时区分「已要求修改」（CHANGES_REQUESTED）；其它列表场景为 null。
+            SubmissionStatus latestSubmissionStatus,
             OffsetDateTime createdAt) {
     }
 

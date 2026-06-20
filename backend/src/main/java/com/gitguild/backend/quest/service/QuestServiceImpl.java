@@ -238,7 +238,7 @@ public class QuestServiceImpl implements QuestService {
     @Transactional(readOnly = true)
     public List<QuestSummaryResponse> listMyPublishedQuests(Long publisherId) {
         return questRepository.findByPublisherUserIdOrderByCreatedAtDesc(publisherId).stream()
-                .map(this::toSummary)
+                .map(this::toMyPublishedSummary)
                 .toList();
     }
 
@@ -471,6 +471,19 @@ public class QuestServiceImpl implements QuestService {
     }
 
     private QuestSummaryResponse toSummary(Quest quest) {
+        return toSummary(quest, null);
+    }
+
+    /** 「我发布的委托」专用：附带最近一次提交的审核状态，使「已要求修改」可在 IN_REVIEW 下被区分出来。 */
+    private QuestSummaryResponse toMyPublishedSummary(Quest quest) {
+        SubmissionStatus latest = submissionRepository
+                .findFirstByQuestQuestIdOrderBySubmittedAtDesc(quest.getQuestId())
+                .map(Submission::getStatus)
+                .orElse(null);
+        return toSummary(quest, latest);
+    }
+
+    private QuestSummaryResponse toSummary(Quest quest, SubmissionStatus latestSubmissionStatus) {
         return new QuestSummaryResponse(
                 quest.getQuestId(),
                 quest.getTitle(),
@@ -489,6 +502,7 @@ public class QuestServiceImpl implements QuestService {
                         quest.getRepository().getDefaultBranch(),
                         quest.getRepository().getSyncStatus(),
                         repoWebUrl(quest.getRepository())),
+                latestSubmissionStatus,
                 quest.getCreatedAt());
     }
 
