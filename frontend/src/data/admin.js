@@ -8,6 +8,9 @@ export const questStatusMeta = {
   PENDING_ADMIN_REVIEW: { label: '待管理员审核', tone: 'pending' },
   DRAFT: { label: '已退回草稿', tone: 'return' },
   PUBLISHED: { label: '已发布上架', tone: 'approved' },
+  IN_PROGRESS: { label: '已接取 · 进行中', tone: 'approved' },
+  IN_REVIEW: { label: '已接取 · 审核中', tone: 'approved' },
+  COMPLETED: { label: '已完成', tone: 'approved' },
   REJECTED: { label: '已退回补充', tone: 'return' },
   CLOSED: { label: '已下架关闭', tone: 'danger' },
 }
@@ -30,10 +33,18 @@ export const decisionMeta = {
   },
   TAKE_DOWN: {
     label: '下架处理',
-    requires: 'PUBLISHED',
+    // 已接取（进行中/审核中）的委托也允许强制下架——会同步取消接取者的进度。
+    requires: ['PUBLISHED', 'IN_PROGRESS', 'IN_REVIEW'],
     nextStatus: 'CLOSED',
     intent: 'danger',
     message: '任务已下架，不再于悬赏任务板展示，并已通知发布者。',
+  },
+  REOPEN: {
+    label: '重新上架',
+    requires: 'CLOSED',
+    nextStatus: 'PUBLISHED',
+    intent: 'quiet',
+    message: '任务已重新上架，重新进入悬赏任务板供冒险家接取。',
   },
 }
 
@@ -60,14 +71,7 @@ export const adminQuestApplications = [
     ],
     complianceChecks: [
       { label: '适合课堂公开展示', note: '未包含真实密钥、账号或敏感仓库信息。' },
-      { label: '奖励与难度匹配', note: '中级前端任务对应 420 XP，范围合理。' },
-      { label: '未绕过管理员上架流程', note: '申请仍处于管理员审核队列，未直接进入悬赏任务板。' },
-    ],
-    completionStandards: [
-      '从 Issue 点击后自动带出标题、摘要和关联仓库。',
-      '草稿表单包含难度、技术栈、奖励和完成标准字段。',
-      '清晰度检查能区分通过项和待补项。',
-      '提交审核后页面显示管理员审核中的状态。',
+      { label: '奖励与难度设置合理', note: '中级前端任务对应 420 XP，范围合理。' },
     ],
     risks: ['需要确认任务详情页是否也能展示“管理员审核中”的发布状态。', '若维护者重复提交，需要合并同一 Issue 的审核记录。'],
     reviewRecords: [
@@ -101,10 +105,8 @@ export const adminQuestApplications = [
     ],
     complianceChecks: [
       { label: '适合课堂公开展示', note: '当前文本没有敏感配置。' },
-      { label: '奖励与难度匹配', note: '奖励字段为空，上架前需要补齐。' },
-      { label: '未绕过管理员上架流程', note: '仍处于管理员审核队列。' },
+      { label: '奖励与难度设置合理', note: '奖励字段为空，上架前需要补齐。' },
     ],
-    completionStandards: ['展示异常原因、影响范围和重试入口。', '说明学生需要提交的截图或日志片段。'],
     risks: ['同步异常可能涉及后端配置，需限制为 mock 日志或脱敏数据。', '奖励为空，悬赏任务板无法正确排序或展示激励。'],
     reviewRecords: [
       {
@@ -137,13 +139,8 @@ export const adminQuestApplications = [
     ],
     complianceChecks: [
       { label: '适合课堂公开展示', note: '无敏感信息。' },
-      { label: '奖励与难度匹配', note: '中级任务奖励合理。' },
+      { label: '奖励与难度设置合理', note: '中级任务奖励合理。' },
       { label: '关联 Issue 仍然有效', note: 'Issue #52 已被合并关闭，任务可能不再需要继续展示。' },
-    ],
-    completionStandards: [
-      '筛选器支持同时选择多个技术栈标签。',
-      '空结果时展示引导文案与清除筛选入口。',
-      '所选标签在刷新后保持。',
     ],
     risks: ['关联 Issue 已关闭，继续展示可能误导新手接取已无需求的任务。'],
     reviewRecords: [
@@ -184,10 +181,8 @@ export const adminQuestApplications = [
     ],
     complianceChecks: [
       { label: '适合课堂公开展示', note: '“线上用户数据回放”需要管理员确认是否脱敏。' },
-      { label: '奖励与难度匹配', note: '难度为空，无法判断奖励是否合理。' },
-      { label: '未绕过管理员上架流程', note: '当前尚未上架。' },
+      { label: '奖励与难度设置合理', note: '难度为空，无法判断奖励是否合理。' },
     ],
-    completionStandards: [],
     risks: ['可能误用真实用户贡献记录，必须改为 mock 数据。', '缺少验收标准会导致冒险家无法判断完成边界。'],
     reviewRecords: [
       {

@@ -3,10 +3,12 @@ package com.gitguild.backend.quest.controller;
 import com.gitguild.backend.common.ApiResponse;
 import com.gitguild.backend.quest.dto.AdminReviewRequest;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminQuestPageResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewHistoryItem;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewResponse;
 import com.gitguild.backend.quest.service.AdminQuestService;
 import com.gitguild.backend.security.SecurityPrincipalUtils;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <ul>
  *   <li>{@code GET /api/v1/admin/quests} — 查询 PENDING_ADMIN_REVIEW 的 Quest 分页列表</li>
  *   <li>{@code POST /api/v1/quests/{questId}/admin-reviews} — 对 Quest 执行审核决策，成功返回 201</li>
+ *   <li>{@code GET /api/v1/admin/quests/{questId}/review-records} — 查询 Quest 的全部历史审核记录</li>
  * </ul>
  */
 @RestController
@@ -57,5 +60,10 @@ public class AdminQuestController {
                 questId, SecurityPrincipalUtils.currentUserId(authentication), request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("审核完成", response));
+    }
+
+    @GetMapping("/admin/quests/{questId}/review-records")
+    public ApiResponse<List<AdminReviewHistoryItem>> listReviewHistory(@PathVariable Long questId) {
+        return ApiResponse.success(adminQuestService.listReviewHistory(questId));
     }
 }

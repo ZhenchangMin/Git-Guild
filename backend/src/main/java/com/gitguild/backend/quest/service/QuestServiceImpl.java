@@ -11,6 +11,8 @@ import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
 import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
 import com.gitguild.backend.codehost.service.CodeIssueService;
+import com.gitguild.backend.notification.domain.NotificationType;
+import com.gitguild.backend.notification.service.NotificationService;
 import com.gitguild.backend.quest.service.QuestTaskBranchService;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.AssignmentStatus;
@@ -38,6 +40,13 @@ import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestCategoryRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.quest.repository.QuestTagRepository;
+import com.gitguild.backend.quest.dto.QuestResponses.ChangeRequestBrief;
+import com.gitguild.backend.review.domain.ReviewDecision;
+import com.gitguild.backend.review.domain.ReviewRecord;
+import com.gitguild.backend.review.domain.Submission;
+import com.gitguild.backend.review.domain.SubmissionStatus;
+import com.gitguild.backend.review.repository.ReviewRecordRepository;
+import com.gitguild.backend.review.repository.SubmissionRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
@@ -97,6 +106,9 @@ public class QuestServiceImpl implements QuestService {
     private final ObjectMapper objectMapper;
     private final GiteaProperties giteaProperties;
     private final AdminReviewRecordRepository adminReviewRecordRepository;
+    private final SubmissionRepository submissionRepository;
+    private final ReviewRecordRepository reviewRecordRepository;
+    private final NotificationService notificationService;
 
     public QuestServiceImpl(
             QuestRepository questRepository,
@@ -111,7 +123,10 @@ public class QuestServiceImpl implements QuestService {
             UserRepository userRepository,
             ObjectMapper objectMapper,
             GiteaProperties giteaProperties,
-            AdminReviewRecordRepository adminReviewRecordRepository) {
+            AdminReviewRecordRepository adminReviewRecordRepository,
+            SubmissionRepository submissionRepository,
+            ReviewRecordRepository reviewRecordRepository,
+            NotificationService notificationService) {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.categoryRepository = categoryRepository;
@@ -125,6 +140,9 @@ public class QuestServiceImpl implements QuestService {
         this.objectMapper = objectMapper;
         this.giteaProperties = giteaProperties;
         this.adminReviewRecordRepository = adminReviewRecordRepository;
+        this.submissionRepository = submissionRepository;
+        this.reviewRecordRepository = reviewRecordRepository;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -225,7 +243,7 @@ public class QuestServiceImpl implements QuestService {
     @Transactional(readOnly = true)
     public List<QuestSummaryResponse> listMyPublishedQuests(Long publisherId) {
         return questRepository.findByPublisherUserIdOrderByCreatedAtDesc(publisherId).stream()
-                .map(this::toSummary)
+                .map(this::toMyPublishedSummary)
                 .toList();
     }
 
@@ -281,6 +299,22 @@ public class QuestServiceImpl implements QuestService {
         QuestAssignment assignment = assignmentRepository.save(new QuestAssignment(quest, assignee));
         quest.markInProgress();
         questRepository.save(quest);
+
+        // 通知委托人：有人接取了你的委托。best-effort；发布者与接取者同人时跳过。
+        User publisher = quest.getPublisher();
+        if (publisher != null && !publisher.getUserId().equals(assignee.getUserId())) {
+            try {
+                notificationService.notify(
+                        publisher,
+                        NotificationType.QUEST_ACCEPTED,
+                        String.format("冒险家 %s 接取了你的委托《%s》。", assignee.getUsername(), quest.getTitle()),
+                        "QUEST",
+                        quest.getQuestId());
+            } catch (RuntimeException ex) {
+                log.warn("发送委托被接取通知失败 questId={}, publisherId={}", quest.getQuestId(), publisher.getUserId(), ex);
+            }
+        }
+
         return new AssignmentResponse(
                 assignment.getAssignmentId(),
                 quest.getQuestId(),
@@ -296,7 +330,8 @@ public class QuestServiceImpl implements QuestService {
     @Transactional(readOnly = true)
     public MyAssignmentsResponse getMyAssignments(Long userId) {
         findUser(userId);  // 用户不存在则 404
-        List<QuestAssignment> assignments = assignmentRepository.findByAssigneeUserIdAndStatus(userId, AssignmentStatus.ACTIVE);
+        List<QuestAssignment> assignments = assignmentRepository.findByAssigneeUserIdAndStatusIn(
+                userId, List.of(AssignmentStatus.ACTIVE, AssignmentStatus.COMPLETED));
         List<MyAssignmentItem> items = assignments.stream()
                 .map(this::toMyAssignmentItem)
                 .toList();
@@ -305,8 +340,13 @@ public class QuestServiceImpl implements QuestService {
         int inReview = 0;
         int changesRequested = 0;
         int completed = 0;
-        for (QuestAssignment a : assignments) {
-            switch (a.getQuest().getStatus()) {
+        for (MyAssignmentItem item : items) {
+            // 「待修改」看 Submission 状态——Quest 退回修改时仍停留在 IN_REVIEW，不会单独转出一个状态。
+            if (item.latestSubmissionStatus() == SubmissionStatus.CHANGES_REQUESTED) {
+                changesRequested++;
+                continue;
+            }
+            switch (item.questStatus()) {
                 case IN_PROGRESS -> inProgress++;
                 case IN_REVIEW -> inReview++;
                 case COMPLETED -> completed++;
@@ -323,10 +363,24 @@ public class QuestServiceImpl implements QuestService {
         CodeRepository repo = quest.getRepository();
         CodeIssue issue = quest.getIssue();
 
+        List<Submission> submissions = submissionRepository
+                .findByQuestAndSubmitterUserIdOrderBySubmittedAtAsc(quest, assignment.getAssignee().getUserId());
+        SubmissionStatus latestSubmissionStatus = submissions.isEmpty()
+                ? null
+                : submissions.get(submissions.size() - 1).getStatus();
+        List<Long> submissionIds = submissions.stream().map(Submission::getSubmissionId).toList();
+        List<ChangeRequestBrief> changeRequests = submissionIds.isEmpty()
+                ? List.of()
+                : reviewRecordRepository.findBySubmissionSubmissionIdIn(submissionIds).stream()
+                        .filter(record -> record.getDecision() == ReviewDecision.CHANGES_REQUESTED)
+                        .sorted(Comparator.comparing(ReviewRecord::getReviewedAt))
+                        .map(record -> new ChangeRequestBrief(record.getSummary(), record.getReviewedAt()))
+                        .toList();
+
         // 查找该 quest 仓库下的 PR，取最新一条
-        List<CodePullRequest> prs = pullRequestRepository.findAll().stream()
-                .filter(pr -> pr.getRepository().getRepositoryId().equals(repo.getRepositoryId()))
-                .toList();
+        // 注意：原先用 findAll() 再在 Java 里过滤，等价于每个 assignment 都做一次全表扫描；
+        // 工作台一旦有多个进行中任务，这里就会被放大成 N 次全表查询，是首屏加载慢的主因。
+        List<CodePullRequest> prs = pullRequestRepository.findByRepositoryRepositoryId(repo.getRepositoryId());
         PullRequestBrief prBrief = prs.isEmpty() ? null : new PullRequestBrief(
                 prs.get(prs.size() - 1).getPullRequestId(),
                 prs.get(prs.size() - 1).getExternalPrId(),
@@ -347,13 +401,16 @@ public class QuestServiceImpl implements QuestService {
         return new MyAssignmentItem(
                 quest.getQuestId(),
                 quest.getTitle(),
+                quest.getStatus(),
                 assignment.getStatus().name(),
                 quest.getDifficulty(),
                 quest.getRewardXp(),
                 techStack,
                 new RepositoryBrief(repo.getRepositoryId(), repo.getName(), repo.getDefaultBranch(), repo.getSyncStatus(), repoWebUrl(repo)),
                 issueBrief(issue),
-                prBrief);
+                prBrief,
+                latestSubmissionStatus,
+                changeRequests);
     }
 
     private Specification<Quest> toSpecification(QuestSearchCriteria criteria) {
@@ -435,10 +492,24 @@ public class QuestServiceImpl implements QuestService {
     }
 
     private QuestSummaryResponse toSummary(Quest quest) {
+        return toSummary(quest, null);
+    }
+
+    /** 「我发布的委托」专用：附带最近一次提交的审核状态，使「已要求修改」可在 IN_REVIEW 下被区分出来。 */
+    private QuestSummaryResponse toMyPublishedSummary(Quest quest) {
+        SubmissionStatus latest = submissionRepository
+                .findFirstByQuestQuestIdOrderBySubmittedAtDesc(quest.getQuestId())
+                .map(Submission::getStatus)
+                .orElse(null);
+        return toSummary(quest, latest);
+    }
+
+    private QuestSummaryResponse toSummary(Quest quest, SubmissionStatus latestSubmissionStatus) {
         return new QuestSummaryResponse(
                 quest.getQuestId(),
                 quest.getTitle(),
                 preview(quest.getDescription()),
+                quest.getCompletionCriteria(),
                 quest.getDifficulty(),
                 fromJson(quest.getTechStackJson()),
                 quest.getRewardXp(),
@@ -452,6 +523,7 @@ public class QuestServiceImpl implements QuestService {
                         quest.getRepository().getDefaultBranch(),
                         quest.getRepository().getSyncStatus(),
                         repoWebUrl(quest.getRepository())),
+                latestSubmissionStatus,
                 quest.getCreatedAt());
     }
 

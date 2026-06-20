@@ -30,17 +30,7 @@ const selectedQuestFilters = ref({
   tag: [],
   difficulty: [],
   stack: [],
-  status: [],
 })
-
-// Map each quest status to a seal colour so the board reads at a glance.
-const STATUS_TONE = {
-  可接取: 'open',
-  进行中: 'active',
-  'PR 已就绪': 'ready',
-  待审核: 'review',
-  退回修改: 'returned',
-}
 
 const STATUS_LABELS = {
   PUBLISHED: '可接取',
@@ -49,10 +39,6 @@ const STATUS_LABELS = {
   COMPLETED: '已完成',
   CLOSED: '已关闭',
   DRAFT: '草稿',
-}
-
-function statusTone(status) {
-  return STATUS_TONE[status] || 'open'
 }
 
 function unwrapApiData(payload) {
@@ -151,10 +137,10 @@ function normalizeRecommendationItem(item, questMap, index) {
     stack: techStack.length > 0 ? techStack.join(' / ') : fallback.stack ?? '待补充',
     techStack,
     status: fallback.status ?? '可接取',
-    tags: unique([...(fallback.tags ?? []), ...reasons]),
+    tags: unique(fallback.tags ?? []),
     reward: normalizeReward(brief.rewardXp, fallback.reward),
     summary: fallback.summary ?? '推荐算法根据你的技术栈、难度偏好和成长阶段计算出的委托。',
-    criteria: fallback.criteria ?? ['查看任务详情', '确认实现范围', '提交关联 PR'],
+    criteria: fallback.criteria ?? normalizeCriteria(brief.completionCriteria),
     recommendationRank: index,
     recommendationScore: Number(item.score ?? 0),
     strongMatch: Boolean(item.strongMatch),
@@ -177,7 +163,6 @@ const visibleQuestFilterGroups = computed(() => {
     tag: [...taxonomyFilterOptions.value.tag],
     difficulty: questSource.value.map((quest) => quest.difficulty),
     stack: questSource.value.flatMap((quest) => quest.techStack ?? []),
-    status: questSource.value.map((quest) => quest.status),
   }
 
   return questFilterGroups
@@ -223,7 +208,6 @@ const rankedQuestCommissions = computed(() => {
         tag: selected.tag.length === 0 || selected.tag.some((tag) => quest.tags?.includes(tag)),
         difficulty: selected.difficulty.length === 0 || selected.difficulty.includes(quest.difficulty),
         stack: selected.stack.length === 0 || selected.stack.some((stack) => quest.techStack?.includes(stack)),
-        status: selected.status.length === 0 || selected.status.includes(quest.status),
       }
       const filterMatched = Object.values(groupMatches).every(Boolean)
       const searchableText = [
@@ -303,7 +287,6 @@ function clearQuestFilters() {
     tag: [],
     difficulty: [],
     stack: [],
-    status: [],
   }
   questPage.value = 1
 }
@@ -347,7 +330,6 @@ function applyRecommendationOrder(baseQuests, recommendedItems) {
       recommendationScore: recommendation.recommendationScore,
       strongMatch: recommendation.strongMatch,
       recommendationReasons: recommendation.recommendationReasons,
-      tags: unique([...(quest.tags ?? []), ...(recommendation.recommendationReasons ?? [])]),
     }
   })
 }
@@ -421,16 +403,8 @@ async function loadTaxonomyFilterOptions() {
 }
 
 function openQuestDetail(questId, intent = 'view') {
-  // Guests can browse but must sign in before accepting a commission — send
-  // them to the gate, preserving the accept intent so the detail page picks
-  // up where they left off after login.
-  if (intent === 'accept' && sessionStore.role === 'VISITOR') {
-    router.push({
-      name: 'login',
-      query: { redirect: `/quests/${questId}?intent=accept` },
-    })
-    return
-  }
+  // 任务板上「接取委托」只负责进入详情（带 accept 意图）；游客真正在详情里点接取时
+  // 才跳登录——保证看清完成标准后再决定，登录回流也回到该详情。
   router.push({
     name: 'quest-detail',
     params: { questId },
@@ -579,11 +553,23 @@ onMounted(() => {
                 class="commission-card"
                 :class="{ 'is-strong-match': quest.strongMatch }"
               >
-                <span class="commission-seal" :class="`tone-${statusTone(quest.status)}`">{{ quest.status }}</span>
-
                 <div class="commission-card-top">
                   <span class="commission-id">{{ quest.id }}</span>
-                  <span class="commission-rank" :title="`难度 ${quest.difficulty} 阶`">{{ quest.difficulty }} 阶</span>
+                  <div class="commission-meta-group">
+                    <span class="commission-rank" :title="`难度 ${quest.difficulty} 阶`">{{ quest.difficulty }} 阶</span>
+                    <span class="commission-category">{{ quest.category }}</span>
+                  </div>
+                </div>
+
+                <div v-if="quest.tags?.length" class="commission-tags">
+                  <span v-for="tag in quest.tags" :key="tag">
+                    <span
+                      class="commission-tag-dot"
+                      :style="{ background: tagColorByName[tag] || 'rgba(238, 184, 91, 0.5)' }"
+                      aria-hidden="true"
+                    ></span>
+                    {{ tag }}
+                  </span>
                 </div>
 
                 <h3 class="commission-title">{{ quest.title }}</h3>

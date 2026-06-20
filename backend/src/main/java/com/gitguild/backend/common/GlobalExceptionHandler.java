@@ -61,6 +61,10 @@ public class GlobalExceptionHandler {
     public ApiResponse<Void> handleGeneric(Exception ex) {
         // 兜底异常必须留痕：否则 500 只剩笼统文案，根因无从排查。
         log.error("Unhandled exception reached the global handler", ex);
-        return ApiResponse.error("INTERNAL_ERROR", "服务器内部错误");
+        // 把异常类型+消息一并回传到 details：前端据此拼出可定位的提示，而不是只有一句"服务器内部错误"。
+        String details = ex.getMessage() != null
+                ? ex.getClass().getSimpleName() + ": " + ex.getMessage()
+                : ex.getClass().getSimpleName();
+        return ApiResponse.error("INTERNAL_ERROR", "服务器内部错误", details);
     }
 }

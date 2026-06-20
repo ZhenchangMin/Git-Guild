@@ -8,7 +8,10 @@ import com.gitguild.backend.quest.domain.QuestAssignment;
 import com.gitguild.backend.quest.repository.QuestAssignmentRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.quest.service.QuestTaskBranchService;
+import com.gitguild.backend.review.domain.Submission;
+import com.gitguild.backend.review.domain.SubmissionStatus;
 import com.gitguild.backend.review.dto.SubmissionDraftResponse;
+import com.gitguild.backend.review.repository.SubmissionRepository;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,14 +41,17 @@ public class SubmissionDraftServiceImpl implements SubmissionDraftService {
     private final QuestRepository questRepository;
     private final QuestAssignmentRepository assignmentRepository;
     private final QuestTaskBranchService taskBranchService;
+    private final SubmissionRepository submissionRepository;
 
     public SubmissionDraftServiceImpl(
             QuestRepository questRepository,
             QuestAssignmentRepository assignmentRepository,
-            QuestTaskBranchService taskBranchService) {
+            QuestTaskBranchService taskBranchService,
+            SubmissionRepository submissionRepository) {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.taskBranchService = taskBranchService;
+        this.submissionRepository = submissionRepository;
     }
 
     @Override
@@ -65,12 +71,20 @@ public class SubmissionDraftServiceImpl implements SubmissionDraftService {
         CodeRepository repository = quest.getRepository();
         String branch = resolveTaskBranch(assignment, repository);
 
+        // 该接取者在此任务下最近一次提交的状态：供前端判断「退回后重新提交」并解除柜台锁定态。
+        List<Submission> submissions = submissionRepository
+                .findByQuestAndSubmitterUserIdOrderBySubmittedAtAsc(quest, currentUserId);
+        SubmissionStatus latestSubmissionStatus = submissions.isEmpty()
+                ? null
+                : submissions.get(submissions.size() - 1).getStatus();
+
         return new SubmissionDraftResponse(
                 quest.getQuestId(),
                 new SubmissionDraftResponse.RepositoryBrief(repository.getRepositoryId(), repository.getName(), repository.getSourceUrl()),
                 branch,
                 List.of(),
-                quest.getCompletionCriteria());
+                quest.getCompletionCriteria(),
+                latestSubmissionStatus);
     }
 
     /** best-effort 确保 task branch；Gitea 暂不可达时降级为仓库默认分支，避免开页 500。 */

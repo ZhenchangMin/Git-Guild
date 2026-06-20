@@ -19,7 +19,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['submitted'])
+const emit = defineEmits(['submitted', 'back-to-workbench'])
 
 // ── Stage machine ──────────────────────────────────────────────────────────
 // draft       — user is editing; everything is interactive
@@ -29,6 +29,8 @@ const emit = defineEmits(['submitted'])
 const stage = ref('draft')
 const isFormOpen = ref(false)
 const errorMessage = ref('')
+// 提交失败的结构化诊断：{ reason, hints[], detail }，null = 无后端错误
+const submitError = ref(null)
 const ringingBell = ref(false)
 const receipt = ref(null)
 
@@ -42,7 +44,11 @@ const checks = reactive(Object.fromEntries(submissionChecks.map((label) => [labe
 const evidence = ref([])
 
 const firstInput = ref(null)
-const evidenceLabelInput = ref(null)
+const fileInput = ref(null)
+
+// 佐证文件上限：数量与单文件大小，超出用文字提示用户
+const MAX_EVIDENCE_FILES = 5
+const MAX_EVIDENCE_SIZE = 5 * 1024 * 1024 // 单个文件 5MB
 
 // ── Draft persistence ──────────────────────────────────────────────────────
 // Drafts are keyed by (owner, questId) so multiple users on the same browser
@@ -66,10 +72,15 @@ function quietlySeedFromQuest() {
   // Only fill empty fields; never overwrite something the user already typed.
   // 仓库/分支为服务端派生（分支即 task branch），此处只做兜底占位，真正取值见 fetchDraftFromBackend。
   if (!form.repository) form.repository = q.detail?.repository?.name ?? 'git-guild / frontend'
-  if (!form.note) {
-    form.note = `准备提交 ${q.id} 的成果。请说明本次修改、测试结果，以及完成标准的逐项自检情况。`
-  }
 }
+
+// 提交说明输入框的占位提示——只是引导性的底层灰字，不写入 form.note，
+// 否则用户没动过这段文字也会被当成「已填写」的真实内容一起提交。
+const notePlaceholder = computed(() =>
+  props.quest?.id
+    ? `准备提交 ${props.quest.id} 的成果。请说明本次修改、测试结果，以及完成标准的逐项自检情况。`
+    : '本次修改、测试结果、完成标准自检情况',
+)
 
 function hydrateFromDraft() {
   // Reset state so switching between quests doesn't leak fields.
@@ -79,6 +90,7 @@ function hydrateFromDraft() {
   stage.value = 'draft'
   receipt.value = null
   errorMessage.value = ''
+  submitError.value = null
 
   try {
     const raw = localStorage.getItem(draftKey.value)
@@ -90,7 +102,7 @@ function hydrateFromDraft() {
           if (k in draft.checks) checks[k] = Boolean(draft.checks[k])
         }
       }
-      if (Array.isArray(draft.evidence)) evidence.value = draft.evidence
+      // 佐证为本地文件（File / dataUrl），无法跨刷新可靠恢复，故草稿不持久化附件，需重新选择
       if (draft.receipt) {
         // A previously submitted draft — restore lock + receipt so the user
         // re-opening the counter sees the same wax seal, not a blank form.
@@ -126,6 +138,16 @@ async function fetchDraftFromBackend() {
     }
     if (data.branch) {
       form.branch = data.branch
+    }
+    // 维护者退回要求修改后：旧回执仍存在 localStorage 里会把柜台锁在「已交付」态，
+    // 导致无法重新提交。后端回传最近一次提交为 CHANGES_REQUESTED 时，解锁回到草稿态，
+    // 并覆盖掉带 receipt 的旧草稿，避免下次开页又被锁。
+    if (data.latestSubmissionStatus === 'CHANGES_REQUESTED' && stage.value === 'submitted') {
+      receipt.value = null
+      stage.value = 'draft'
+      errorMessage.value = ''
+      submitError.value = null
+      persistDraft()
     }
   } catch {
     // Silently ignore — local draft is sufficient
@@ -202,6 +224,7 @@ const submitterName = computed(
 function openSheet() {
   isFormOpen.value = true
   errorMessage.value = ''
+  submitError.value = null
   nextTick(() => {
     if (stage.value === 'draft') firstInput.value?.focus()
   })
@@ -210,7 +233,6 @@ function openSheet() {
 function closeSheet() {
   if (stage.value === 'submitting') return
   isFormOpen.value = false
-  isAddingEvidence.value = false
 }
 
 // ── Behaviour: draft / submit ──────────────────────────────────────────────
@@ -218,7 +240,6 @@ function persistDraft(extra = {}) {
   const payload = {
     form: { ...form },
     checks: { ...checks },
-    evidence: evidence.value,
     savedAt: new Date().toISOString(),
     ...extra,
   }
@@ -250,6 +271,7 @@ async function submitForReview() {
 
   stage.value = 'submitting'
   errorMessage.value = ''
+  submitError.value = null
   ringingBell.value = true
   // Bell rings for ~900ms regardless of network — the animation completes even
   // if the request resolves instantly, so the moment doesn't feel rushed.
@@ -262,7 +284,14 @@ async function submitForReview() {
       checklist: Object.entries(checks)
         .filter(([, checked]) => checked)
         .map(([label]) => label),
-      evidenceUrls: evidence.value.map((item) => item.url).filter(Boolean),
+      // 佐证文件随提交内联上传（文件名 + MIME + base64），后端持久化后供委托人在审核台查看。
+      evidenceFiles: evidence.value
+        .filter((item) => item.content)
+        .map((item) => ({
+          name: item.name,
+          mimeType: item.mimeType || 'application/octet-stream',
+          content: item.content,
+        })),
     })
     const submittedAt = new Date()
     const newReceipt = {
@@ -284,7 +313,108 @@ async function submitForReview() {
     emit('submitted', newReceipt)
   } catch (err) {
     stage.value = 'error'
-    errorMessage.value = err?.message || '提交失败，请稍后再试。'
+    errorMessage.value = ''
+    submitError.value = diagnoseSubmitError(err)
+  }
+}
+
+/**
+ * 把后端提交错误尽量翻译成「人话原因 + 可操作建议 + 技术细节」，避免用户只看到
+ * 一句笼统的「请求参数不合法」。优先识别最常见的根因（任务分支没有改动）。
+ */
+function diagnoseSubmitError(err) {
+  const code = err?.code ?? ''
+  const status = err?.status
+  const detail = err?.details || ''
+  const rawDetail = detail.toLowerCase()
+
+  // 最常见根因：任务分支没有任何改动，空分支无法建 PR
+  if (code === 'TASK_BRANCH_EMPTY') {
+    return {
+      reason: '任务分支还没有任何改动，平台无法基于一个「空分支」创建 Pull Request，所以提交被拦下了。',
+      hints: [
+        '先把本次完成的代码 commit 并 push 到你接取任务时分配的 task 分支',
+        '确认改动确实推送到了该分支（可在仓库里核对分支最新提交）',
+        '推送成功后再回到提交柜台重新提交',
+      ],
+      detail: detail || err?.message || '',
+    }
+  }
+
+  if (code === 'VALIDATION_FAILED' || status === 400) {
+    if (/evidenceurl|512/.test(rawDetail)) {
+      return {
+        reason: '佐证内容过长，超出了单条佐证的长度上限，无法随这次提交一起上传。',
+        hints: ['减少佐证文件数量', '或改用更短的文件名后重试'],
+        detail,
+      }
+    }
+    if (/description/.test(rawDetail)) {
+      return {
+        reason: '成果说明不能为空。',
+        hints: ['在「提交说明」里写清本次修改、测试结果与完成标准的逐项自检情况'],
+        detail,
+      }
+    }
+    if (/questid/.test(rawDetail)) {
+      return {
+        reason: '没能识别当前委托编号，提交无法定位到具体任务。',
+        hints: ['返回工作台，从该委托重新进入提交柜台后再提交'],
+        detail,
+      }
+    }
+    return {
+      reason: `提交内容未通过校验：${detail || '请检查必填项是否完整。'}`,
+      hints: ['按上面的字段提示补全后重试'],
+      detail,
+    }
+  }
+
+  if (code === 'FORBIDDEN' || status === 403) {
+    return {
+      reason: '你不是该委托当前的承接人，或暂时没有提交权限。',
+      hints: ['确认你已接取该委托且接取仍然有效', '若已被退回或取消，请重新接取后再提交'],
+      detail,
+    }
+  }
+
+  if (code === 'QUEST_NOT_ACCEPTABLE') {
+    return {
+      reason: '该委托当前状态不接受提交（可能已完成、已关闭或尚未开始）。',
+      hints: ['回到工作台查看该委托的最新状态'],
+      detail,
+    }
+  }
+
+  if (code === 'SUBMISSION_NOT_REVIEWABLE') {
+    return {
+      reason: '该委托已经有一份正在等待审核的提交，不能重复提交。',
+      hints: ['等待维护者审核当前提交', '若需修改，等退回后再重新提交'],
+      detail,
+    }
+  }
+
+  if (code === 'CODE_HOST_UNAVAILABLE' || status === 502 || status === 503 || status === 504) {
+    return {
+      reason: '平台代码托管服务（Gitea）暂时不可用，未能创建 PR。',
+      hints: ['稍后重试', '若持续失败请联系管理员检查 Gitea 服务状态'],
+      detail,
+    }
+  }
+
+  if (!status || err?.name === 'TypeError') {
+    return {
+      reason: '网络请求失败，无法连接到后端服务。',
+      hints: ['检查网络连接', '确认后端服务正在运行后重试'],
+      detail,
+    }
+  }
+
+  // 兜底：原样展示后端 message + details，至少不丢失任何排查信息
+  return {
+    reason: err?.message || '提交失败，请稍后再试。',
+    hints: [],
+    detail,
   }
 }
 
@@ -293,46 +423,93 @@ async function submitForReview() {
 function returnToDraft() {
   stage.value = 'draft'
   errorMessage.value = ''
+  submitError.value = null
 }
 
 // Receipt actions
 function backToWorkbench() {
-  // Component is route-agnostic; let the page handle navigation by emitting.
-  emit('submitted', receipt.value)
+  // Component is route-agnostic; let the page handle navigation by emitting
+  // a dedicated event — reusing 'submitted' here would be indistinguishable
+  // from the actual submit-success emit and the page would just store the
+  // receipt again instead of navigating.
+  emit('back-to-workbench', receipt.value)
   closeSheet()
 }
 
-// ── Evidence add / remove ─────────────────────────────────────────────────
-const isAddingEvidence = ref(false)
-const evidenceDraft = reactive({ type: 'screenshot', label: '', url: '' })
-
-function startAddingEvidence(typeId) {
-  if (isLocked.value) return
-  Object.assign(evidenceDraft, { type: typeId, label: '', url: '' })
-  isAddingEvidence.value = true
-  nextTick(() => evidenceLabelInput.value?.focus())
+// ── Evidence file upload ───────────────────────────────────────────────────
+// 把字节数格式化为人类可读大小，用于上限提示与每个附件的大小展示。
+function formatSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function commitEvidence() {
-  const label = evidenceDraft.label.trim()
-  if (!label) return
-  const url = evidenceDraft.url.trim()
-  // URL is optional, but if provided it should look like a URL — otherwise
-  // we'd accept "asdf" as a link and embarrass the reviewer.
-  if (url && !/^https?:\/\/\S+$/i.test(url)) {
-    showToast('链接需以 http:// 或 https:// 开头')
+// 把文件读成 base64 data URL，以便随提交内联上传，委托人在审核台可直接预览/下载。
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+// 点击「选择文件上传」→ 触发隐藏的原生文件浏览器
+function pickEvidenceFiles() {
+  if (isLocked.value) return
+  if (evidence.value.length >= MAX_EVIDENCE_FILES) {
+    showToast(`最多上传 ${MAX_EVIDENCE_FILES} 个佐证文件`)
     return
   }
-  evidence.value = [
-    ...evidence.value,
-    {
-      id: `EV-${Date.now().toString(36).toUpperCase()}`,
-      type: evidenceDraft.type,
-      label,
-      url,
-    },
-  ]
-  isAddingEvidence.value = false
+  fileInput.value?.click()
+}
+
+async function onEvidenceFilesPicked(event) {
+  const picked = Array.from(event.target.files ?? [])
+  // 重置 input，确保再次选择同一文件也能触发 change
+  event.target.value = ''
+  if (!picked.length) return
+
+  const remaining = MAX_EVIDENCE_FILES - evidence.value.length
+  let tooLarge = 0
+  let overflow = 0
+  const accepted = []
+  for (const file of picked) {
+    if (accepted.length >= remaining) {
+      overflow += 1
+      continue
+    }
+    if (file.size > MAX_EVIDENCE_SIZE) {
+      tooLarge += 1
+      continue
+    }
+    accepted.push(file)
+  }
+
+  for (const file of accepted) {
+    try {
+      const content = await readFileAsDataUrl(file)
+      evidence.value = [
+        ...evidence.value,
+        {
+          id: `EV-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`.toUpperCase(),
+          type: file.type.startsWith('image/') ? 'screenshot' : 'doc',
+          name: file.name,
+          size: file.size,
+          mimeType: file.type || 'application/octet-stream',
+          content,
+        },
+      ]
+    } catch {
+      showToast(`「${file.name}」读取失败，请重试`)
+    }
+  }
+
+  if (tooLarge) {
+    showToast(`${tooLarge} 个文件超过 ${formatSize(MAX_EVIDENCE_SIZE)}，已跳过`)
+  } else if (overflow) {
+    showToast(`最多 ${MAX_EVIDENCE_FILES} 个文件，多余的已跳过`)
+  }
 }
 
 function removeEvidence(id) {
@@ -353,11 +530,6 @@ function showToast(text) {
 function onKeydown(event) {
   if (!isFormOpen.value || stage.value === 'submitting') return
   if (event.key === 'Escape') {
-    if (isAddingEvidence.value) {
-      isAddingEvidence.value = false
-      event.preventDefault()
-      return
-    }
     closeSheet()
   }
 }
@@ -462,7 +634,7 @@ function formatDateTime(date) {
                 <textarea
                   v-model="form.note"
                   rows="4"
-                  placeholder="本次修改、测试结果、完成标准自检情况"
+                  :placeholder="notePlaceholder"
                   :disabled="isLocked"
                 ></textarea>
                 <small v-if="errors.note" class="submission-field-error">{{ errors.note }}</small>
@@ -494,21 +666,18 @@ function formatDateTime(date) {
             <section class="submission-evidence-panel" aria-label="附件与证据">
               <div>
                 <p class="kicker">附件与证据</p>
-                <h2>附上佐证</h2>
+                <h2>附上佐证（运行截图或文档说明）</h2>
+                <p class="evidence-hint">
+                  点击下方按钮从本地选择文件上传 · 最多 {{ MAX_EVIDENCE_FILES }} 个，单个不超过 {{ formatSize(MAX_EVIDENCE_SIZE) }}
+                </p>
               </div>
 
               <ul v-if="evidence.length" class="evidence-list">
                 <li v-for="item in evidence" :key="item.id" class="evidence-chip">
                   <span class="evidence-glyph" :data-type="item.type" aria-hidden="true">{{ evidenceGlyph(item.type) }}</span>
                   <div class="evidence-body">
-                    <strong>{{ item.label }}</strong>
-                    <span class="evidence-meta">{{ evidenceLabelFor(item.type) }}</span>
-                    <a
-                      v-if="item.url"
-                      :href="item.url"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >{{ item.url }}</a>
+                    <strong>{{ item.name }}</strong>
+                    <span class="evidence-meta">{{ evidenceLabelFor(item.type) }} · {{ formatSize(item.size) }}</span>
                   </div>
                   <button
                     v-if="!isLocked"
@@ -520,43 +689,24 @@ function formatDateTime(date) {
                 </li>
               </ul>
 
-              <div v-if="isAddingEvidence" class="evidence-draft">
-                <select v-model="evidenceDraft.type" aria-label="附件类型">
-                  <option v-for="t in evidenceTypes" :key="t.id" :value="t.id">{{ t.label }}</option>
-                </select>
-                <input
-                  ref="evidenceLabelInput"
-                  v-model.trim="evidenceDraft.label"
-                  placeholder="名称（必填）"
-                  @keydown.enter.prevent="commitEvidence"
-                />
-                <input
-                  v-model.trim="evidenceDraft.url"
-                  placeholder="链接（可选）"
-                  @keydown.enter.prevent="commitEvidence"
-                />
-                <div class="evidence-draft-actions">
-                  <button type="button" class="quiet-action" @click="isAddingEvidence = false">取消</button>
-                  <button
-                    type="button"
-                    class="primary-action"
-                    :disabled="!evidenceDraft.label.trim()"
-                    @click="commitEvidence"
-                  >登记</button>
-                </div>
-              </div>
-              <template v-else>
-                <button
-                  v-for="type in evidenceTypes"
-                  :key="type.id"
-                  type="button"
-                  :disabled="isLocked"
-                  :title="type.hint"
-                  @click="startAddingEvidence(type.id)"
-                >
-                  <span>+</span>{{ type.label }}
-                </button>
-              </template>
+              <input
+                ref="fileInput"
+                class="evidence-file-input"
+                type="file"
+                multiple
+                accept="image/*,.pdf,.txt,.md,.log,.doc,.docx,.zip"
+                @change="onEvidenceFilesPicked"
+              />
+              <button
+                type="button"
+                class="evidence-upload-btn"
+                :disabled="isLocked || evidence.length >= MAX_EVIDENCE_FILES"
+                @click="pickEvidenceFiles"
+              >
+                <span aria-hidden="true">⤓</span>
+                {{ evidence.length >= MAX_EVIDENCE_FILES ? `已达上限（${MAX_EVIDENCE_FILES} 个）` : '选择文件上传' }}
+              </button>
+              <p class="evidence-count-hint">已添加 {{ evidence.length }} / {{ MAX_EVIDENCE_FILES }} 个文件</p>
             </section>
 
             <section class="submission-review-panel" aria-label="审核流转">
@@ -584,18 +734,33 @@ function formatDateTime(date) {
           </div>
 
           <Transition name="submission-error-bar">
+            <div
+              v-if="submitError"
+              class="submission-error-banner detailed"
+              role="alert"
+            >
+              <div class="error-head">
+                <strong>提交未成功</strong>
+                <button type="button" class="quiet-action" @click="returnToDraft">返回修改</button>
+              </div>
+              <p class="error-reason">{{ submitError.reason }}</p>
+              <ul v-if="submitError.hints.length" class="error-hints">
+                <li v-for="hint in submitError.hints" :key="hint">{{ hint }}</li>
+              </ul>
+              <details v-if="submitError.detail" class="error-detail">
+                <summary>技术细节</summary>
+                <code>{{ submitError.detail }}</code>
+              </details>
+            </div>
+          </Transition>
+
+          <Transition name="submission-error-bar">
             <p
-              v-if="errorMessage"
+              v-if="!submitError && errorMessage"
               class="submission-error-banner"
               role="alert"
             >
               <span>{{ errorMessage }}</span>
-              <button
-                v-if="stage === 'error'"
-                type="button"
-                class="quiet-action"
-                @click="returnToDraft"
-              >返回修改</button>
             </p>
           </Transition>
 
@@ -645,7 +810,7 @@ function formatDateTime(date) {
                   收据已留存。返回工作台等待维护者反馈，反馈会同步回到本柜台。
                 </p>
                 <div class="receipt-actions">
-                  <button class="quiet-action" type="button" @click="closeSheet">关闭柜台</button>
+                  <button class="quiet-action" type="button" @click="closeSheet">返回</button>
                   <button
                     class="primary-action"
                     type="button"

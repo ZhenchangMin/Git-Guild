@@ -384,7 +384,8 @@ class P3ApiDocumentIntegrationTest {
                         .content(json(Map.of(
                                 "decision", "APPROVE_PUBLISH",
                                 "reason", "meets publishing rules",
-                                "visibleToPublisher", true))))
+                                "visibleToPublisher", true,
+                                "checklist", passingChecklist()))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.questStatus").value("PUBLISHED"));
 
@@ -484,6 +485,16 @@ class P3ApiDocumentIntegrationTest {
 
     private String json(Object value) throws Exception {
         return objectMapper.writeValueAsString(value);
+    }
+
+    private List<Map<String, Object>> passingChecklist() {
+        return List.of(
+                Map.of("label", "check-0", "passed", true),
+                Map.of("label", "check-1", "passed", true),
+                Map.of("label", "check-2", "passed", true),
+                Map.of("label", "check-3", "passed", true),
+                Map.of("label", "check-4", "passed", true),
+                Map.of("label", "check-5", "passed", true));
     }
 
     private JsonNode data(MvcResult result) throws Exception {

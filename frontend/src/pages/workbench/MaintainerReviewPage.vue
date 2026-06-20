@@ -8,6 +8,7 @@ import MaintainerReviewActions from '../../components/MaintainerReviewActions.vu
 import MaintainerReviewDetail from '../../components/MaintainerReviewDetail.vue'
 import MaintainerReviewQueue from '../../components/MaintainerReviewQueue.vue'
 import { reviewApi, submissionApi } from '../../api'
+import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
 
 const router = useRouter()
 
@@ -20,7 +21,6 @@ const loadError = ref('')
 const isLoadingReviews = ref(false)
 const isSubmittingReview = ref(false)
 const isMerging = ref(false)
-const isActionPanelCollapsed = ref(false)
 
 const selectedReview = computed(
   () => reviews.value.find((review) => review.id === selectedReviewId.value) ?? null,
@@ -70,7 +70,7 @@ function mapSubmissionStatus(status) {
   return {
     PENDING_REVIEW: { label: '待审核', tone: 'review' },
     APPROVED: { label: '审核通过', tone: 'approved' },
-    CHANGES_REQUESTED: { label: '已请求修改', tone: 'warning' },
+    CHANGES_REQUESTED: { label: '已要求修改', tone: 'warning' },
     REJECTED: { label: '已驳回', tone: 'danger' },
   }[status] ?? { label: status || '未知状态', tone: 'review' }
 }
@@ -127,6 +127,17 @@ function mapSubmissionToReview(submission) {
       ? `${pullRequest.sourceBranch} -> ${pullRequest.targetBranch}`
       : pullRequest.sourceBranch || repository.defaultBranch || '—'
   const completionCriteria = buildCompletionCriteria(submission)
+  const repositoryBranchName = pullRequest.sourceBranch || repository.defaultBranch || 'main'
+  const repositoryUrl = toBrowsableGiteaUrl(repository.sourceUrl) || null
+  // 分支源码视图：跳到该分支下的文件树，而不是仓库默认分支首页。
+  const repositoryBranchUrl = repositoryUrl
+    ? `${repositoryUrl}/src/branch/${encodeURIComponent(repositoryBranchName).replace(/%2F/g, '/')}/`
+    : null
+  // PR 详情页：优先用后端回传的真实 PR 链接（同样要把内网回环地址换成可浏览地址），
+  // 缺失时按仓库地址 + externalPrId 兜底拼接。
+  const pullRequestUrl =
+    toBrowsableGiteaUrl(pullRequest.externalUrl) ||
+    (repositoryUrl && externalPrId ? `${repositoryUrl}/pulls/${externalPrId}` : '')
 
   return {
     id: `SUB-${padId(submission.submissionId)}`,
@@ -135,8 +146,10 @@ function mapSubmissionToReview(submission) {
     questTitle: quest.title || '未命名委托',
     submitter: submission.submitter?.username || `用户 ${submission.submitter?.userId ?? '—'}`,
     repository: repository.name || repository.sourceUrl || '未关联仓库',
+    repositoryBranch: repositoryBranchName,
+    repositoryBranchUrl,
     pullRequest: prLabel,
-    pullRequestUrl: pullRequest.externalUrl || '',
+    pullRequestUrl,
     pullRequestTitle: pullRequest.title || '未命名 PR',
     prState: pullRequest.status || 'UNKNOWN',
     branch,
@@ -148,10 +161,12 @@ function mapSubmissionToReview(submission) {
     rewardXp: submission.rewardXp ?? 0,
     summary: submission.description || '该提交没有填写成果说明。',
     completionCriteria,
+    // 佐证材料：只放真正的外部佐证链接（成果说明已单独展示，不再重复塞进来）。
     evidence: [
-      pullRequest.externalUrl ? `PR 链接：${pullRequest.externalUrl}` : '',
-      submission.description ? `成果说明：${submission.description}` : '',
+      pullRequestUrl ? `PR 链接：${pullRequestUrl}` : '',
     ].filter(Boolean),
+    // 冒险家上传的佐证文件（{name, mimeType, content=base64 dataURL}），供委托人在审核台预览/下载。
+    evidenceFiles: Array.isArray(submission.evidence) ? submission.evidence : [],
     suggestedSummary: completionCriteria.every((item) => item.passed)
       ? 'PR 与成果说明已核对，符合通过条件。'
       : 'PR 尚未满足全部通过条件，请根据未通过项给出修改意见。',
@@ -194,14 +209,13 @@ function selectReview(reviewId) {
   selectedReviewId.value = reviewId
   reviewResult.value = null
   reviewAlert.value = null
-  isActionPanelCollapsed.value = false
 }
 
 function updateReviewStatus(decision) {
   if (!selectedReview.value) return
 
   const nextStatus =
-    decision === 'APPROVED' ? '审核通过' : decision === 'REJECTED' ? '已驳回' : '已请求修改'
+    decision === 'APPROVED' ? '审核通过' : decision === 'REJECTED' ? '已驳回' : '已要求修改'
   const nextTone = decision === 'APPROVED' ? 'approved' : decision === 'REJECTED' ? 'danger' : 'warning'
 
   reviews.value = reviews.value.map((review) =>
@@ -405,34 +419,20 @@ onMounted(loadReviewQueue)
           <section
             v-else
             class="review-focus"
-            :class="{
-              'readonly-review': !canReviewSelectedSubmission,
-              'actions-collapsed': canReviewSelectedSubmission && isActionPanelCollapsed,
-            }"
+            :class="{ 'readonly-review': !canReviewSelectedSubmission }"
           >
             <MaintainerReviewDetail
               :review="selectedReview"
               :merging="isMerging"
               @merge-pr="mergeSelectedPullRequest"
             />
-            <button
-              v-if="canReviewSelectedSubmission"
-              class="action-panel-toggle"
-              type="button"
-              :aria-expanded="!isActionPanelCollapsed"
-              @click="isActionPanelCollapsed = !isActionPanelCollapsed"
-            >
-              {{ isActionPanelCollapsed ? '展开审核' : '收起审核' }}
-            </button>
             <div v-if="canReviewSelectedSubmission" class="review-action-slot">
               <MaintainerReviewActions
-                v-if="!isActionPanelCollapsed"
                 :review="selectedReview"
                 :result="reviewResult"
                 :busy="isSubmittingReview"
                 @submit-review="submitReview"
                 @save-draft="saveDraft"
-                @open-pr="openPullRequest"
               />
             </div>
           </section>
@@ -615,7 +615,7 @@ onMounted(loadReviewQueue)
 
 .review-focus {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) 34px minmax(300px, 0.85fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
   gap: 12px;
 }
 
@@ -623,41 +623,10 @@ onMounted(loadReviewQueue)
   grid-template-columns: minmax(0, 1fr);
 }
 
-.review-focus.actions-collapsed {
-  grid-template-columns: minmax(0, 1fr) 34px;
-}
-
-.review-focus.actions-collapsed .review-action-slot {
-  display: none;
-}
-
 .review-action-slot {
   display: grid;
   min-width: 0;
   min-height: 0;
-}
-
-.action-panel-toggle {
-  align-self: stretch;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(238, 184, 91, 0.32);
-  border-radius: 10px;
-  padding: 0;
-  color: rgba(255, 226, 160, 0.78);
-  background: rgba(14, 7, 3, 0.5);
-  cursor: pointer;
-  writing-mode: vertical-rl;
-  letter-spacing: 0.16em;
-  font-size: 0.8rem;
-  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
-}
-
-.action-panel-toggle:hover,
-.action-panel-toggle:focus-visible {
-  border-color: rgba(255, 224, 157, 0.7);
-  color: #ffe8b9;
-  background: rgba(60, 32, 11, 0.45);
 }
 
 @media (max-width: 1180px) {

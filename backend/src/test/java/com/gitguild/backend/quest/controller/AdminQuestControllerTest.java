@@ -16,6 +16,7 @@ import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.dto.AdminReviewRequest;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminQuestPageResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminQuestSummaryResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewHistoryItem;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewResponse;
 import com.gitguild.backend.quest.dto.QuestResponses.UserBrief;
 import com.gitguild.backend.quest.service.AdminQuestService;
@@ -112,5 +113,27 @@ class AdminQuestControllerTest {
         assertThat(requestCaptor.getValue().getDecision()).isEqualTo(AdminDecision.APPROVE_PUBLISH);
         assertThat(requestCaptor.getValue().getReason()).isEqualTo("Ready to publish");
         assertThat(requestCaptor.getValue().isVisibleToPublisher()).isTrue();
+    }
+
+    @Test
+    void listReviewHistoryShouldReturnAscendingRecords() throws Exception {
+        when(adminQuestService.listReviewHistory(5001L))
+                .thenReturn(List.of(new AdminReviewHistoryItem(
+                        6001L,
+                        AdminDecision.REJECT_PUBLISH,
+                        "Completion criteria are unclear",
+                        new UserBrief(1001L, "admin"),
+                        true,
+                        OffsetDateTime.parse("2026-06-02T10:00:00+08:00"),
+                        List.of())));
+
+        mockMvc.perform(get("/api/v1/admin/quests/5001/review-records"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.data[0].adminReviewId").value(6001))
+                .andExpect(jsonPath("$.data[0].decision").value("REJECT_PUBLISH"))
+                .andExpect(jsonPath("$.data[0].admin.username").value("admin"));
+
+        verify(adminQuestService).listReviewHistory(5001L);
     }
 }

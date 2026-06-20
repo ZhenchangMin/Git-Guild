@@ -2,7 +2,9 @@ package com.gitguild.backend.quest.service;
 
 import com.gitguild.backend.quest.dto.AdminReviewRequest;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminQuestPageResponse;
+import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewHistoryItem;
 import com.gitguild.backend.quest.dto.QuestResponses.AdminReviewResponse;
+import java.util.List;
 
 /**
  * Admin 对 Quest 的审核操作入口，封装上架审核与下架两个核心流程。
@@ -48,4 +50,11 @@ public interface AdminQuestService {
      *         QUEST_NOT_FOUND（404）、FORBIDDEN（403）、QUEST_NOT_REVIEWABLE（409）、QUEST_ALREADY_CLOSED（409）
      */
     AdminReviewResponse reviewQuest(Long questId, Long adminId, AdminReviewRequest request);
+
+    /**
+     * 返回指定 Quest 的全部历史审核记录（按审核时刻升序），供前端时间线区分「已被后续通过覆盖」的旧驳回记录。
+     *
+     * @throws com.gitguild.backend.common.BusinessException QUEST_NOT_FOUND（404）
+     */
+    List<AdminReviewHistoryItem> listReviewHistory(Long questId);
 }

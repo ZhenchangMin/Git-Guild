@@ -50,6 +50,10 @@ public final class SubmissionResponses {
     public record ReviewItemResponse(Long itemId, String checkpoint, String comment, boolean passed) {
     }
 
+    /** 佐证文件：文件名 + MIME 类型 + 内联 base64 data URL，供审核台预览/下载。 */
+    public record EvidenceFileResponse(String name, String mimeType, String content) {
+    }
+
     public record ReviewRecordResponse(
             Long reviewId,
             Long submissionId,
@@ -81,6 +85,7 @@ public final class SubmissionResponses {
             String description,
             SubmissionStatus status,
             OffsetDateTime submittedAt,
+            List<EvidenceFileResponse> evidence,
             List<ReviewRecordResponse> reviewRecords) {
     }
 
@@ -103,6 +108,7 @@ public final class SubmissionResponses {
             SubmissionStatus status,
             Integer rewardXp,
             String completionCriteria,
+            List<EvidenceFileResponse> evidence,
             OffsetDateTime submittedAt) {
     }
 }

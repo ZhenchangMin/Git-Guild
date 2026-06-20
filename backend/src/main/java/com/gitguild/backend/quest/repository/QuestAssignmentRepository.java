@@ -27,6 +27,9 @@ public interface QuestAssignmentRepository extends JpaRepository<QuestAssignment
      */
     List<QuestAssignment> findByAssigneeUserIdAndStatus(Long assigneeId, AssignmentStatus status);
 
+    /** 工作台「我的任务」：需同时看到 ACTIVE 与 COMPLETED，已取消的不展示。 */
+    List<QuestAssignment> findByAssigneeUserIdAndStatusIn(Long assigneeId, Collection<AssignmentStatus> statuses);
+
     /** 指定 Quest 集合下的全部接取记录，供仓库级联删除清理使用。 */
     List<QuestAssignment> findByQuestQuestIdIn(Collection<Long> questIds);
 

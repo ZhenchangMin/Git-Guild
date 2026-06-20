@@ -1,5 +1,6 @@
 package com.gitguild.backend.review.dto;
 
+import com.gitguild.backend.review.domain.SubmissionStatus;
 import java.util.List;
 
 /**
@@ -13,7 +14,10 @@ public record SubmissionDraftResponse(
         RepositoryBrief repository,
         String branch,
         List<PullRequestOption> pullRequests,
-        String completionCriteria) {
+        String completionCriteria,
+        // 当前接取者在该任务下最近一次提交的审核状态：用于提交柜台判断是否为「退回后重新提交」，
+        // 从而清除旧回执的锁定态，允许重新提交修改后的分支。无历史提交时为 null。
+        SubmissionStatus latestSubmissionStatus) {
 
     public record RepositoryBrief(Long repositoryId, String name, String sourceUrl) {
     }

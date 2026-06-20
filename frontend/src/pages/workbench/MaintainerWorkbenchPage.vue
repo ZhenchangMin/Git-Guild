@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import deskImg from '../../assets/desk.webp'
@@ -34,11 +34,34 @@ const QUEST_STATUS = {
   IN_PROGRESS: { label: '进行中', tone: 'active' },
   IN_REVIEW: { label: '审核中', tone: 'pending' },
   COMPLETED: { label: '已完成', tone: 'done' },
-  REJECTED: { label: '已驳回', tone: 'rejected' },
-  CLOSED: { label: '已关闭', tone: 'rejected' },
+  REJECTED: { label: '被退回', tone: 'rejected' },
+  CLOSED: { label: '已下架', tone: 'rejected' },
+  // 提交级状态：委托人把冒险家的提交退回要求修改（Quest 仍停留在 IN_REVIEW，靠 latestSubmissionStatus 体现）
+  CHANGES_REQUESTED: { label: '已要求修改', tone: 'changes' },
 }
 function questStatus(status) {
   return QUEST_STATUS[status] ?? { label: status || '未知', tone: 'draft' }
+}
+
+// 展示用的有效状态：委托人退回提交时 Quest 仍是 IN_REVIEW，但语义上应显示为「已要求修改」，
+// 因此最近一次提交为 CHANGES_REQUESTED 时优先以提交状态展示。
+function effectiveStatus(quest) {
+  if (quest?.latestSubmissionStatus === 'CHANGES_REQUESTED') return 'CHANGES_REQUESTED'
+  return quest?.status
+}
+
+// 状态筛选：'ALL' 表示不过滤。chip 列表只展示当前委托里实际出现过的状态，避免空选项。
+const questStatusFilter = ref('ALL')
+const questStatusFilterOptions = computed(() => {
+  const present = new Set(myQuests.value.map((q) => effectiveStatus(q)))
+  return Object.keys(QUEST_STATUS).filter((status) => present.has(status))
+})
+const filteredMyQuests = computed(() => {
+  if (questStatusFilter.value === 'ALL') return myQuests.value
+  return myQuests.value.filter((q) => effectiveStatus(q) === questStatusFilter.value)
+})
+function setQuestStatusFilter(status) {
+  questStatusFilter.value = status
 }
 
 // 已驳回委托的驳回原因弹窗状态。
@@ -103,46 +126,56 @@ function openRepo(repo) {
   if (url) window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-async function loadRepos() {
-  reposLoading.value = true
+async function loadRepos({ silent = false } = {}) {
+  if (!silent) reposLoading.value = true
   try {
     const res = await repositoryApi.myRepositories()
     const data = res?.data
     repos.value = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
   } catch {
-    repos.value = []
+    if (!silent) repos.value = []
   } finally {
     reposLoading.value = false
   }
 }
 
-// 删除已接入仓库：二次确认后调用后端级联删除，成功则刷新列表与「我发布的委托」。
-async function deleteRepo(repo) {
+// 删除仓库二次确认弹窗：null = 不显示；否则为 { repo, error }
+const deleteConfirm = ref(null)
+
+function requestDeleteRepo(repo) {
   if (deletingRepoId.value) return
-  const confirmed = window.confirm(
-    `确定删除仓库「${repo.name}」吗？\n\n` +
-      '该仓库下的所有委托、提交、审核记录及平台 Gitea 副本都会被一并删除，且不可恢复。',
-  )
-  if (!confirmed) return
+  deleteConfirm.value = { repo, error: '' }
+}
+
+function cancelDeleteRepo() {
+  if (deletingRepoId.value) return
+  deleteConfirm.value = null
+}
+
+// 删除已接入仓库：二次确认后调用后端级联删除，成功则刷新列表与「我发布的委托」。
+async function confirmDeleteRepo() {
+  const repo = deleteConfirm.value?.repo
+  if (!repo || deletingRepoId.value) return
 
   deletingRepoId.value = repo.repositoryId
   try {
     await repositoryApi.remove(repo.repositoryId)
+    deleteConfirm.value = null
     await Promise.all([loadRepos(), loadMyQuests()])
   } catch (err) {
-    window.alert(err?.message || '删除失败，请稍后重试。')
+    if (deleteConfirm.value) deleteConfirm.value.error = err?.message || '删除失败，请稍后重试。'
   } finally {
     deletingRepoId.value = null
   }
 }
 
-async function loadMyQuests() {
-  myQuestsLoading.value = true
+async function loadMyQuests({ silent = false } = {}) {
+  if (!silent) myQuestsLoading.value = true
   try {
     const res = await questApi.myPublished()
     myQuests.value = Array.isArray(res?.data) ? res.data : []
   } catch {
-    myQuests.value = []
+    if (!silent) myQuests.value = []
   } finally {
     myQuestsLoading.value = false
   }
@@ -152,7 +185,7 @@ function isPendingReviewSubmission(item) {
   return item?.status === 'PENDING_REVIEW'
 }
 
-onMounted(async () => {
+async function loadPendingReviews() {
   try {
     const res = await submissionApi.reviewQueue()
     const items = Array.isArray(res?.data) ? res.data : []
@@ -160,8 +193,35 @@ onMounted(async () => {
   } catch {
     pendingReviews.value = null
   }
+}
 
-  await Promise.all([loadRepos(), loadMyQuests()])
+// 统一刷新工作台数据。silent=true 用于后台自动刷新，不闪现骨架屏。
+async function refreshWorkbench({ silent = false } = {}) {
+  await Promise.all([
+    loadPendingReviews(),
+    loadRepos({ silent }),
+    loadMyQuests({ silent }),
+  ])
+}
+
+// 管理员在别处改了委托状态后，委托人这边需要无刷新同步：回到本页（可见/聚焦）即静默拉取，
+// 另加一个轻量轮询兜底，避免一直停在本页时状态长期不更新。
+let pollTimer = null
+function handleVisibility() {
+  if (document.visibilityState === 'visible') refreshWorkbench({ silent: true })
+}
+
+onMounted(async () => {
+  await refreshWorkbench()
+  document.addEventListener('visibilitychange', handleVisibility)
+  window.addEventListener('focus', handleVisibility)
+  pollTimer = window.setInterval(() => refreshWorkbench({ silent: true }), 20000)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibility)
+  window.removeEventListener('focus', handleVisibility)
+  if (pollTimer) window.clearInterval(pollTimer)
 })
 </script>
 
@@ -208,7 +268,7 @@ onMounted(async () => {
           <button class="office-portal" type="button" @click="goRepoSync">
             <span class="office-portal-glyph" aria-hidden="true">⤓</span>
             <span class="office-portal-body">
-              <strong>导入仓库</strong>
+              <strong>新建或导入仓库</strong>
               <small>从 GitHub / Gitee 等导入或同步受托仓库，作为发布委托的来源。</small>
             </span>
             <span class="office-portal-arrow" aria-hidden="true">→</span>
@@ -230,6 +290,29 @@ onMounted(async () => {
             <button class="quiet-action office-sync-btn" type="button" @click="goPublish">发布新委托</button>
           </header>
 
+          <div v-if="questStatusFilterOptions.length > 1" class="quest-filter-options" aria-label="按状态筛选">
+            <button
+              type="button"
+              class="quest-filter-chip"
+              :class="{ active: questStatusFilter === 'ALL' }"
+              :aria-pressed="questStatusFilter === 'ALL'"
+              @click="setQuestStatusFilter('ALL')"
+            >
+              全部 · {{ myQuests.length }}
+            </button>
+            <button
+              v-for="status in questStatusFilterOptions"
+              :key="status"
+              type="button"
+              class="quest-filter-chip"
+              :class="{ active: questStatusFilter === status }"
+              :aria-pressed="questStatusFilter === status"
+              @click="setQuestStatusFilter(status)"
+            >
+              {{ questStatus(status).label }}
+            </button>
+          </div>
+
           <ul v-if="myQuestsLoading" class="office-repo-list" aria-hidden="true">
             <li v-for="n in 2" :key="n" class="office-repo-row is-skeleton">
               <span class="sk sk-name"></span>
@@ -243,8 +326,12 @@ onMounted(async () => {
             起草第一个任务。
           </p>
 
+          <p v-else-if="!filteredMyQuests.length" class="office-repos-empty">
+            没有符合该状态的委托。
+          </p>
+
           <ul v-else class="office-quest-list">
-            <li v-for="q in myQuests" :key="q.questId" class="office-quest-row">
+            <li v-for="q in filteredMyQuests" :key="q.questId" class="office-quest-row">
               <span class="office-quest-title">{{ q.title }}</span>
               <span class="office-quest-repo">{{ q.repository?.name || '—' }}</span>
               <button
@@ -252,14 +339,14 @@ onMounted(async () => {
                 type="button"
                 class="office-quest-badge is-clickable"
                 :class="questStatus(q.status).tone"
-                title="点击查看被驳回的原因"
+                title="点击查看被退回的原因"
                 @click="openRejection(q)"
               >
                 {{ questStatus(q.status).label }}
                 <span class="office-quest-badge-peek" aria-hidden="true">查看原因 ›</span>
               </button>
-              <span v-else class="office-quest-badge" :class="questStatus(q.status).tone">
-                {{ questStatus(q.status).label }}
+              <span v-else class="office-quest-badge" :class="questStatus(effectiveStatus(q)).tone">
+                {{ questStatus(effectiveStatus(q)).label }}
               </span>
             </li>
           </ul>
@@ -276,7 +363,6 @@ onMounted(async () => {
           <ul v-if="reposLoading" class="office-repo-list" aria-hidden="true">
             <li v-for="n in 2" :key="n" class="office-repo-row is-skeleton">
               <span class="sk sk-name"></span>
-              <span class="sk sk-meta"></span>
             </li>
           </ul>
 
@@ -289,9 +375,6 @@ onMounted(async () => {
           <ul v-else class="office-repo-list">
             <li v-for="r in repos" :key="r.repositoryId" class="office-repo-row">
               <span class="office-repo-name">{{ r.name }}</span>
-              <span class="office-repo-meta">
-                {{ r.defaultBranch || 'main' }}
-              </span>
               <span class="office-repo-actions">
                 <button
                   v-if="r.sourceUrl || r.giteaUrl"
@@ -305,7 +388,7 @@ onMounted(async () => {
                   class="office-link office-link-danger"
                   type="button"
                   :disabled="deletingRepoId === r.repositoryId"
-                  @click="deleteRepo(r)"
+                  @click="requestDeleteRepo(r)"
                 >
                   {{ deletingRepoId === r.repositoryId ? '删除中…' : '删除' }}
                 </button>
@@ -343,6 +426,40 @@ onMounted(async () => {
           <div class="reject-actions">
             <button class="quiet-action" type="button" @click="closeRejection">返回工作台</button>
             <button class="primary-action" type="button" @click="republishFromRejection">重新发布委托 →</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 删除仓库二次确认：列出仓库名称与级联影响范围，取消在左、确认在右。 -->
+    <transition name="reject-pop">
+      <div
+        v-if="deleteConfirm"
+        class="delete-repo-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-repo-title"
+        @click.self="cancelDeleteRepo"
+      >
+        <div class="delete-repo-card">
+          <button class="reject-close" type="button" aria-label="关闭" :disabled="!!deletingRepoId" @click="cancelDeleteRepo">×</button>
+          <span class="reject-icon" aria-hidden="true">⊘</span>
+          <p class="kicker">Delete Repository</p>
+          <h2 id="delete-repo-title">确认删除这个仓库？</h2>
+          <p class="reject-quest-title">{{ deleteConfirm.repo?.name }}</p>
+
+          <div class="reject-reason-box">
+            <p class="reject-reason">
+              该仓库下的所有委托、提交、审核记录及平台 Gitea 副本都会被一并删除，且<strong>不可恢复</strong>。
+            </p>
+            <p v-if="deleteConfirm.error" class="reject-reason danger">{{ deleteConfirm.error }}</p>
+          </div>
+
+          <div class="reject-actions">
+            <button class="quiet-action" type="button" :disabled="!!deletingRepoId" @click="cancelDeleteRepo">取消</button>
+            <button class="danger-action" type="button" :disabled="!!deletingRepoId" @click="confirmDeleteRepo">
+              {{ deletingRepoId ? '删除中…' : '确认删除' }}
+            </button>
           </div>
         </div>
       </div>
@@ -532,9 +649,10 @@ onMounted(async () => {
   border-color: rgba(240, 184, 104, 0.4);
 }
 .office-quest-badge.published {
-  color: #d6f0b6;
-  background: rgba(67, 97, 58, 0.42);
-  border-color: rgba(119, 160, 91, 0.5);
+  color: #2a1605;
+  background: linear-gradient(180deg, #ffd98a, #d89a32);
+  border-color: rgba(255, 233, 178, 0.7);
+  box-shadow: 0 0 0 1px rgba(255, 217, 138, 0.18);
 }
 .office-quest-badge.active {
   color: #cfe6ad;
@@ -550,6 +668,11 @@ onMounted(async () => {
   color: #f0a890;
   background: rgba(110, 42, 36, 0.3);
   border-color: rgba(220, 130, 110, 0.4);
+}
+.office-quest-badge.changes {
+  color: #ffc98a;
+  background: rgba(150, 78, 20, 0.32);
+  border-color: rgba(240, 160, 90, 0.42);
 }
 
 /* 可点击的「已驳回」徽标：悬停时浮现「查看原因 ›」并加深底色，暗示可交互。 */
@@ -691,6 +814,51 @@ onMounted(async () => {
   opacity: 0;
 }
 
+/* ── 删除仓库二次确认弹窗（与驳回原因弹窗同款式，红色基调强调破坏性） ── */
+.delete-repo-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 5, 3, 0.62);
+  backdrop-filter: blur(2px);
+}
+.delete-repo-card {
+  position: relative;
+  width: min(460px, 100%);
+  padding: 34px 30px 26px;
+  text-align: center;
+  border: 1px solid rgba(220, 130, 110, 0.42);
+  border-radius: 14px;
+  color: #ffe9c4;
+  background: linear-gradient(168deg, rgba(60, 26, 20, 0.96), rgba(28, 14, 9, 0.98));
+  box-shadow: 0 26px 64px rgba(0, 0, 0, 0.55);
+}
+.danger-action {
+  min-height: 42px;
+  border: 1px solid rgba(238, 120, 82, 0.62);
+  border-radius: 4px;
+  padding: 0 16px;
+  color: #ffe7d2;
+  background: linear-gradient(180deg, #d8634a, #962f1f);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
+  cursor: pointer;
+  transition: transform 150ms ease, filter 150ms ease;
+}
+.danger-action:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+.danger-action:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+  opacity: 0.65;
+  transform: none;
+}
+
 /* ── 受托仓库 ───────────────────────────────────────────── */
 .office-repos {
   display: grid;
@@ -720,7 +888,7 @@ onMounted(async () => {
 }
 .office-repo-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -732,11 +900,6 @@ onMounted(async () => {
   font-family: var(--font-display);
   font-size: 1.02rem;
   color: #ffe9c4;
-}
-.office-repo-meta {
-  color: rgba(255, 230, 190, 0.55);
-  font-size: 0.82rem;
-  font-variant-numeric: tabular-nums;
 }
 .office-link {
   border: none;
@@ -798,10 +961,6 @@ onMounted(async () => {
 .sk-name {
   width: 42%;
 }
-.sk-meta {
-  width: 88px;
-  justify-self: end;
-}
 @keyframes office-shimmer {
   0% {
     background-position: 200% 0;
@@ -819,9 +978,6 @@ onMounted(async () => {
   .office-repo-row.is-skeleton {
     grid-template-columns: 1fr;
     gap: 4px;
-  }
-  .office-repo-meta {
-    justify-self: start;
   }
 }
 </style>

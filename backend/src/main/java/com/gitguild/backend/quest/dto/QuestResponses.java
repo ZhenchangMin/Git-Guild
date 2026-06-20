@@ -3,6 +3,7 @@ package com.gitguild.backend.quest.dto;
 import com.gitguild.backend.quest.domain.AdminDecision;
 import com.gitguild.backend.quest.domain.Difficulty;
 import com.gitguild.backend.quest.domain.QuestStatus;
+import com.gitguild.backend.review.domain.SubmissionStatus;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -50,6 +51,7 @@ public final class QuestResponses {
             Long questId,
             String title,
             String descriptionPreview,
+            String completionCriteria,
             Difficulty difficulty,
             List<String> techStack,
             Integer rewardXp,
@@ -58,6 +60,9 @@ public final class QuestResponses {
             CategoryBrief category,
             List<TagBrief> tags,
             RepositoryBrief repository,
+            // 最近一次提交的审核状态：仅「我发布的委托」会填充，用于在 Quest 仍为 IN_REVIEW
+            // 时区分「已要求修改」（CHANGES_REQUESTED）；其它列表场景为 null。
+            SubmissionStatus latestSubmissionStatus,
             OffsetDateTime createdAt) {
     }
 
@@ -116,6 +121,17 @@ public final class QuestResponses {
             IssueBrief issue) {
     }
 
+    /** 单条历史审核记录，供管理台「审核记录」时间线按 Quest 拉取完整历史（而非仅本次会话内的临时记录）。 */
+    public record AdminReviewHistoryItem(
+            Long adminReviewId,
+            AdminDecision decision,
+            String reason,
+            UserBrief admin,
+            boolean visibleToPublisher,
+            OffsetDateTime reviewedAt,
+            List<ChecklistItemDto> checklist) {
+    }
+
     public record AdminReviewResponse(
             Long adminReviewId,
             Long questId,
@@ -145,19 +161,28 @@ public final class QuestResponses {
             int totalPages) {
     }
 
+    /** 维护者退回修改时留下的一条意见，{@code changeRequests} 按时间升序排列形成历史记录。 */
+    public record ChangeRequestBrief(String summary, OffsetDateTime reviewedAt) {
+    }
+
     /**
      * 工作台"我的待办"单条记录——携带 quest、assigment 状态、仓库、PR 等前端一次性排版所需字段。
+     * {@code latestSubmissionStatus} 是该任务最近一次提交的审核状态（区别于 questStatus——Quest 状态
+     * 在退回修改时仍停留在 IN_REVIEW，只有 Submission 才会变成 CHANGES_REQUESTED）。
      */
     public record MyAssignmentItem(
             Long questId,
             String questTitle,
+            QuestStatus questStatus,
             String assignmentStatus,
             Difficulty difficulty,
             Integer rewardXp,
             String techStack,
             RepositoryBrief repository,
             IssueBrief issue,
-            PullRequestBrief pr) {
+            PullRequestBrief pr,
+            SubmissionStatus latestSubmissionStatus,
+            List<ChangeRequestBrief> changeRequests) {
     }
 
     /**

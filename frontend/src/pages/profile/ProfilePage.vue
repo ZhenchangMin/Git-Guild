@@ -316,6 +316,7 @@ const contributionList = computed(() =>
     xp: c.xp,
     completedAt: (c.completedAt || '').slice(0, 10),
     summary: c.summary,
+    techStack: c.techStack || [],
   })),
 )
 
@@ -329,12 +330,15 @@ const difficultyTrend = computed(() =>
   })),
 )
 
-// 技能标签：按真实贡献所在仓库聚合，贡献次数作为权重（无贡献则为空）
+// 技能标签：按委托真实携带的技术栈聚合（而非仓库名），计数 = 完成过该技术栈任务的次数，
+// 同一任务标了多个技术栈时各记一次——能直观看出"完成了多少次 Markdown 任务"这种统计。
 const derivedSkillTags = computed(() => {
   const counts = new Map()
   for (const c of contributions.value) {
-    if (!c.repository) continue
-    counts.set(c.repository, (counts.get(c.repository) || 0) + 1)
+    for (const name of c.techStack || []) {
+      if (!name) continue
+      counts.set(name, (counts.get(name) || 0) + 1)
+    }
   }
   return [...counts.entries()]
     .map(([name, count]) => ({ name, count }))
@@ -429,7 +433,14 @@ function tagQuality(count) {
 const DIFF_LABEL = { A: '高级', B: '中级', C: '初级', D: '入门' }
 
 // ─── navigation ────────────────────────────────────
-function backToHall() { router.push({ name: 'hall' }) }
+// 返回上一页（保留用户来路，如工作台）；无站内历史（直接深链进入）时兜底回大厅。
+function goBack() {
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push({ name: 'hall' })
+  }
+}
 function openQuestBoard() { router.push({ name: 'quest-board' }) }
 function openWorkbench() { router.push({ name: 'adventurer-workbench' }) }
 function openLeaderboard() { router.push({ name: 'leaderboard' }) }
@@ -453,9 +464,9 @@ const icons = {
   <main class="app-shell">
     <section class="scene profile-scene" :style="{ '--profile-archive-bg': `url(${profileArchiveBg})` }">
       <!-- back button -->
-      <button class="back-orb" type="button" aria-label="返回公会大厅" @click="backToHall">
+      <button class="back-orb" type="button" aria-label="返回上一页" @click="goBack">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6 9 12l6 6" /></svg>
-        <span>返回公会大厅</span>
+        <span>返回</span>
       </button>
 
       <aside class="growth-map-points" aria-label="成长路径点">
@@ -515,12 +526,12 @@ const icons = {
                 <button
                   class="edit-btn"
                   type="button"
-                  aria-label="编辑资料"
+                  aria-label="编辑签名"
                   :disabled="isSavingProfile"
                   @click="editProfileMotto"
                 >
                   <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path :d="icons.edit" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  <span>编辑</span>
+                  <span>编辑签名</span>
                 </button>
               </div>
 
@@ -650,7 +661,7 @@ const icons = {
               <em>{{ tag.count }}</em>
             </span>
           </div>
-          <p v-else class="section-empty">完成任务后，会按贡献仓库自动积累你的技术栈标签。</p>
+          <p v-else class="section-empty">完成任务后，会按委托标注的技术栈自动积累你的技能标签。</p>
         </section>
 
         <!-- ═══════ §3.5 Tab 切换内容区 ═══════ -->

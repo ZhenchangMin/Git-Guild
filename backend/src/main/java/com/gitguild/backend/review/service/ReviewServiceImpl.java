@@ -112,6 +112,19 @@ public class ReviewServiceImpl implements ReviewService {
         }
         CodePullRequest merged = questPullRequestService.mergeForApproval(
                 pullRequest, submission.getQuest().getRepository());
+
+        // 通知提交者：PR 已并入目标分支。best-effort，失败不影响合并结果。
+        try {
+            notificationService.notify(
+                    submission.getSubmitter(),
+                    NotificationType.PR_MERGED,
+                    String.format("你的任务《%s》对应的 PR 已被合并到目标分支。", submission.getQuest().getTitle()),
+                    "SUBMISSION",
+                    submission.getSubmissionId());
+        } catch (RuntimeException ex) {
+            log.warn("发送 PR 合并通知失败 submissionId={}", submissionId, ex);
+        }
+
         return PullRequestBrief.from(merged);
     }
 

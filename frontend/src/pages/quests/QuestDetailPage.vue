@@ -7,6 +7,7 @@ import questBoardImg from '../../assets/quest board.webp'
 import HomeOrb from '../../components/HomeOrb.vue'
 import QuestDetail from '../../components/QuestDetail.vue'
 import { sessionStore } from '../../stores/sessionStore'
+import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
 
 const route = useRoute()
 const router = useRouter()
@@ -116,6 +117,7 @@ function normalizeQuestDetail(quest) {
       number: normalizeIssueNumber(quest.issue),
       title: quest.issue?.title ?? '未关联 Issue',
       status: quest.issue?.status ?? '未知',
+      webUrl: toBrowsableGiteaUrl(quest.issue?.externalUrl ?? null),
     },
     pr: {
       number: 'Not created',
@@ -156,6 +158,14 @@ function goBack() {
 }
 
 function openWorkbench() {
+  // 游客点「进入工作台」：先跳登录，登录后直达工作台（redirect 指向受保护的工作台路径）。
+  if (sessionStore.role === 'VISITOR') {
+    router.push({
+      name: 'login',
+      query: { redirect: router.resolve({ name: 'adventurer-workbench' }).fullPath },
+    })
+    return
+  }
   router.push({
     name: sessionStore.role === 'ADVENTURER' || sessionStore.role === 'MAINTAINER'
       ? 'adventurer-workbench'

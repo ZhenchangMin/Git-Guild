@@ -22,6 +22,7 @@ public record ContributionResponse(
             String difficulty,
             int xp,
             OffsetDateTime completedAt,
-            String summary) {
+            String summary,
+            List<String> techStack) {
     }
 }

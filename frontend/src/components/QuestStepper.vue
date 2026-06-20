@@ -15,7 +15,7 @@ const statusMap = {
   accepted: 'active',
   'in-progress': 'active',
   'pr-ready': 'active',
-  submitted: 'submitted',
+  submitted: 'review',
   'in-review': 'review',
   review: 'review',
   approved: 'approved',
@@ -25,13 +25,12 @@ const statusMap = {
   rejected: 'returned',
 }
 
-// The five linear nodes. "退回修改" is a branch off "审核中" rather than a node,
+// The four linear nodes. "退回修改" is a branch off "已提交 / 审核中" rather than a node,
 // so a returned quest highlights the review node in a warning tone instead.
 const nodes = [
   { key: 'available', label: '待接取', place: '任务详情' },
   { key: 'active', label: '进行中', place: '工作台 / 仓库' },
-  { key: 'submitted', label: '已提交', place: '提交柜台' },
-  { key: 'review', label: '审核中', place: '维护者审核台' },
+  { key: 'review', label: '已提交 / 审核中', place: '提交柜台 → 维护者审核台' },
   { key: 'approved', label: '通过', place: '成长记录' },
 ]
 
@@ -75,7 +74,7 @@ function nodeClass(node, index) {
 .quest-stepper {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin: 0;
   padding: 0;

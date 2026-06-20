@@ -160,6 +160,16 @@ public class Quest {
         this.status = QuestStatus.CLOSED;
     }
 
+    public boolean canBeReopened() {
+        return status == QuestStatus.CLOSED;
+    }
+
+    /** 重新上架：CLOSED → PUBLISHED。此前因下架被取消的接取记录不会恢复，需要冒险家重新接取。 */
+    public void reopen() {
+        this.status = QuestStatus.PUBLISHED;
+        this.publishedAt = OffsetDateTime.now();
+    }
+
     public boolean canBeAccepted() {
         return status == QuestStatus.PUBLISHED || status == QuestStatus.IN_PROGRESS;
     }
@@ -222,6 +232,11 @@ public class Quest {
 
     public String getTechStackJson() {
         return techStackJson;
+    }
+
+    /** 审核通过时把委托技术栈规范化为平台已登记的标准写法（大小写统一），不改变发布表单的自由输入流程。 */
+    public void setTechStackJson(String techStackJson) {
+        this.techStackJson = techStackJson;
     }
 
     public int getRewardXp() {

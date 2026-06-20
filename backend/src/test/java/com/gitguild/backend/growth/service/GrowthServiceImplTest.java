@@ -36,11 +36,14 @@ class GrowthServiceImplTest {
     @Mock private GrowthProfileRepository growthProfileRepository;
     @Mock private XpTransactionRepository xpTransactionRepository;
     @Mock private ContributionRecordRepository contributionRecordRepository;
+    @Mock private com.gitguild.backend.notification.service.NotificationService notificationService;
     @Mock private User submitter;
     @Mock private Quest quest;
 
     private GrowthServiceImpl service() {
-        return new GrowthServiceImpl(growthProfileRepository, xpTransactionRepository, contributionRecordRepository);
+        return new GrowthServiceImpl(
+                growthProfileRepository, xpTransactionRepository, contributionRecordRepository,
+                new com.fasterxml.jackson.databind.ObjectMapper(), notificationService);
     }
 
     @Test

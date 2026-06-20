@@ -19,5 +19,29 @@ public enum NotificationType {
     REVIEW_CHANGES_REQUESTED,
 
     /** 提交被驳回，提醒提交者本次成果未通过。 */
-    REVIEW_REJECTED
+    REVIEW_REJECTED,
+
+    /** 委托通过管理员上架审核，提醒发布者（委托人）委托已上架。 */
+    QUEST_APPROVED,
+
+    /** 委托被管理员驳回上架，提醒发布者修改后重新提交。 */
+    QUEST_REJECTED,
+
+    /** 委托被管理员下架，提醒发布者委托已下线。 */
+    QUEST_TAKEN_DOWN,
+
+    /** 委托被管理员重新上架，提醒发布者委托恢复可见。 */
+    QUEST_REOPENED,
+
+    /** 委托被冒险家接取，提醒发布者有人开始做这个任务。 */
+    QUEST_ACCEPTED,
+
+    /** 提交对应的 PR 被合并，提醒提交者代码已并入目标分支。 */
+    PR_MERGED,
+
+    /** 冒险家等级提升，祝贺其升级。 */
+    LEVEL_UP,
+
+    /** 冒险家解锁新徽章/成就，祝贺其达成。 */
+    BADGE_UNLOCKED
 }

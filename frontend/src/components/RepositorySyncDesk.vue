@@ -11,7 +11,7 @@ const router = useRouter()
 const mode = ref('create')
 
 const createForm = ref({
-  name: 'gitguild-demo',
+  name: '',
   description: '',
 })
 
@@ -32,6 +32,8 @@ const repositoryIssues = ref([])
 const errorMessage = ref('')
 // 导入失败弹窗：null = 不显示；否则为 { title, reason, hints, detail, sourceUrl }
 const failure = ref(null)
+// 新建/导入二次确认弹窗：null = 不显示；否则为 { kind: 'create'|'import', ...待确认字段 }
+const repoConfirm = ref(null)
 
 // 迁移进度：后端是单次异步调用、不流式回传百分比，所以进度绑定真实阶段边界
 // （迁移 → 同步 Issue → 读取 Issue → 完成）；长耗时的迁移阶段用渐近爬升避免“卡死感”。
@@ -123,6 +125,8 @@ const notice = computed(() => {
 const issueOptions = computed(() => repositoryIssues.value.filter((issue) => issue.status !== 'CLOSED'))
 const canImport = computed(() => repositoryForm.value.sourceUrl.trim() && repositoryForm.value.name.trim() && !loading.value)
 const canCreate = computed(() => createForm.value.name.trim() && !loading.value)
+// 已成功创建 / 导入 / 命中重复副本 —— 视为本次接入已完成，禁用提交按钮避免重复操作干扰用户
+const completed = computed(() => ['created', 'imported', 'duplicate'].includes(stage.value))
 
 function inferRepositoryName(sourceUrl) {
   const clean = sourceUrl.trim().replace(/\.git$/i, '')
@@ -146,6 +150,41 @@ function syncNameFromUrl() {
   if (!repositoryForm.value.sourceUrl.trim()) return
   if (repositoryForm.value.name && repositoryForm.value.name !== 'gitguild-demo') return
   repositoryForm.value.name = inferRepositoryName(repositoryForm.value.sourceUrl)
+}
+
+// 提交前先弹二次确认：展示用户填写的仓库基本信息，避免误填地址直接触发迁移。
+function requestImportConfirm() {
+  if (!canImport.value) return
+  repoConfirm.value = {
+    kind: 'import',
+    sourceUrl: repositoryForm.value.sourceUrl.trim(),
+    name: repositoryForm.value.name.trim(),
+    hostType: repositoryForm.value.hostType,
+  }
+}
+
+// 新建空仓库同样先弹二次确认：展示将要创建的仓库名称/描述，避免误触直接建库。
+function requestCreateConfirm() {
+  if (!canCreate.value) return
+  repoConfirm.value = {
+    kind: 'create',
+    name: createForm.value.name.trim(),
+    description: createForm.value.description.trim(),
+  }
+}
+
+function cancelRepoConfirm() {
+  repoConfirm.value = null
+}
+
+function confirmRepoAction() {
+  const kind = repoConfirm.value?.kind
+  repoConfirm.value = null
+  if (kind === 'create') {
+    createRepository()
+  } else {
+    importRepository()
+  }
 }
 
 async function importRepository() {
@@ -439,7 +478,7 @@ onBeforeUnmount(stopCreep)
       </ol>
     </section>
 
-    <form class="frontdesk-pocket import-panel" @submit.prevent="mode === 'create' ? createRepository() : importRepository()">
+    <form class="frontdesk-pocket import-panel" @submit.prevent="mode === 'create' ? requestCreateConfirm() : requestImportConfirm()">
       <div class="pocket-head">
         <div>
           <p class="kicker">Repository Intake</p>
@@ -472,15 +511,20 @@ onBeforeUnmount(stopCreep)
         </div>
         <label>
           仓库名称
-          <input v-model.trim="createForm.name" placeholder="gitguild-demo" required />
+          <input v-model.trim="createForm.name" placeholder="例：gitguild-demo" required />
           <small class="field-hint">仅字母、数字、连字符；将作为本地 Gitea 仓库名。</small>
         </label>
         <label>
           仓库描述
           <input v-model.trim="createForm.description" placeholder="可选，简述这个仓库的用途" />
         </label>
-        <button class="primary-action section-action" type="submit" :disabled="!canCreate">
-          {{ loading ? '正在创建仓库…' : '创建空仓库' }}
+        <button
+          class="primary-action section-action"
+          type="submit"
+          :class="{ 'action-done': completed }"
+          :disabled="!canCreate || completed"
+        >
+          {{ completed ? '仓库已创建' : loading ? '正在创建仓库…' : '创建空仓库' }}
         </button>
       </section>
 
@@ -512,8 +556,13 @@ onBeforeUnmount(stopCreep)
             </select>
           </label>
         </div>
-        <button class="primary-action section-action" type="submit" :disabled="!canImport">
-          {{ loading ? '正在导入仓库…' : '导入仓库并同步' }}
+        <button
+          class="primary-action section-action"
+          type="submit"
+          :class="{ 'action-done': completed }"
+          :disabled="!canImport || completed"
+        >
+          {{ completed ? '仓库已接入' : loading ? '正在导入仓库…' : '导入仓库并同步' }}
         </button>
 
         <button
@@ -607,6 +656,62 @@ onBeforeUnmount(stopCreep)
       </div>
 
     </form>
+
+    <transition name="failure-pop">
+      <div
+        v-if="repoConfirm"
+        class="import-confirm-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="repo-confirm-title"
+        @click.self="cancelRepoConfirm"
+      >
+        <div class="confirm-card">
+          <button class="confirm-close" type="button" aria-label="关闭" @click="cancelRepoConfirm">×</button>
+          <p class="kicker">{{ repoConfirm.kind === 'create' ? 'Confirm Create' : 'Confirm Import' }}</p>
+          <h2 id="repo-confirm-title">
+            {{ repoConfirm.kind === 'create' ? '确认创建这个空仓库？' : '确认导入这个仓库？' }}
+          </h2>
+          <p class="confirm-lead">
+            {{
+              repoConfirm.kind === 'create'
+                ? '创建后会在平台本地 Gitea 生成一个空仓库，请核对名称无误。'
+                : '迁移开始后会把以下来源仓库迁入平台并同步 Issue，请核对信息无误。'
+            }}
+          </p>
+          <dl v-if="repoConfirm.kind === 'create'" class="confirm-meta">
+            <div>
+              <dt>仓库名称</dt>
+              <dd>{{ repoConfirm.name }}</dd>
+            </div>
+            <div>
+              <dt>仓库描述</dt>
+              <dd>{{ repoConfirm.description || '（未填写）' }}</dd>
+            </div>
+          </dl>
+          <dl v-else class="confirm-meta">
+            <div>
+              <dt>仓库地址</dt>
+              <dd>{{ repoConfirm.sourceUrl }}</dd>
+            </div>
+            <div>
+              <dt>平台仓库名称</dt>
+              <dd>{{ repoConfirm.name }}</dd>
+            </div>
+            <div>
+              <dt>托管类型</dt>
+              <dd>{{ repoConfirm.hostType === 'GITEA' ? 'Gitea / GitHub' : repoConfirm.hostType }}</dd>
+            </div>
+          </dl>
+          <div class="confirm-actions">
+            <button class="quiet-action" type="button" @click="cancelRepoConfirm">取消</button>
+            <button class="primary-action" type="button" @click="confirmRepoAction">
+              {{ repoConfirm.kind === 'create' ? '确认创建' : '确认导入' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
 
     <transition name="failure-pop">
       <div
@@ -958,6 +1063,13 @@ onBeforeUnmount(stopCreep)
   opacity: 0.68;
 }
 
+/* 接入完成后的提交按钮：明显置灰且禁止点击，避免用户重复创建/导入 */
+.primary-action.action-done:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  filter: grayscale(0.5);
+}
+
 /* 停止导入：红褐警示，立即中断本次导入并丢弃已产生的副本 */
 .stop-import {
   min-height: 34px;
@@ -1214,6 +1326,101 @@ onBeforeUnmount(stopCreep)
 .duplicate-actions .primary-action {
   min-height: 38px;
   padding-inline: 16px;
+}
+
+/* ── 导入二次确认弹窗（与已导入过弹窗同色调，强调“核对后再继续”） ── */
+.import-confirm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at 50% 35%, rgba(40, 20, 4, 0.6), rgba(6, 3, 2, 0.8));
+  backdrop-filter: blur(4px);
+}
+.confirm-card {
+  position: relative;
+  width: min(440px, 92vw);
+  padding: 28px 26px 24px;
+  border: 1px solid rgba(238, 184, 91, 0.62);
+  border-radius: 16px;
+  color: #ffe7b5;
+  text-align: left;
+  background:
+    linear-gradient(180deg, rgba(38, 20, 8, 0.96), rgba(20, 10, 4, 0.96)),
+    radial-gradient(circle at 50% 0%, rgba(238, 184, 91, 0.22), transparent 52%);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 220, 140, 0.16);
+}
+.confirm-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  color: rgba(255, 220, 150, 0.72);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  background: transparent;
+  transition: background 150ms ease, color 150ms ease;
+}
+.confirm-close:hover {
+  color: #ffe7b5;
+  background: rgba(238, 184, 91, 0.18);
+}
+.confirm-card .kicker {
+  margin-bottom: 4px;
+  color: rgba(255, 220, 150, 0.8);
+}
+.confirm-card h2 {
+  margin: 2px 0 10px;
+  color: #ffe4a0;
+  font-family: var(--font-display);
+  font-size: 1.28rem;
+}
+.confirm-lead {
+  margin: 0 0 18px;
+  color: rgba(255, 231, 183, 0.78);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.confirm-meta {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 22px;
+  padding: 12px 14px;
+  border: 1px solid rgba(224, 163, 72, 0.28);
+  border-radius: 10px;
+  background: rgba(8, 5, 3, 0.4);
+}
+.confirm-meta div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+}
+.confirm-meta dt {
+  color: rgba(255, 231, 183, 0.55);
+  font-size: 0.76rem;
+}
+.confirm-meta dd {
+  min-width: 0;
+  margin: 0;
+  color: #ffe9bb;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.confirm-actions .quiet-action,
+.confirm-actions .primary-action {
+  min-height: 38px;
+  padding-inline: 18px;
 }
 
 /* ── 导入失败弹窗 ─────────────────────────────────────────── */

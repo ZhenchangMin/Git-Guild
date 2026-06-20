@@ -3,12 +3,17 @@ package com.gitguild.backend.quest.controller;
 import com.gitguild.backend.common.ApiResponse;
 import com.gitguild.backend.common.BusinessException;
 import com.gitguild.backend.quest.domain.QuestCategory;
+import com.gitguild.backend.quest.domain.QuestStatus;
 import com.gitguild.backend.quest.domain.QuestTag;
+import com.gitguild.backend.quest.domain.QuestTechStack;
 import com.gitguild.backend.quest.repository.QuestCategoryRepository;
 import com.gitguild.backend.quest.repository.QuestRepository;
 import com.gitguild.backend.quest.repository.QuestTagRepository;
+import com.gitguild.backend.quest.repository.QuestTechStackRepository;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,16 +30,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 public class QuestTaxonomyController {
 
+    /** 已下架/已驳回的 Quest 不计入分类/标签的「占用」判定，参见 QuestRepository 的查询注释。 */
+    private static final Set<QuestStatus> INACTIVE_STATUSES = EnumSet.of(QuestStatus.CLOSED, QuestStatus.REJECTED);
+
     private final QuestCategoryRepository categoryRepository;
     private final QuestTagRepository tagRepository;
+    private final QuestTechStackRepository techStackRepository;
     private final QuestRepository questRepository;
 
     public QuestTaxonomyController(
             QuestCategoryRepository categoryRepository,
             QuestTagRepository tagRepository,
+            QuestTechStackRepository techStackRepository,
             QuestRepository questRepository) {
         this.categoryRepository = categoryRepository;
         this.tagRepository = tagRepository;
+        this.techStackRepository = techStackRepository;
         this.questRepository = questRepository;
     }
 
@@ -48,7 +59,7 @@ public class QuestTaxonomyController {
                 .filter(category -> includeDisabled || category.isEnabled())
                 .map(category -> CategoryResponse.from(
                         category,
-                        withQuestCount ? (int) questRepository.countByCategory_CategoryId(category.getCategoryId()) : null))
+                        withQuestCount ? (int) questRepository.countByCategory_CategoryIdAndStatusNotIn(category.getCategoryId(), INACTIVE_STATUSES) : null))
                 .sorted(categoryComparator(sortBy, sortOrder))
                 .toList();
         return ApiResponse.success(items);
@@ -75,7 +86,7 @@ public class QuestTaxonomyController {
         category.update(request.name(), request.description(), request.enabled());
         QuestCategory saved = categoryRepository.save(category);
         return ApiResponse.success(
-                CategoryResponse.from(saved, (int) questRepository.countByCategory_CategoryId(saved.getCategoryId())));
+                CategoryResponse.from(saved, (int) questRepository.countByCategory_CategoryIdAndStatusNotIn(saved.getCategoryId(), INACTIVE_STATUSES)));
     }
 
     @DeleteMapping("/quest-categories/{categoryId}")
@@ -83,7 +94,7 @@ public class QuestTaxonomyController {
     public ApiResponse<Void> deleteCategory(@PathVariable Long categoryId) {
         QuestCategory category = categoryRepository.findById(categoryId)
                 .orElseThrow(() -> notFound("CATEGORY_NOT_FOUND", "任务分类不存在"));
-        long used = questRepository.countByCategory_CategoryId(categoryId);
+        long used = questRepository.countByCategory_CategoryIdAndStatusNotIn(categoryId, INACTIVE_STATUSES);
         if (used > 0) {
             throw new BusinessException(
                     "CATEGORY_IN_USE", HttpStatus.CONFLICT, "分类正被任务引用，无法删除", "questCount=" + used);
@@ -103,7 +114,7 @@ public class QuestTaxonomyController {
                 .filter(tag -> includeDisabled || tag.isEnabled())
                 .filter(tag -> keyword == null || keyword.isBlank() || tag.getName().contains(keyword.trim()))
                 .sorted(Comparator.comparing(QuestTag::getName))
-                .map(tag -> TagResponse.from(tag, (int) questRepository.countByTagId(tag.getTagId())))
+                .map(tag -> TagResponse.from(tag, (int) questRepository.countByTagIdAndStatusNotIn(tag.getTagId(), INACTIVE_STATUSES)))
                 .toList();
         int from = Math.min((page - 1) * size, filtered.size());
         int to = Math.min(from + size, filtered.size());
@@ -128,7 +139,7 @@ public class QuestTaxonomyController {
                 .orElseThrow(() -> notFound("TAG_NOT_FOUND", "任务标签不存在"));
         tag.update(request.name(), request.color(), request.enabled());
         QuestTag saved = tagRepository.save(tag);
-        return ApiResponse.success(TagResponse.from(saved, (int) questRepository.countByTagId(saved.getTagId())));
+        return ApiResponse.success(TagResponse.from(saved, (int) questRepository.countByTagIdAndStatusNotIn(saved.getTagId(), INACTIVE_STATUSES)));
     }
 
     @DeleteMapping("/quest-tags/{tagId}")
@@ -136,12 +147,69 @@ public class QuestTaxonomyController {
     public ApiResponse<Void> deleteTag(@PathVariable Long tagId) {
         QuestTag tag = tagRepository.findById(tagId)
                 .orElseThrow(() -> notFound("TAG_NOT_FOUND", "任务标签不存在"));
-        long used = questRepository.countByTagId(tagId);
+        long used = questRepository.countByTagIdAndStatusNotIn(tagId, INACTIVE_STATUSES);
         if (used > 0) {
             throw new BusinessException(
                     "TAG_IN_USE", HttpStatus.CONFLICT, "标签正被任务引用，无法删除", "questCount=" + used);
         }
         tagRepository.delete(tag);
+        return ApiResponse.success();
+    }
+
+    @GetMapping("/quest-tech-stacks")
+    public ApiResponse<TechStackPageResponse> listTechStacks(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "false") boolean includeDisabled,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        validatePage(page, size);
+        List<TechStackResponse> filtered = techStackRepository.findAll().stream()
+                .filter(stack -> includeDisabled || stack.isEnabled())
+                .filter(stack -> keyword == null || keyword.isBlank() || stack.getName().contains(keyword.trim()))
+                .sorted(Comparator.comparing(QuestTechStack::getName))
+                .map(stack -> TechStackResponse.from(
+                        stack, (int) questRepository.countByTechStackNameAndStatusNotIn(stack.getName(), INACTIVE_STATUSES)))
+                .toList();
+        int from = Math.min((page - 1) * size, filtered.size());
+        int to = Math.min(from + size, filtered.size());
+        return ApiResponse.success(new TechStackPageResponse(filtered.subList(from, to), page, size, filtered.size()));
+    }
+
+    @PostMapping("/quest-tech-stacks")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<TechStackResponse> createTechStack(@RequestBody TechStackRequest request) {
+        validateName(request.name());
+        if (techStackRepository.existsByNameIgnoreCase(request.name().trim())) {
+            throw alreadyExists("同名技术栈已存在");
+        }
+        QuestTechStack stack = techStackRepository.save(new QuestTechStack(request.name().trim()));
+        return ApiResponse.success("CREATED", TechStackResponse.from(stack, 0));
+    }
+
+    @PatchMapping("/quest-tech-stacks/{techStackId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<TechStackResponse> updateTechStack(
+            @PathVariable Long techStackId,
+            @RequestBody TechStackRequest request) {
+        QuestTechStack stack = techStackRepository.findById(techStackId)
+                .orElseThrow(() -> notFound("TECH_STACK_NOT_FOUND", "技术栈不存在"));
+        stack.update(request.name(), request.enabled());
+        QuestTechStack saved = techStackRepository.save(stack);
+        return ApiResponse.success(
+                TechStackResponse.from(saved, (int) questRepository.countByTechStackNameAndStatusNotIn(saved.getName(), INACTIVE_STATUSES)));
+    }
+
+    @DeleteMapping("/quest-tech-stacks/{techStackId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Void> deleteTechStack(@PathVariable Long techStackId) {
+        QuestTechStack stack = techStackRepository.findById(techStackId)
+                .orElseThrow(() -> notFound("TECH_STACK_NOT_FOUND", "技术栈不存在"));
+        long used = questRepository.countByTechStackNameAndStatusNotIn(stack.getName(), INACTIVE_STATUSES);
+        if (used > 0) {
+            throw new BusinessException(
+                    "TECH_STACK_IN_USE", HttpStatus.CONFLICT, "技术栈正被任务引用，无法删除", "questCount=" + used);
+        }
+        techStackRepository.delete(stack);
         return ApiResponse.success();
     }
 
@@ -201,5 +269,17 @@ public class QuestTaxonomyController {
     }
 
     public record TagPageResponse(List<TagResponse> items, int page, int size, int total) {
+    }
+
+    public record TechStackRequest(String name, Boolean enabled) {
+    }
+
+    public record TechStackResponse(Long techStackId, String name, Boolean enabled, Integer questCount) {
+        static TechStackResponse from(QuestTechStack stack, Integer questCount) {
+            return new TechStackResponse(stack.getTechStackId(), stack.getName(), stack.isEnabled(), questCount);
+        }
+    }
+
+    public record TechStackPageResponse(List<TechStackResponse> items, int page, int size, int total) {
     }
 }

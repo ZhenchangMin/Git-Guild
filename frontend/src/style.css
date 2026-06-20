@@ -1764,10 +1764,34 @@ h2 {
 .admin-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 行/卡片都向顶部紧凑排列、各自按内容高度收缩，避免固定分块在信息少时被拉高留白 */
+  align-content: start;
+  align-items: start;
   gap: 12px;
   min-height: 0;
   overflow: auto;
   padding-top: 14px;
+}
+
+/* 当前筛选下没有可展示的申请——与左侧队列的空态保持一致，避免左右"各说各话"。 */
+.admin-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  grid-template-rows: none;
+}
+
+.admin-detail-empty h2 {
+  font-size: clamp(1.1rem, 1.6vw, 1.5rem);
+  color: rgba(255, 231, 183, 0.86);
+}
+
+.admin-detail-empty p:last-child {
+  max-width: 32rem;
+  color: rgba(255, 231, 183, 0.6);
 }
 
 .admin-ledger-card {
@@ -1808,9 +1832,17 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-.issue-card,
-.standards-card {
+.content-card,
+.issue-card {
   grid-column: 1 / -1;
+}
+
+.admin-dl-wide {
+  grid-column: 1 / -1;
+}
+
+.admin-dl-wide dd {
+  white-space: pre-wrap;
 }
 
 .admin-check-list {
@@ -1823,19 +1855,10 @@ h2 {
   display: grid;
   gap: 6px;
   border: 1px solid rgba(98, 55, 20, 0.18);
-  /* 左侧色条表示管理员的现场结论：待核验 / 通过 / 存疑。 */
   border-left: 3px solid rgba(214, 142, 56, 0.5);
   border-radius: 5px;
   padding: 9px 10px;
   background: rgba(255, 244, 210, 0.35);
-}
-
-.admin-check-row.passed {
-  border-left-color: rgba(67, 97, 58, 0.85);
-}
-
-.admin-check-row.failed {
-  border-left-color: rgba(110, 42, 36, 0.85);
 }
 
 .admin-check-head {
@@ -1849,60 +1872,11 @@ h2 {
   color: #3f2410;
 }
 
-.admin-check-verdict {
-  display: inline-flex;
-  flex: 0 0 auto;
-  gap: 4px;
-}
-
-.admin-check-verdict button {
-  border: 1px solid rgba(98, 55, 20, 0.3);
-  border-radius: 999px;
-  padding: 3px 11px;
-  color: #5a3414;
-  background: rgba(255, 250, 238, 0.6);
-  font-size: 0.76rem;
-  cursor: pointer;
-  transition: border-color 130ms ease, background 130ms ease, color 130ms ease;
-}
-
-.admin-check-verdict button:hover,
-.admin-check-verdict button:focus-visible {
-  border-color: rgba(98, 55, 20, 0.6);
-}
-
-.admin-check-verdict button.on {
-  border-color: rgba(67, 97, 58, 0.85);
-  color: #f1ffd6;
-  background: rgba(67, 97, 58, 0.82);
-}
-
-.admin-check-verdict button.fail.on {
-  border-color: rgba(110, 42, 36, 0.85);
-  color: #ffe0da;
-  background: rgba(110, 42, 36, 0.82);
-}
-
 .admin-check-row p {
   margin: 0;
   color: rgba(69, 37, 15, 0.72);
   font-size: 0.84rem;
   line-height: 1.4;
-}
-
-.standards-card ol {
-  display: grid;
-  gap: 7px;
-  margin: 12px 0 0;
-  padding-left: 20px;
-  color: #3f2410;
-  line-height: 1.45;
-}
-
-.admin-empty-note {
-  margin: 12px 0 0;
-  color: rgba(110, 42, 36, 0.82);
-  line-height: 1.5;
 }
 
 .admin-action-panel {
@@ -2221,6 +2195,114 @@ h2 {
   color: rgba(76, 37, 12, 0.7);
 }
 
+/* 三种审核结论的切换按钮——选中后下方说明文案与 textarea 占位文字随之切换，
+   颜色基调与 admin-confirm-dialog / admin-timeline 的 approved/return/danger 保持一致。 */
+.admin-decision-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.admin-decision-toggle-btn {
+  flex: 1 1 auto;
+  border: 1px solid rgba(98, 55, 20, 0.32);
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: rgba(255, 249, 232, 0.5);
+  color: rgba(76, 37, 12, 0.75);
+  font-family: var(--font-body);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.admin-decision-toggle-btn:hover {
+  transform: translateY(-1px);
+}
+
+.admin-decision-toggle-btn.approved.active {
+  border-color: rgba(67, 97, 58, 0.9);
+  background: rgba(67, 97, 58, 0.34);
+  color: #233d18;
+}
+
+.admin-decision-toggle-btn.return.active {
+  border-color: rgba(168, 95, 26, 0.85);
+  background: rgba(214, 142, 56, 0.34);
+  color: #5e3208;
+}
+
+.admin-decision-toggle-btn.danger.active {
+  border-color: rgba(150, 47, 31, 0.85);
+  background: rgba(150, 47, 31, 0.26);
+  color: #5a1c12;
+}
+
+/* 未选中态也带上各自语气的底色，让通过(绿)/退回(橙)/下架(红) 一眼可辨。 */
+.admin-decision-toggle-btn.approved {
+  border-color: rgba(67, 97, 58, 0.5);
+  background: rgba(67, 97, 58, 0.09);
+  color: #3a5a2c;
+}
+.admin-decision-toggle-btn.return {
+  border-color: rgba(214, 142, 56, 0.5);
+  background: rgba(214, 142, 56, 0.1);
+  color: #8a4d15;
+}
+.admin-decision-toggle-btn.danger {
+  border-color: rgba(202, 104, 88, 0.5);
+  background: rgba(168, 57, 43, 0.08);
+  color: #8a2f20;
+}
+
+/* 提交按钮：按结论上色的实心按钮（通过=绿 / 退回=橙 / 下架=红）。 */
+.admin-action-buttons .admin-decision-action {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 11px 16px;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.96rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.admin-action-buttons .admin-decision-action:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+.admin-decision-action.approved {
+  border-color: rgba(95, 140, 60, 0.85);
+  background: linear-gradient(180deg, #5c8a36, #2f4a1c);
+  color: #f1ffd9;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+.admin-decision-action.return {
+  border-color: #c8862f;
+  background: linear-gradient(180deg, #e0a23c, #a85f1a);
+  color: #2a1505;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
+}
+.admin-decision-action.danger {
+  border-color: rgba(238, 120, 82, 0.62);
+  background: linear-gradient(180deg, #d8634a, #962f1f);
+  color: #ffe7d2;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+}
+
+.admin-decision-copy {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid rgba(98, 55, 20, 0.4);
+  color: rgba(76, 37, 12, 0.78);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
 .admin-reason-field {
   display: grid;
   gap: 6px;
@@ -2283,6 +2365,160 @@ h2 {
   width: 16px;
   height: 16px;
   accent-color: var(--green);
+}
+
+.admin-assignment-warning {
+  margin: 12px 0 0;
+  border: 1px solid rgba(214, 142, 56, 0.55);
+  border-radius: 5px;
+  padding: 9px 12px;
+  color: #6e3a10;
+  background: rgba(241, 184, 95, 0.22);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.admin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 6px 6px 0;
+  border-radius: 999px;
+  padding: 3px 11px;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: #2c2417;
+  background: rgba(201, 168, 110, 0.35);
+}
+
+.admin-chip.muted {
+  color: #8a7f6c;
+  background: rgba(138, 127, 108, 0.15);
+}
+
+.admin-chip-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+.admin-chip.unregistered {
+  color: #6e2a26;
+  background: rgba(214, 92, 76, 0.2);
+  border: 1px dashed rgba(214, 92, 76, 0.6);
+}
+
+.admin-chip-register {
+  border: none;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  color: #fff;
+  background: rgba(180, 64, 50, 0.85);
+  cursor: pointer;
+}
+
+.admin-chip-register:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.admin-tech-stack-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.admin-tech-stack-notice {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  color: #4a6b3c;
+}
+
+.admin-confirm-dialog {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  border-radius: 5px;
+  padding: 12px;
+}
+
+.admin-confirm-dialog p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* 通过上架：绿色基调，与 admin-timeline li.approved 一致。 */
+.admin-confirm-dialog.approved {
+  border: 1px solid rgba(67, 97, 58, 0.6);
+  background: rgba(67, 97, 58, 0.12);
+}
+.admin-confirm-dialog.approved p {
+  color: #2c4423;
+}
+
+/* 退回补充：橙色基调，与 admin-timeline li.return 一致。 */
+.admin-confirm-dialog.return {
+  border: 1px solid rgba(214, 142, 56, 0.6);
+  background: rgba(214, 142, 56, 0.14);
+}
+.admin-confirm-dialog.return p {
+  color: #6e3a10;
+}
+
+/* 下架：红色基调，与 admin-timeline li.danger 一致。 */
+.admin-confirm-dialog.danger {
+  border: 1px solid rgba(202, 104, 88, 0.6);
+  background: rgba(168, 57, 43, 0.1);
+}
+.admin-confirm-dialog.danger p {
+  color: #6e2418;
+}
+
+.admin-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.quiet-action.warn {
+  border: 1px solid #e6a23c;
+  color: #2a1505;
+  background: linear-gradient(180deg, #ffce6e, #d6884a);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.quiet-action.warn:hover {
+  filter: brightness(1.08);
+  border-color: #f3ca75;
+}
+
+.admin-gitea-link {
+  border: 1px solid rgba(238, 184, 91, 0.48);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #ffe8b8;
+  background: rgba(21, 12, 7, 0.5);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.admin-gitea-link:hover {
+  border-color: var(--gold-bright);
+  color: var(--gold-bright);
+}
+
+.admin-timeline li.superseded {
+  opacity: 0.6;
+}
+
+.superseded-badge {
+  color: rgba(110, 42, 36, 0.82);
+  font-style: normal;
 }
 
 .admin-action-buttons button:disabled {
@@ -3332,49 +3568,11 @@ h2 {
   transform: translateX(-50%);
 }
 
-/* Status seal, top-right corner. */
-.commission-seal {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  border: 1px solid currentColor;
-}
-
-.commission-seal.tone-open {
-  color: #2f5130;
-  background: rgba(108, 167, 96, 0.32);
-}
-
-.commission-seal.tone-active {
-  color: #8a5410;
-  background: rgba(232, 170, 60, 0.36);
-}
-
-.commission-seal.tone-ready {
-  color: #1f3c63;
-  background: rgba(70, 116, 178, 0.3);
-}
-
-.commission-seal.tone-review {
-  color: #5a3a6e;
-  background: rgba(140, 104, 168, 0.3);
-}
-
-.commission-seal.tone-returned {
-  color: #7a2b22;
-  background: rgba(178, 86, 70, 0.3);
-}
-
 .commission-card-top {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding-right: 86px;
   color: rgba(68, 37, 15, 0.7);
   font-size: 0.74rem;
   letter-spacing: 0.06em;
@@ -3382,6 +3580,12 @@ h2 {
 
 .commission-id {
   font-weight: 700;
+}
+
+.commission-meta-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .commission-rank {
@@ -3393,6 +3597,17 @@ h2 {
   color: #5a3110;
   font-weight: 700;
   background: rgba(255, 240, 191, 0.55);
+}
+
+.commission-category {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid rgba(139, 94, 30, 0.55);
+  border-radius: 4px;
+  color: #6b4a17;
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(196, 154, 74, 0.4), rgba(139, 94, 30, 0.22));
 }
 
 .commission-title {
@@ -3483,6 +3698,33 @@ h2 {
   font-size: 0.74rem;
   font-weight: 700;
   background: rgba(108, 167, 96, 0.18);
+}
+
+.commission-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.commission-tags span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border: 1px solid rgba(90, 48, 20, 0.26);
+  border-radius: 999px;
+  color: rgba(68, 37, 15, 0.86);
+  font-size: 0.74rem;
+  background: rgba(255, 240, 191, 0.45);
+}
+
+.commission-tag-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
 .commission-stack {
@@ -3856,11 +4098,10 @@ h2 {
   position: relative;
   z-index: 1;
   display: grid;
-  /* Body row is `minmax(0, 1fr)` so the footer is anchored at the bottom of
-     the sheet — never pushed down into the body content. Without `1fr`, a
-     tall body would shove the footer past the sheet's intended bottom and
-     visually overlap the review-note callout. */
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* 行都按内容高度（auto），让整张委托单随内容自然变高，由最外层 .submission-modal-layer
+     提供唯一滚动条——委托单内部不再单独出现第二条滚动条。aspect-ratio 仍作为内容较少时的
+     基准比例，内容超出时委托单整体增高。 */
+  grid-template-rows: auto auto auto;
   /* Sheet is now allowed to grow to fit content, then the modal layer
      scrolls if the result exceeds viewport height. We re-add aspect-ratio so
      the parchment image is no longer stretched (it was previously visibly
@@ -4005,10 +4246,8 @@ h2 {
      rhythm without busting the budget. */
   gap: 14px 22px;
   padding: 14px 0 12px;
-  /* Safety net: if a user piles on lots of evidence and the body still
-     overflows the available track, the body shows its own thin scrollbar
-     rather than letting content collide with the footer. */
-  overflow: auto;
+  /* 委托单内部不再单独滚动：内容直接撑开整张委托单，滚动统一交给最外层。 */
+  overflow: visible;
 }
 
 /* ── Strip every inner "card" from the four content sections ───────────
@@ -4582,6 +4821,26 @@ h2 {
   font-size: 0.78rem;
 }
 
+/* 隐藏原生文件输入，仅用「选择文件上传」按钮触发它 */
+.evidence-file-input {
+  display: none;
+}
+
+/* 上限说明与已选数量提示——羊皮纸暗棕小字 */
+.evidence-hint {
+  margin: 6px 0 0;
+  color: rgba(69, 37, 15, 0.66);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.evidence-count-hint {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  color: rgba(69, 37, 15, 0.55);
+  font-size: 0.72rem;
+}
+
 /* ── Error banner above the action row ───────────────────────────────── */
 
 .submission-error-banner {
@@ -4603,6 +4862,81 @@ h2 {
   min-height: 28px;
   padding: 0 10px;
   font-size: 0.78rem;
+}
+
+/* 结构化诊断版错误条：原因 + 可操作建议 + 可展开技术细节 */
+.submission-error-banner.detailed {
+  display: block;
+  padding: 12px 14px;
+}
+
+.submission-error-banner.detailed .error-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.submission-error-banner.detailed .error-head strong {
+  font-family: var(--font-display);
+  font-size: 0.96rem;
+  color: #7a2a12;
+}
+
+.submission-error-banner.detailed .error-reason {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #6c2410;
+}
+
+.submission-error-banner.detailed .error-hints {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.submission-error-banner.detailed .error-hints li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: rgba(108, 36, 16, 0.86);
+}
+
+.submission-error-banner.detailed .error-hints li::before {
+  content: '→';
+  position: absolute;
+  left: 2px;
+  color: #b8431f;
+}
+
+.submission-error-banner.detailed .error-detail {
+  margin-top: 8px;
+}
+
+.submission-error-banner.detailed .error-detail summary {
+  font-size: 0.76rem;
+  color: rgba(108, 36, 16, 0.7);
+  cursor: pointer;
+  user-select: none;
+}
+
+.submission-error-banner.detailed .error-detail code {
+  display: block;
+  margin-top: 6px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: #5a2210;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: rgba(255, 244, 226, 0.7);
+  border: 1px solid rgba(160, 60, 22, 0.26);
 }
 
 .submission-error-bar-enter-active,
