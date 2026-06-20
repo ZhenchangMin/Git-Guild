@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../api/questApi'
 import QuestActionRail from './QuestActionRail.vue'
+import QuestJourney from './QuestJourney.vue'
 import { sessionStore } from '../stores/sessionStore'
 
 const router = useRouter()
@@ -334,6 +335,7 @@ function viewIssue() {
           </div>
         </section>
 
+        <QuestJourney :workflow-state="localWorkflowState" />
       </main>
 
       <aside class="quest-side-column">
