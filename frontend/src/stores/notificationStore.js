@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 
 import { notificationApi } from '../api/notificationApi'
 import { ApiError } from '../api/httpClient'
+import { closeOverlay, openOverlay } from './overlayStore'
 import { hasLoginSession, sessionStore } from './sessionStore'
 
 /**
@@ -76,12 +77,14 @@ export function dismissToast(notificationId) {
 // 打开通知详情弹窗：同时收起对应 toast，并标记为已读。
 export function openNotification(item) {
   notificationStore.selected = item
+  openOverlay('notification')
   dismissToast(item.notificationId)
   if (item.status === 'UNREAD') markNotificationRead(item.notificationId)
 }
 
 export function closeNotification() {
   notificationStore.selected = null
+  closeOverlay('notification')
 }
 
 /** 拉取最近通知与未读数。未登录时清空并直接返回。 */

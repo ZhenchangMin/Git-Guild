@@ -43,5 +43,8 @@ public enum NotificationType {
     LEVEL_UP,
 
     /** 冒险家解锁新徽章/成就，祝贺其达成。 */
-    BADGE_UNLOCKED
+    BADGE_UNLOCKED,
+
+    /** 委托相关的站内信笺送达，提醒对方打开交流线程。 */
+    MESSAGE_RECEIVED
 }
