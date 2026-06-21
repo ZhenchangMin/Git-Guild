@@ -23,4 +23,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     /** 带归属校验的单条读取：只有接收者本人能命中，避免越权标记他人通知。 */
     Optional<Notification> findByNotificationIdAndReceiverUserId(Long notificationId, Long receiverId);
+
+    /** 按关联资源取该用户某状态的通知，用于"读了消息→连带把对应通知标记已读"。 */
+    List<Notification> findByReceiverUserIdAndRelatedTypeAndRelatedIdAndStatus(
+            Long receiverId, String relatedType, Long relatedId, NotificationStatus status);
 }

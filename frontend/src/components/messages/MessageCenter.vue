@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import {
   closeMessageCenter,
@@ -7,6 +7,8 @@ import {
   openQuestMessages,
   selectMessageThread,
   sendMessage,
+  startMessagePolling,
+  stopMessagePolling,
 } from '../../stores/messageStore'
 import { overlayStore } from '../../stores/overlayStore'
 
@@ -44,7 +46,8 @@ async function submitMessage() {
 }
 
 function onKeydown(event) {
-  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+  // Enter 发送，Shift+Enter 换行；输入法组词期间（isComposing）不拦截，避免误发。
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault()
     submitMessage()
   }
@@ -62,8 +65,15 @@ watch(
 )
 
 watch(isOpen, (open) => {
-  if (open) scrollToBottom()
+  if (open) {
+    scrollToBottom()
+    startMessagePolling()
+  } else {
+    stopMessagePolling()
+  }
 })
+
+onBeforeUnmount(stopMessagePolling)
 
 defineExpose({ openQuestMessages })
 </script>
@@ -166,6 +176,7 @@ defineExpose({ openQuestMessages })
                     :disabled="messageStore.sending"
                     @keydown="onKeydown"
                   ></textarea>
+                  <small class="composer-hint">Enter 发送 · Shift + Enter 换行</small>
                 </div>
 
                 <footer class="composer-actions">
@@ -484,6 +495,12 @@ defineExpose({ openQuestMessages })
 .composer-field label {
   color: rgba(255, 231, 183, 0.72);
   font-size: 0.82rem;
+}
+
+.composer-hint {
+  color: rgba(255, 231, 183, 0.46);
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
 }
 
 .composer textarea {

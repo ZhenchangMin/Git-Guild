@@ -123,6 +123,12 @@ public class MessageServiceImpl implements MessageService {
         MessageThread thread = requireThreadForUser(userId, threadId);
         User user = thread.getPublisher().getUserId().equals(userId) ? thread.getPublisher() : thread.getAssignee();
         markReadInternal(thread, user, OffsetDateTime.now());
+        // 读完该会话的信笺，连带把"收到信笺"的站内通知一并置为已读，保持红点与实际一致。
+        try {
+            notificationService.markReadByRelated(userId, "MESSAGE_THREAD", thread.getThreadId());
+        } catch (RuntimeException ignored) {
+            // 通知联动失败不应影响信笺已读本身。
+        }
         return toDetail(thread, userId);
     }
 
