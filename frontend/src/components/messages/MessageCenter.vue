@@ -80,13 +80,13 @@ defineExpose({ openQuestMessages })
         @click.self="closeMessageCenter"
       >
         <section class="message-center">
+          <button class="center-close" type="button" aria-label="关闭信笺" @click="closeMessageCenter">×</button>
           <aside class="thread-sidebar" aria-label="信笺会话列表">
             <header class="thread-head">
               <div>
                 <p class="kicker">Mailbox</p>
                 <h2 id="message-center-title">站内信笺</h2>
               </div>
-              <button class="thread-close" type="button" aria-label="关闭信笺" @click="closeMessageCenter">×</button>
             </header>
 
             <p v-if="messageStore.loadingThreads && threads.length === 0" class="thread-empty">正在整理信笺...</p>
@@ -197,6 +197,7 @@ defineExpose({ openQuestMessages })
 }
 
 .message-center {
+  position: relative;
   width: min(1120px, calc(100vw - 64px));
   height: min(720px, calc(100vh - 64px));
   display: grid;
@@ -241,23 +242,34 @@ defineExpose({ openQuestMessages })
   line-height: 1.2;
 }
 
-.thread-close {
+/* 关闭按钮悬浮在整个站内信浮层的右上角（而非侧栏标题处）。 */
+.center-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 5;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 0;
-  border-radius: 8px;
-  color: rgba(255, 224, 178, 0.72);
-  background: transparent;
-  font-size: 1.35rem;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(238, 184, 91, 0.36);
+  border-radius: 9px;
+  color: rgba(255, 224, 178, 0.82);
+  background: rgba(13, 7, 4, 0.62);
+  font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
 
-.thread-close:hover {
+.center-close:hover {
   color: #ffe0b0;
-  background: rgba(240, 198, 118, 0.16);
+  background: rgba(240, 198, 118, 0.2);
+  border-color: rgba(255, 204, 105, 0.7);
+}
+
+.center-close:active {
+  transform: scale(0.92);
 }
 
 .thread-list {
@@ -362,7 +374,8 @@ defineExpose({ openQuestMessages })
 }
 
 .conversation-head {
-  padding: 18px 22px;
+  /* 右侧多留出空间，避免“收件人”信息被右上角关闭按钮压住。 */
+  padding: 18px 64px 18px 22px;
   border-bottom: 1px solid rgba(238, 184, 91, 0.2);
 }
 
