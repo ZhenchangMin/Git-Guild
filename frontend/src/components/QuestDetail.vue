@@ -43,6 +43,7 @@ const STATUS_TONE = {
   待提交成果: 'ready',
   等待维护者审核: 'review',
   需要修改: 'returned',
+  已被接取: 'returned',
   已完成: 'done',
 }
 
@@ -136,6 +137,12 @@ const workflowConfig = computed(() => {
       primary: '查看成长记录',
       secondary: '查看贡献记录',
     },
+    taken: {
+      status: '已被接取',
+      next: '该委托已被其他成员接取，目前无法接取或进入工作台。可返回委托板挑选其他委托。',
+      primary: '返回委托板',
+      secondary: '查看仓库',
+    },
   }
 
   return configs[localWorkflowState.value] ?? configs.available
@@ -183,6 +190,12 @@ async function handlePrimaryAction() {
 
   if (localWorkflowState.value === 'completed') {
     inlineNotice.value = '该任务已完成，可到个人档案查看 XP 和贡献记录。'
+    return
+  }
+
+  // 委托已被他人接取：当前访客不可进入工作台，引导其返回委托板。
+  if (localWorkflowState.value === 'taken') {
+    router.push({ name: 'quest-board' })
     return
   }
 
@@ -241,7 +254,7 @@ function viewRepository() {
 }
 
 function handleSecondaryAction() {
-  if (localWorkflowState.value === 'available') {
+  if (localWorkflowState.value === 'available' || localWorkflowState.value === 'taken') {
     viewRepository()
     return
   }

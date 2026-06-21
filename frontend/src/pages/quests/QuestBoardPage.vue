@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
@@ -334,14 +334,18 @@ function applyRecommendationOrder(baseQuests, recommendedItems) {
   })
 }
 
-async function loadRecommendedQuests() {
-  isRecommendationLoading.value = true
+async function loadRecommendedQuests({ silent = false } = {}) {
+  // 静默刷新（轮询 / 回到页面）不显示骨架/加载态，避免列表闪烁。
+  if (!silent) {
+    isRecommendationLoading.value = true
+  }
   recommendationError.value = ''
 
   try {
-    // 两个接口互不依赖，并行请求以缩短首屏等待（recommendations 失败降级为默认排序）。
-    const [questListPayload, recommendationPayload] = await Promise.all([
-      questApi.list({ page: 1, size: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
+    // 委托板只展示「可接取」(PUBLISHED) 的委托——已被接取(IN_PROGRESS)等状态不再上板。
+    // 同时（登录时）取「我发布的」委托 ID，用于在卡片上标注「我发布的」。
+    const [questListPayload, recommendationPayload, myPublishedPayload] = await Promise.all([
+      questApi.list({ status: 'PUBLISHED', page: 1, size: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
       questApi
         .recommendations({
           strategy: 'tech-difficulty',
@@ -350,11 +354,23 @@ async function loadRecommendedQuests() {
           limit: recommendationLimit,
         })
         .catch(() => null),
+      sessionStore.token ? questApi.myPublished().catch(() => null) : Promise.resolve(null),
     ])
     const questListData = unwrapApiData(questListPayload)
     const questListItems = Array.isArray(questListData.items) ? questListData.items : []
+
+    // 我发布的委托 ID 集合（字符串化以与卡片 routeId 对齐）。
+    // 注意：/quests/me/published 直接返回数组（ApiResponse<List<...>>），不是 { items: [] }。
+    const myPublishedData = unwrapApiData(myPublishedPayload)
+    const myPublishedItems = Array.isArray(myPublishedData)
+      ? myPublishedData
+      : (myPublishedData?.items ?? [])
+    const myQuestIds = new Set(myPublishedItems.map((item) => String(item.questId ?? item.id ?? '')))
+
     // 只展示后端真实委托；无数据即真实空态（模板已有“空空如也”空态）。
-    const baseQuests = questListItems.map(normalizeQuestSummary)
+    const baseQuests = questListItems
+      .map(normalizeQuestSummary)
+      .map((quest) => ({ ...quest, mine: myQuestIds.has(String(quest.routeId ?? quest.id ?? '')) }))
     const recommendationData = unwrapApiData(recommendationPayload)
     const recommendedItems = Array.isArray(recommendationData.items) ? recommendationData.items : []
 
@@ -365,10 +381,13 @@ async function loadRecommendedQuests() {
       recommendationError.value = '推荐接口暂时不可用，当前按默认排序显示'
     }
   } catch {
-    questSource.value = []
-    recommendationMeta.value = null
-    usingRecommendedSource.value = false
-    recommendationError.value = '悬赏板加载失败，请稍后重试。'
+    // 静默刷新失败时保留当前列表，不打断浏览；仅前台加载失败才清空并提示。
+    if (!silent) {
+      questSource.value = []
+      recommendationMeta.value = null
+      usingRecommendedSource.value = false
+      recommendationError.value = '悬赏板加载失败，请稍后重试。'
+    }
   } finally {
     isRecommendationLoading.value = false
   }
@@ -444,9 +463,31 @@ watch(questPageCount, (pageCount) => {
   }
 })
 
+// 委托状态可能随时变化（被他人接取、上架、下架）。轮询 + 回到页面时静默刷新，
+// 让委托板尽快反映真实状态，减少「看到的还可接取，点进去已被接取」的窗口。
+const BOARD_REFRESH_MS = 15000
+let boardRefreshTimer = 0
+
+function refreshBoardSilently() {
+  loadRecommendedQuests({ silent: true })
+}
+
+function handleBoardVisibility() {
+  if (document.visibilityState === 'visible') refreshBoardSilently()
+}
+
 onMounted(() => {
   loadTaxonomyFilterOptions()
   loadRecommendedQuests()
+  boardRefreshTimer = window.setInterval(refreshBoardSilently, BOARD_REFRESH_MS)
+  document.addEventListener('visibilitychange', handleBoardVisibility)
+  window.addEventListener('focus', refreshBoardSilently)
+})
+
+onUnmounted(() => {
+  window.clearInterval(boardRefreshTimer)
+  document.removeEventListener('visibilitychange', handleBoardVisibility)
+  window.removeEventListener('focus', refreshBoardSilently)
 })
 </script>
 
@@ -556,6 +597,7 @@ onMounted(() => {
                 <div class="commission-card-top">
                   <span class="commission-id">{{ quest.id }}</span>
                   <div class="commission-meta-group">
+                    <span v-if="quest.mine" class="commission-mine" title="这份委托由你发布">我发布的</span>
                     <span class="commission-rank" :title="`难度 ${quest.difficulty} 阶`">{{ quest.difficulty }} 阶</span>
                     <span class="commission-category">{{ quest.category }}</span>
                   </div>
@@ -598,7 +640,13 @@ onMounted(() => {
                   <span class="commission-reward">{{ quest.reward }}</span>
                   <div class="commission-actions">
                     <button class="quiet-action" type="button" @click="openQuestDetail(quest.routeId ?? quest.id, 'view')">详情</button>
-                    <button class="primary-action" type="button" @click="openQuestDetail(quest.routeId ?? quest.id, 'accept')">接取委托</button>
+                    <button
+                      v-if="!quest.mine"
+                      class="primary-action"
+                      type="button"
+                      @click="openQuestDetail(quest.routeId ?? quest.id, 'accept')"
+                    >接取委托</button>
+                    <span v-else class="commission-own-note" title="不能接取自己发布的委托">我发布的委托</span>
                   </div>
                 </footer>
               </article>

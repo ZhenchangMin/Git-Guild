@@ -274,21 +274,50 @@ function logout() {
   router.push({ name: 'login' })
 }
 
+// 可接取委托数需要保持新鲜：否则进站时取一次后，期间有委托上架/被接取，
+// 大厅 tooltip 仍显示旧值，和点进委托板看到的真实数量对不上。
+// 这里在挂载、回到页面（focus / visibilitychange）以及定时轮询时统一刷新。
+const OPEN_QUEST_REFRESH_MS = 30000
+let openQuestTimer = 0
+
+async function refreshOpenQuestCount() {
+  try {
+    // 「可接取」是对当前用户而言：自己发布的委托不能自己接取，所以要从总数里扣掉。
+    const [listRes, minePayload] = await Promise.all([
+      questApi.list({ status: 'PUBLISHED', page: 1, size: 1 }),
+      sessionStore.token ? questApi.myPublished().catch(() => null) : Promise.resolve(null),
+    ])
+    const totalPublished = listRes?.data?.totalItems ?? 0
+    // /quests/me/published 直接返回数组（ApiResponse<List<...>>），不是 { items: [] }。
+    const myData = minePayload?.data
+    const myItems = Array.isArray(myData) ? myData : (myData?.items ?? [])
+    const myPublishedCount = myItems.filter((item) => item.status === 'PUBLISHED').length
+    openQuestCount.value = Math.max(0, totalPublished - myPublishedCount)
+  } catch {
+    // 拉取失败保留上一次的值，不打扰用户。
+  }
+}
+
+function handleOpenQuestVisibility() {
+  if (document.visibilityState === 'visible') refreshOpenQuestCount()
+}
+
 onMounted(async () => {
   consumeHallEntrySource()
   window.addEventListener('resize', centerHall)
   nextTick(centerHall)
-  try {
-    const res = await questApi.list({ status: 'PUBLISHED', page: 1, size: 1 })
-    openQuestCount.value = res?.data?.totalItems ?? 0
-  } catch {
-    openQuestCount.value = 0
-  }
+  await refreshOpenQuestCount()
+  openQuestTimer = window.setInterval(refreshOpenQuestCount, OPEN_QUEST_REFRESH_MS)
+  document.addEventListener('visibilitychange', handleOpenQuestVisibility)
+  window.addEventListener('focus', refreshOpenQuestCount)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', centerHall)
   window.clearTimeout(hallEntryExitTimer)
+  window.clearInterval(openQuestTimer)
+  document.removeEventListener('visibilitychange', handleOpenQuestVisibility)
+  window.removeEventListener('focus', refreshOpenQuestCount)
 })
 </script>
 

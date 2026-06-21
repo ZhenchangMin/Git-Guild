@@ -3610,6 +3610,39 @@ h2 {
   background: linear-gradient(135deg, rgba(196, 154, 74, 0.4), rgba(139, 94, 30, 0.22));
 }
 
+/* 「我发布的」标识：和难度/分类区分开，用墨绿描边 + 旗标图标，一眼看出是自己发的委托。 */
+.commission-mine {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid rgba(67, 97, 58, 0.7);
+  border-radius: 4px;
+  color: #2c4423;
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(120, 160, 92, 0.4), rgba(67, 97, 58, 0.24));
+}
+
+.commission-mine::before {
+  content: '⚑';
+  font-size: 0.85em;
+  line-height: 1;
+}
+
+/* 自己发布的委托卡片底部用一行静态说明替代「接取委托」按钮——不可自接。 */
+.commission-own-note {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  min-height: 36px;
+  border: 1px dashed rgba(67, 97, 58, 0.6);
+  border-radius: 6px;
+  color: #3a5a2c;
+  font-size: 0.84rem;
+  font-weight: 700;
+  background: rgba(120, 160, 92, 0.12);
+}
+
 .commission-title {
   margin: 2px 0 0;
   color: #4c250c;

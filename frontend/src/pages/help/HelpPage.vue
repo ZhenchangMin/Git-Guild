@@ -5,27 +5,28 @@ import hallImg from '../../assets/hall.webp'
 
 const router = useRouter()
 
-// 两种身份：进站先认清角色，再看对应流程。
-const roles = [
-  { icon: '⚔', name: '冒险家', desc: '接取委托、提交成果，积累经验值与徽章。' },
-  { icon: '📜', name: '委托人', desc: '把仓库 Issue 发布成悬赏，并审核冒险家的成果。' },
+// 账号已合并：一个公会成员同时能做两件事，无需切换身份。
+const memberCan = [
+  { icon: '⚔', name: '接任务', desc: '接取别人发布的委托，完成开发并提交成果，赚取经验值与徽章。' },
+  { icon: '📜', name: '发委托', desc: '把自己仓库的 Issue 发布成悬赏，并审核他人提交的成果。' },
 ]
 
-// 冒险家：从接取到结算的主线。
-const adventurerSteps = [
+// 接任务主线：从接取到结算。
+const acceptSteps = [
   { where: '任务板', text: '筛选并打开一个委托，确认完成标准后接取。' },
   { where: '工作台', text: '创建任务分支，改完后提交 commit 并发起 PR。' },
   { where: '提交柜台', text: '关联 PR、填写成果说明并上传佐证，提交审核。' },
   { where: '成长档案', text: '通过后自动结算经验值与徽章。' },
 ]
 
-// 委托人：发布与验收两条线。
-const maintainerSteps = [
-  { where: '发布委托', text: '选定仓库 Issue，填写完成标准与奖励后提交。' },
+// 发委托主线：发布与验收。
+const publishSteps = [
+  { where: '仓库接入', text: '先导入或同步要发布的 Gitea 仓库，让平台读取其 Issue。' },
+  { where: '发布委托', text: '选定 Issue，填写完成标准与奖励后提交管理员审核。' },
   { where: '审核台', text: '收到成果后核对 PR 与佐证，给出通过 / 退回 / 驳回。' },
 ]
 
-// 常见问题：只留最高频的三类。
+// 常见问题：覆盖最高频的几类。
 const faqs = [
   {
     q: '提交时提示「请求参数不合法 / PR 失败」？',
@@ -34,6 +35,10 @@ const faqs = [
   {
     q: '委托被退回（已要求修改）怎么办？',
     a: '先读反馈，在工作台更新分支与 PR，再回提交柜台重新提交即可。',
+  },
+  {
+    q: '能接取自己发布的委托吗？',
+    a: '不能。成员虽然同时能发布和接取，但不能接自己发的委托——请把它留给其他成员，你可以在委托人工作台跟踪进度。',
   },
   {
     q: '点「接取委托」提示已被别人接取？',
@@ -60,41 +65,41 @@ function backToHall() {
         <section class="glass-ledger standalone-hero-card">
           <p class="kicker">公会指南</p>
           <h1>Git Guild 使用手册</h1>
-          <p>认清身份，沿对应流程走，卡住了看常见问题。</p>
+          <p>一个账号，既能接任务也能发委托。沿对应主线走，卡住了看常见问题。</p>
         </section>
 
         <section class="parchment-panel help-body">
-          <!-- 身份速览 -->
+          <!-- 成员能做什么 -->
           <div class="help-block">
-            <p class="kicker">先认清身份</p>
-            <h2>你是哪一种公会成员？</h2>
+            <p class="kicker">一个账号，两件事</p>
+            <h2>成员可以做什么？</h2>
             <div class="role-grid">
-              <article v-for="role in roles" :key="role.name" class="role-card">
-                <span class="role-icon" aria-hidden="true">{{ role.icon }}</span>
-                <h3>{{ role.name }}</h3>
-                <p>{{ role.desc }}</p>
+              <article v-for="item in memberCan" :key="item.name" class="role-card">
+                <span class="role-icon" aria-hidden="true">{{ item.icon }}</span>
+                <h3>{{ item.name }}</h3>
+                <p>{{ item.desc }}</p>
               </article>
             </div>
           </div>
 
-          <!-- 冒险家路线 -->
+          <!-- 接任务主线 -->
           <div class="help-block">
-            <p class="kicker">冒险家路线</p>
+            <p class="kicker">接任务主线</p>
             <h2>从接取到结算</h2>
             <ol class="route-list">
-              <li v-for="(step, idx) in adventurerSteps" :key="idx">
+              <li v-for="(step, idx) in acceptSteps" :key="idx">
                 <span class="route-where">{{ step.where }}</span>
                 <span class="route-text">{{ step.text }}</span>
               </li>
             </ol>
           </div>
 
-          <!-- 委托人路线 -->
+          <!-- 发委托主线 -->
           <div class="help-block">
-            <p class="kicker">委托人路线</p>
-            <h2>发布与验收</h2>
+            <p class="kicker">发委托主线</p>
+            <h2>从发布到验收</h2>
             <ol class="route-list">
-              <li v-for="(step, idx) in maintainerSteps" :key="idx">
+              <li v-for="(step, idx) in publishSteps" :key="idx">
                 <span class="route-where">{{ step.where }}</span>
                 <span class="route-text">{{ step.text }}</span>
               </li>
