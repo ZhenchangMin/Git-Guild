@@ -533,6 +533,10 @@ onBeforeUnmount(() => {
                   <input v-model="rememberPassword" type="checkbox" autocomplete="off" />
                   <span>让浏览器记住密码</span>
                 </label>
+
+                <RouterLink class="guild-forgot-link" :to="{ name: 'forgot-password' }">
+                  忘记密码？
+                </RouterLink>
               </div>
 
               <p v-if="formMessage" class="guild-auth-notice success">{{ formMessage }}</p>
@@ -565,5 +569,19 @@ onBeforeUnmount(() => {
 
 .guild-gate-scene.is-ready {
   opacity: 1;
+}
+
+/* “忘记密码？”链接：推到选项行末尾，弱化为暗金描线文字。 */
+.guild-forgot-link {
+  margin-left: auto;
+  color: rgba(255, 232, 190, 0.62);
+  font-size: 0.86rem;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  transition: color 150ms ease;
+}
+
+.guild-forgot-link:hover {
+  color: #ffe09d;
 }
 </style>

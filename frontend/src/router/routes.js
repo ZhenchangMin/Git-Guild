@@ -2,6 +2,7 @@ import AdminConsoleLayout from '../pages/admin/AdminConsoleLayout.vue'
 import AdminExceptionsPage from '../pages/admin/AdminExceptionsPage.vue'
 import AdminReviewPage from '../pages/admin/AdminReviewPage.vue'
 import AdminTaxonomyPage from '../pages/admin/AdminTaxonomyPage.vue'
+import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage.vue'
 import LoginPage from '../pages/auth/LoginPage.vue'
 import GuildHallPage from '../pages/hall/GuildHallPage.vue'
 import FrontDeskPage from '../pages/front-desk/FrontDeskPage.vue'
@@ -26,6 +27,11 @@ export const routes = [
     path: '/login',
     name: 'login',
     component: LoginPage,
+  },
+  {
+    path: '/forgot-password',
+    name: 'forgot-password',
+    component: ForgotPasswordPage,
   },
   {
     path: '/hall',
