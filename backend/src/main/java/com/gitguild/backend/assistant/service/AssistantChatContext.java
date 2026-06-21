@@ -57,10 +57,9 @@ public record AssistantChatContext(
         if (hasRole("ROLE_ADMIN")) {
             return "管理员";
         }
-        if (hasRole("ROLE_MAINTAINER")) {
-            return "委托人";
-        }
-        return "冒险家";
+        // 冒险家与委托人账号已合并：所有登录成员都是「委托人」（拥有发布/接取全部能力）。
+        // 兼容历史 ROLE_BEGINNER 的 token——同样视为成员。
+        return "委托人";
     }
 
     public record UserProfileSnapshot(

@@ -116,29 +116,31 @@ public class AssistantFallbackService implements AssistantAnswerService {
             return Optional.empty();
         }
 
+        // 账号合并后，所有登录成员都可发布/审核/接入/合并；此处只会命中「未登录来访者」，
+        // 引导其登录即可，而不再说「你不是委托人不能做」。
         String normalizedMessage = normalize(context.message());
         if (isPublishQuestion(normalizedMessage)) {
             return Optional.of(faq(
-                    "你当前不是委托人身份，不能发布委托。发布委托需要委托人先接入或同步仓库，再从 Issue 生成委托草稿并提交审核；作为冒险家，你可以先到悬赏任务板接取适合自己的委托，完成后到提交柜台登记成果。",
-                    List.of("冒险家怎么接取委托？", "如何提交成果？")));
+                    "发布委托需要登录成员身份。登录后，你可以在仓库接入页导入或同步仓库，再从 Issue 生成委托草稿，补充标题、验收标准、难度、技术栈和奖励 XP，提交管理员审核通过即可上架。",
+                    List.of("如何登录或注册？", "委托人如何接入仓库？")));
         }
 
         if (isReviewQuestion(normalizedMessage)) {
             return Optional.of(faq(
-                    "你当前不是委托人身份，不能审核成果。审核提交是委托人的权限；作为冒险家，你可以提交成果，并在提交柜台查看审核状态。如果被退回，就根据审核意见修改后重新提交。",
-                    List.of("如何提交成果？", "在哪里看提交状态？")));
+                    "审核成果需要登录成员身份。登录后，你可以在提交审核台查看冒险家提交的成果：先读成果说明，再打开关联 PR 检查实现范围与验收标准，然后选择通过、退回修改或驳回。",
+                    List.of("如何登录或注册？", "委托人如何审核提交？")));
         }
 
         if (isRepositorySyncQuestion(normalizedMessage)) {
             return Optional.of(faq(
-                    "你当前不是委托人身份，不能接入或同步仓库。仓库接入用于委托人导入 Gitea 仓库和读取 Issue；作为冒险家，你可以在悬赏任务板选择已发布的委托来参与开发。",
-                    List.of("冒险家怎么接取委托？", "悬赏任务板怎么筛选？")));
+                    "接入或同步仓库需要登录成员身份。登录后，你可以在仓库接入页导入 Gitea 仓库、读取 Issue，并基于 Issue 发布委托。",
+                    List.of("如何登录或注册？", "同步仓库失败怎么办？")));
         }
 
         if (isMergePullRequestQuestion(normalizedMessage)) {
             return Optional.of(faq(
-                    "你当前不是委托人身份，不能合并 PR。PR 合并由委托人在提交审核台根据验收结果和 PR 状态自主操作；作为冒险家，你可以确认代码已 push、PR 信息正确，并在提交柜台查看审核状态。",
-                    List.of("如何查看提交状态？", "PR 信息怎么提交？")));
+                    "合并 PR 需要登录成员身份。登录后，你可以在提交审核台根据验收结果和 PR 状态，使用合并 PR 按钮自主合并，无需回到 Gitea 操作。",
+                    List.of("如何登录或注册？", "委托人如何审核提交？")));
         }
 
         return Optional.empty();

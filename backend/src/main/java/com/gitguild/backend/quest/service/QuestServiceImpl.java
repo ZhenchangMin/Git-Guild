@@ -292,6 +292,10 @@ public class QuestServiceImpl implements QuestService {
         if (!quest.canBeAccepted()) {
             throw new BusinessException("QUEST_NOT_ACCEPTABLE", HttpStatus.CONFLICT, "任务当前状态不可接取", "currentStatus=" + quest.getStatus());
         }
+        // 账号合并后同一成员既能发布也能接取，须禁止接取自己发布的委托（避免自接自审）。
+        if (quest.getPublisher() != null && quest.getPublisher().getUserId().equals(assigneeId)) {
+            throw new BusinessException("SELF_ASSIGNMENT_FORBIDDEN", HttpStatus.CONFLICT, "不能接取自己发布的委托", "questId=" + questId);
+        }
         if (assignmentRepository.existsByQuestAndAssigneeUserIdAndStatusIn(quest, assigneeId, ACTIVE_ASSIGNMENT_STATUSES)) {
             throw new BusinessException("DUPLICATE_ASSIGNMENT", HttpStatus.CONFLICT, "当前用户已接取该任务", "questId=" + questId);
         }

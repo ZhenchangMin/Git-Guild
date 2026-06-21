@@ -408,6 +408,8 @@ class QuestSubmissionFlowIntegrationTest {
         return data(questResult).get("questId").asLong();
     }
 
+    // 账号合并后自助注册一律为 MAINTAINER（成员）。role 入参仅用于语义区分
+    // （发布方 / 接取方都是成员，且为不同用户，互不触发自接拦截）。
     private AuthUser registerAndLogin(String username, UserRole role) throws Exception {
         String email = username + "@example.com";
         mockMvc.perform(post("/api/v1/auth/register")
@@ -415,11 +417,10 @@ class QuestSubmissionFlowIntegrationTest {
                         .content(json(Map.of(
                                 "username", username,
                                 "email", email,
-                                "password", PASSWORD,
-                                "role", role.name()))))
+                                "password", PASSWORD))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.username").value(username))
-                .andExpect(jsonPath("$.data.role").value(role.name()));
+                .andExpect(jsonPath("$.data.role").value(UserRole.MAINTAINER.name()));
 
         MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
