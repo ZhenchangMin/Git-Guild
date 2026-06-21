@@ -40,14 +40,16 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public UserResponse register(RegisterRequest request) {
-        UserRole role = request.getRole() == null ? UserRole.BEGINNER : request.getRole();
-        if (role == UserRole.ADMIN) {
+        // 冒险家与委托人账号已合并：自助注册一律建为 MAINTAINER（统一成员），
+        // 客户端传入的 role 不再被信任。仍防御性拦截 ADMIN。
+        if (request.getRole() == UserRole.ADMIN) {
             throw new BusinessException(
                     "FORBIDDEN",
                     HttpStatus.FORBIDDEN,
                     "公开注册不允许创建管理员账号",
                     "role=ADMIN");
         }
+        UserRole role = UserRole.MAINTAINER;
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BusinessException(
                     "EMAIL_ALREADY_REGISTERED",

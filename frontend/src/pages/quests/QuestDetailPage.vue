@@ -77,6 +77,24 @@ function normalizeIssueNumber(issue) {
   return text.startsWith('#') ? text : `#${text}`
 }
 
+// 结合「当前访客是否就是接取人」决定详情页的工作流状态：
+// 委托被别人接取（IN_PROGRESS 等）时，对未接取的访客应显示「已被接取/不可操作」，
+// 而不是误显示成接取后的「进行中」并给出「进入工作台」入口。
+function resolveViewerWorkflowState(quest) {
+  const rawStatus = quest.status
+  if (rawStatus === 'PUBLISHED' || rawStatus === 'DRAFT') return 'available'
+
+  const myId = sessionStore.user?.userId ?? null
+  const assignment = quest.assignment ?? null
+  const acceptedByMe = Boolean(
+    assignment?.accepted && myId != null && assignment.assignee?.userId === myId,
+  )
+  if (acceptedByMe) return WORKFLOW_STATES[rawStatus] ?? 'available'
+
+  // 非本人持有的非可接取委托：访客不可操作。
+  return 'taken'
+}
+
 function normalizeQuestDetail(quest) {
   const questId = quest.questId ?? quest.id
   const techStack = Array.isArray(quest.techStack) ? quest.techStack : []
@@ -103,7 +121,7 @@ function normalizeQuestDetail(quest) {
     description: quest.description ?? '暂无任务说明。',
     criteria: normalizeCriteria(quest.completionCriteria),
     estimatedHours: quest.estimatedHours,
-    workflowState: WORKFLOW_STATES[quest.status] ?? 'available',
+    workflowState: resolveViewerWorkflowState(quest),
     assignment: quest.assignment ?? null,
     repository: {
       repositoryId: quest.repository?.repositoryId ?? null,

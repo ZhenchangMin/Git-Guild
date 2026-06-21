@@ -32,6 +32,8 @@ const isSealing = ref(false)
 // 委托已被他人抢先接取（任务板未及时刷新）时弹出的引导浮层。
 const showTakenModal = ref(false)
 const takenModalBody = ref('')
+// 接取自己发布的委托时的提示浮层（账号合并后同一成员既能发也能接）。
+const showSelfAcceptModal = ref(false)
 
 // Map each workflow status label to a seal colour, matching the quest board so
 // the same state reads identically across the board and the detail scroll.
@@ -41,6 +43,7 @@ const STATUS_TONE = {
   待提交成果: 'ready',
   等待维护者审核: 'review',
   需要修改: 'returned',
+  已被接取: 'returned',
   已完成: 'done',
 }
 
@@ -134,6 +137,12 @@ const workflowConfig = computed(() => {
       primary: '查看成长记录',
       secondary: '查看贡献记录',
     },
+    taken: {
+      status: '已被接取',
+      next: '该委托已被其他成员接取，目前无法接取或进入工作台。可返回委托板挑选其他委托。',
+      primary: '返回委托板',
+      secondary: '查看仓库',
+    },
   }
 
   return configs[localWorkflowState.value] ?? configs.available
@@ -184,6 +193,12 @@ async function handlePrimaryAction() {
     return
   }
 
+  // 委托已被他人接取：当前访客不可进入工作台，引导其返回委托板。
+  if (localWorkflowState.value === 'taken') {
+    router.push({ name: 'quest-board' })
+    return
+  }
+
   emit('open-workbench')
 }
 
@@ -211,6 +226,9 @@ async function confirmAccept() {
       takenModalBody.value = '这份委托刚刚已被其他冒险家接取，你看到的任务板可能还没来得及刷新。返回委托板即可查看最新的可接取委托。'
       showTakenModal.value = true
       localWorkflowState.value = 'in-progress'
+    } else if (error?.code === 'SELF_ASSIGNMENT_FORBIDDEN') {
+      // 不能接取自己发布的委托：弹窗提示，留在当前页即可。
+      showSelfAcceptModal.value = true
     } else {
       inlineNotice.value = error?.message || '接取失败，请刷新任务详情后重试。'
     }
@@ -236,7 +254,7 @@ function viewRepository() {
 }
 
 function handleSecondaryAction() {
-  if (localWorkflowState.value === 'available') {
+  if (localWorkflowState.value === 'available' || localWorkflowState.value === 'taken') {
     viewRepository()
     return
   }
@@ -446,6 +464,34 @@ function viewIssue() {
               <div class="accept-dialog-actions">
                 <button type="button" class="primary-action" @click="backToQuestBoard">
                   返回委托板 →
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="contract-fade">
+        <div v-if="showSelfAcceptModal" class="accept-overlay" @click.self="showSelfAcceptModal = false">
+          <Transition name="contract-rise" appear>
+            <div
+              class="accept-dialog taken-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="self-accept-dialog-title"
+            >
+              <span class="taken-dialog-seal" aria-hidden="true"></span>
+              <p class="kicker">无法接取</p>
+              <h2 id="self-accept-dialog-title">这是你发布的委托</h2>
+              <p class="accept-dialog-body">
+                不能接取自己发布的委托。你可以在委托人工作台跟踪它的进度，或到悬赏任务板挑选其他冒险家的委托来接取。
+              </p>
+
+              <div class="accept-dialog-actions">
+                <button type="button" class="primary-action" @click="showSelfAcceptModal = false">
+                  我知道了
                 </button>
               </div>
             </div>

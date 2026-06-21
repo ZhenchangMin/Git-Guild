@@ -99,7 +99,8 @@ class AssistantContextAssemblerTest {
                 "adventurer-workbench",
                 authentication(3001L, "ROLE_BEGINNER"));
 
-        assertThat(context.roleLabel()).isEqualTo("冒险家");
+        // 账号合并后所有登录成员（含历史 BEGINNER 会话）统一标注为「委托人」。
+        assertThat(context.roleLabel()).isEqualTo("委托人");
         assertThat(context.userProfile()).isNotNull();
         assertThat(context.userProfile().level()).isEqualTo(2);
         assertThat(context.userProfile().preferredTechStacks()).containsExactly("java");

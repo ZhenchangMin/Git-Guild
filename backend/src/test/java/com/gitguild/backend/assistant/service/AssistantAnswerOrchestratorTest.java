@@ -66,7 +66,7 @@ class AssistantAnswerOrchestratorTest {
                     AssistantAnswerResult result = orchestrator.answer(authenticatedContext(message, "ROLE_BEGINNER"));
 
                     assertThat(result.source()).isEqualTo(AssistantAnswerSource.FAQ);
-                    assertThat(result.answer()).contains("不是委托人身份").contains("不能");
+                    assertThat(result.answer()).contains("登录");
                     assertThat(result.answer()).doesNotContain("AI answer");
                 });
         assertThat(aiCalls.get()).isZero();

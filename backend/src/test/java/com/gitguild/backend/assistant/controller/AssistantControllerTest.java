@@ -165,8 +165,7 @@ class AssistantControllerTest {
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.source").value(AssistantAnswerSource.FAQ.name()))
-                    .andExpect(jsonPath("$.data.answer").value(org.hamcrest.Matchers.containsString("不是委托人身份")))
-                    .andExpect(jsonPath("$.data.answer").value(org.hamcrest.Matchers.containsString("不能")))
+                    .andExpect(jsonPath("$.data.answer").value(org.hamcrest.Matchers.containsString("登录")))
                     .andExpect(jsonPath("$.data.actions").value(org.hamcrest.Matchers.empty()));
         }
     }

@@ -2060,7 +2060,17 @@ dd {
 }
 
 .todo-panel {
+  /* 显式行轨：头部按内容高度贴顶，列表占据剩余空间并滚动。
+     否则两条隐式 auto 行会因 align-content 默认 stretch 被平分，
+     把头部撑高、再把 kicker 与「我的待办」拉开，导致标题悬在中间。 */
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
   overflow: auto;
+}
+
+/* 头部内部同理：保持 kicker 与标题紧贴顶部，不被纵向拉伸。 */
+.panel-head {
+  align-content: start;
 }
 
 .todo-group-list {
