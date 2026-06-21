@@ -7,6 +7,7 @@ import {
   messageUnreadCount,
   openMessageCenter,
 } from '../../stores/messageStore'
+import { messageNotificationUnread } from '../../stores/notificationStore'
 import { overlayStore } from '../../stores/overlayStore'
 
 const props = defineProps({
@@ -17,7 +18,10 @@ const props = defineProps({
 })
 
 const isOpen = computed(() => overlayStore.activeOverlay === 'message')
-const badgeText = computed(() => (messageUnreadCount.value > 99 ? '99+' : String(messageUnreadCount.value)))
+// 徽章取两个来源的较大值：会话列表（打开过站内信时精确）与未读信笺通知数
+// （hall/workbench 上靠全局通知轮询驱动，新信笺无需打开弹窗即可亮红点）。
+const unreadCount = computed(() => Math.max(messageUnreadCount.value, messageNotificationUnread.value))
+const badgeText = computed(() => (unreadCount.value > 99 ? '99+' : String(unreadCount.value)))
 const buttonClass = computed(() => [
   'message-entry-button',
   props.variant === 'circle' ? 'message-circle-button' : 'back-orb message-orb',
@@ -42,7 +46,7 @@ onMounted(loadMessageThreads)
       <path d="M8 5h8" />
     </svg>
     <span>信笺</span>
-    <em v-if="messageUnreadCount > 0" class="message-badge" aria-hidden="true">{{ badgeText }}</em>
+    <em v-if="unreadCount > 0" class="message-badge" aria-hidden="true">{{ badgeText }}</em>
   </button>
 </template>
 

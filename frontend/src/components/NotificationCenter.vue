@@ -6,6 +6,7 @@ import { sessionStore } from '../stores/sessionStore'
 import {
   closeNotification,
   dismissToast,
+  markNotificationRead,
   notificationStore,
   openNotification,
   startNotificationPolling,
@@ -35,6 +36,14 @@ function formatTime(iso) {
 }
 
 function onToastClick(item) {
+  const meta = notificationMeta(item.type)
+  // 站内信类通知：点击 toast 直接打开对应会话，而不是弹通知详情。
+  if (meta.action?.messageThread && item.relatedType === 'MESSAGE_THREAD' && item.relatedId) {
+    dismissToast(item.notificationId)
+    if (item.status === 'UNREAD') markNotificationRead(item.notificationId)
+    openMessageCenter(item.relatedId)
+    return
+  }
   openNotification(item)
 }
 
