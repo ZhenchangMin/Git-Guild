@@ -17,7 +17,6 @@ const SAVED_LOGIN_ACCOUNT_KEY = 'gitguild.savedLoginAccount'
 const router = useRouter()
 const route = useRoute()
 const mode = ref('login')
-const selectedRole = ref('BEGINNER')
 const isSubmitting = ref(false)
 const isGateOpen = ref(false)
 const isEntering = ref(false)
@@ -62,33 +61,17 @@ const AUTH_ERROR_MESSAGES = {
   FORBIDDEN: '当前注册入口不允许创建管理员账号。',
 }
 
-const roles = [
-  {
-    id: 'BEGINNER',
-    entryRole: 'ADVENTURER',
-    label: '冒险家',
-    caption: '接取任务',
-  },
-  {
-    id: 'MAINTAINER',
-    entryRole: 'MAINTAINER',
-    label: '委托人',
-    caption: '发布悬赏',
-  },
-]
-
 const isRegisterMode = computed(() => mode.value === 'register')
-const activeRole = computed(() => roles.find((role) => role.id === selectedRole.value) ?? roles[0])
 const submitButtonText = computed(() => {
   if (isSubmitting.value) return isRegisterMode.value ? '正在登记身份...' : '正在开启大门...'
-  return isRegisterMode.value ? `注册为${activeRole.value.label}` : '进入公会'
+  return isRegisterMode.value ? '注册并加入公会' : '进入公会'
 })
 
+// 冒险家与委托人账号已合并：登录后统一为成员（MAINTAINER）。
+// 兼容历史 BEGINNER 账号——同样映射为成员。
 function toEntryRole(apiRole) {
-  if (apiRole === 'BEGINNER') return 'ADVENTURER'
   if (apiRole === 'ADMIN') return 'ADMIN'
-  if (apiRole === 'MAINTAINER') return 'MAINTAINER'
-  return 'ADVENTURER'
+  return 'MAINTAINER'
 }
 
 function routeForRole(entryRole) {
@@ -302,7 +285,6 @@ async function submitAuth(event) {
         username: form.username.trim(),
         email: form.account.trim(),
         password: form.password,
-        role: selectedRole.value,
       })
       formMessage.value = '账号已创建成功！稍候将为你开启公会大门……'
       await holdForRegisterSuccess()
@@ -540,23 +522,6 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </label>
-
-              <div v-if="isRegisterMode" class="guild-role-block">
-                <span>选择注册身份</span>
-                <div class="guild-role-pills" aria-label="选择角色">
-                  <button
-                    v-for="role in roles"
-                    :key="role.id"
-                    class="guild-role-pill"
-                    :class="{ active: selectedRole === role.id }"
-                    type="button"
-                    @click="selectedRole = role.id"
-                  >
-                    <strong>{{ role.label }}</strong>
-                    <small>{{ role.caption }}</small>
-                  </button>
-                </div>
-              </div>
 
               <div v-if="!isRegisterMode" class="guild-login-options">
                 <label class="guild-remember">

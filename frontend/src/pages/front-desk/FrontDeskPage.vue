@@ -76,6 +76,9 @@ const statusReady = ref(false)
 
 const role = computed(() => sessionStore.role)
 const isVisitor = computed(() => role.value === 'VISITOR')
+// 账号合并后所有登录非管理员都是「成员」（既能接任务也能发委托）。
+// 兼容历史 ADVENTURER/BEGINNER 会话——同样视为成员。
+const isMember = computed(() => !isVisitor.value && role.value !== 'ADMIN')
 const isAdventurer = computed(() => role.value === 'ADVENTURER' || role.value === 'BEGINNER')
 const isMaintainer = computed(() => role.value === 'MAINTAINER')
 
@@ -207,19 +210,13 @@ const historyButtonLabel = computed(() => {
 
 // Status chips shown in the dialogue header, per role.
 const statusChips = computed(() => {
-  if (isAdventurer.value) {
+  // 成员同时展示「接任务」与「发委托」两侧关键指标。
+  if (isMember.value) {
     return [
       { label: '等级', value: `Lv${growthSummary.value?.level ?? 1}` },
-      { label: '经验', value: `${growthSummary.value?.totalXp ?? 0} XP` },
       { label: '进行中', value: `${len(activeAssignments.value)}` },
-      { label: '待审核', value: `${len(pendingSubmissions.value)}`, urgent: len(pendingSubmissions.value) > 0 },
-    ]
-  }
-  if (isMaintainer.value) {
-    return [
       { label: '待审提交', value: `${len(reviewQueue.value)}`, urgent: len(reviewQueue.value) > 0 },
       { label: '已发布', value: `${len(publishedQuests.value)}` },
-      { label: '可接委托', value: `${openQuestCount.value}` },
     ]
   }
   return [{ label: '委托板', value: `${openQuestCount.value} 份可接` }]
@@ -528,25 +525,21 @@ onMounted(async () => {
     openQuestCount.value = 0
   }
 
-  if (isAdventurer.value || isMaintainer.value) {
+  // 账号合并后，成员同时拥有「接任务」与「发委托」两侧数据，统一全部拉取。
+  if (isMember.value) {
     try {
-      const tasks = [growthApi.summary().catch(() => null)]
-      if (isAdventurer.value) {
-        tasks.push(questApi.myAssignments().catch(() => null))
-        tasks.push(submissionApi.list({ status: 'PENDING_REVIEW' }).catch(() => null))
-      } else {
-        tasks.push(questApi.myPublished().catch(() => null))
-        tasks.push(submissionApi.reviewQueue().catch(() => null))
-      }
-      const results = await Promise.all(tasks)
-      growthSummary.value = results[0]?.data ?? null
-      if (isAdventurer.value) {
-        activeAssignments.value = results[1]?.data?.items ?? results[1]?.data ?? []
-        pendingSubmissions.value = results[2]?.data?.items ?? results[2]?.data ?? []
-      } else {
-        publishedQuests.value = results[1]?.data?.items ?? results[1]?.data ?? []
-        reviewQueue.value = results[2]?.data?.items ?? results[2]?.data ?? []
-      }
+      const [growth, assignments, submissions, published, review] = await Promise.all([
+        growthApi.summary().catch(() => null),
+        questApi.myAssignments().catch(() => null),
+        submissionApi.list({ status: 'PENDING_REVIEW' }).catch(() => null),
+        questApi.myPublished().catch(() => null),
+        submissionApi.reviewQueue().catch(() => null),
+      ])
+      growthSummary.value = growth?.data ?? null
+      activeAssignments.value = assignments?.data?.items ?? assignments?.data ?? []
+      pendingSubmissions.value = submissions?.data?.items ?? submissions?.data ?? []
+      publishedQuests.value = published?.data?.items ?? published?.data ?? []
+      reviewQueue.value = review?.data?.items ?? review?.data ?? []
     } catch {
       // graceful fallback
     }

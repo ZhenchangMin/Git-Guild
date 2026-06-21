@@ -13,8 +13,8 @@
 --
 -- 账号（密码 bcrypt，可正常登录）：
 --   guild@gitguild.local  / guild123   (MAINTAINER 委托人)
---   hero@gitguild.local   / hero123    (BEGINNER 冒险家，Lv3 / 270XP / 完成 3)
---   newbie@gitguild.local / newbie123  (BEGINNER 冒险家，全新)
+--   hero@gitguild.local   / hero123    (MAINTAINER 成员，Lv3 / 270XP / 完成 3)
+--   newbie@gitguild.local / newbie123  (MAINTAINER 成员，全新)
 --   （管理员 admin@gitguild.local / admin123 已存在，本脚本不动）
 --
 -- 幂等：开头按固定 ID 段清理旧的演示数据，可重复执行。ID 段用 100+/200+/... 高位，
@@ -38,8 +38,8 @@ INSERT INTO users
   (user_id, created_at, email, password_hash, role, status, token_version, updated_at, username, avatar_url, display_badge_id, motto)
 VALUES
   (101,'2026-05-01 09:00:00.000000','guild@gitguild.local','$2b$10$b4ANzfjWg751Ie7VKt37vO2HEEwuIqXMFlXc9PkpBtmNjcDfBivrW','MAINTAINER','ACTIVE',0,'2026-05-01 09:00:00.000000','guild-master',NULL,NULL,'万事俱备，只欠一位英雄揭榜。'),
-  (102,'2026-05-02 10:30:00.000000','hero@gitguild.local','$2b$10$vzAl9c8perKonL8IqAr/9uw8VIiwFdLLmoj5kToR/o7DSV.1YKUm.','BEGINNER','ACTIVE',0,'2026-06-05 18:00:00.000000','shadowblade',NULL,'FIRST_COMPLETION','代码如剑，越用越利。'),
-  (103,'2026-05-20 14:15:00.000000','newbie@gitguild.local','$2b$10$ArrA7NxC0Y1rIEaSDTGNa.xv7Jmn6gIpYANYN4yBHcg6g.tijbTVC','BEGINNER','ACTIVE',0,'2026-05-20 14:15:00.000000','green-rookie',NULL,NULL,'刚踏入公会，请多指教。');
+  (102,'2026-05-02 10:30:00.000000','hero@gitguild.local','$2b$10$vzAl9c8perKonL8IqAr/9uw8VIiwFdLLmoj5kToR/o7DSV.1YKUm.','MAINTAINER','ACTIVE',0,'2026-06-05 18:00:00.000000','shadowblade',NULL,'FIRST_COMPLETION','代码如剑，越用越利。'),
+  (103,'2026-05-20 14:15:00.000000','newbie@gitguild.local','$2b$10$ArrA7NxC0Y1rIEaSDTGNa.xv7Jmn6gIpYANYN4yBHcg6g.tijbTVC','MAINTAINER','ACTIVE',0,'2026-05-20 14:15:00.000000','green-rookie',NULL,NULL,'刚踏入公会，请多指教。');
 
 -- ---- 委托分类 ---------------------------------------------------------------
 INSERT INTO quest_categories

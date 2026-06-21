@@ -50,7 +50,7 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void registerShouldCreateBeginnerWithEncodedPassword() {
+    void registerShouldCreateMaintainerWithEncodedPassword() {
         RegisterRequest request = registerRequest("alice", "alice@example.com", "GitGuild2026", null);
         when(userRepository.existsByEmail("alice@example.com")).thenReturn(false);
         when(userRepository.existsByUsername("alice")).thenReturn(false);
@@ -63,7 +63,7 @@ class AuthServiceImplTest {
         UserResponse response = authService.register(request);
 
         assertThat(response.userId()).isEqualTo(10001L);
-        assertThat(response.role()).isEqualTo(UserRole.BEGINNER);
+        assertThat(response.role()).isEqualTo(UserRole.MAINTAINER);
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(userCaptor.capture());
         assertThat(userCaptor.getValue().getPasswordHash()).isNotEqualTo("GitGuild2026");
