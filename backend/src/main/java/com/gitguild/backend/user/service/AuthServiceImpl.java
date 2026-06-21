@@ -7,10 +7,12 @@ import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.dto.AuthResponse;
 import com.gitguild.backend.user.dto.ChangePasswordRequest;
+import com.gitguild.backend.user.dto.ForgotPasswordRequest;
 import com.gitguild.backend.user.dto.LoginRequest;
 import com.gitguild.backend.user.dto.PasswordChangedResponse;
 import com.gitguild.backend.user.dto.RefreshTokenRequest;
 import com.gitguild.backend.user.dto.RegisterRequest;
+import com.gitguild.backend.user.dto.ResetPasswordRequest;
 import com.gitguild.backend.user.dto.TokenResponse;
 import com.gitguild.backend.user.dto.UserResponse;
 import com.gitguild.backend.user.repository.UserRepository;
@@ -27,14 +29,20 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final PasswordResetCodeService passwordResetCodeService;
+    private final MailService mailService;
 
     public AuthServiceImpl(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            JwtTokenProvider jwtTokenProvider) {
+            JwtTokenProvider jwtTokenProvider,
+            PasswordResetCodeService passwordResetCodeService,
+            MailService mailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.passwordResetCodeService = passwordResetCodeService;
+        this.mailService = mailService;
     }
 
     @Override
@@ -142,6 +150,34 @@ public class AuthServiceImpl implements AuthService {
         user.changePasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
         return new PasswordChangedResponse(OffsetDateTime.now());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void requestPasswordReset(ForgotPasswordRequest request) {
+        // 产品决策：未注册邮箱明确报错（牺牲防邮箱枚举，换取更清晰的找回体验）。
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new BusinessException("EMAIL_NOT_REGISTERED", HttpStatus.NOT_FOUND,
+                        "该邮箱尚未注册，无法找回密码", "email=" + request.getEmail()));
+        ensureActive(user);
+        String code = passwordResetCodeService.issue(user.getEmail());
+        mailService.sendPasswordResetCode(user.getEmail(), code);
+    }
+
+    @Override
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        if (!passwordResetCodeService.verifyAndConsume(request.getEmail(), request.getCode())) {
+            throw new BusinessException("INVALID_RESET_CODE", HttpStatus.BAD_REQUEST,
+                    "验证码错误或已过期", "reset code mismatch for " + request.getEmail());
+        }
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", HttpStatus.NOT_FOUND,
+                        "用户不存在", "email=" + request.getEmail()));
+        ensureActive(user);
+        // changePasswordHash 内部已自增 tokenVersion，旧的访问/刷新令牌随即失效。
+        user.changePasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
     }
 
     @Override
