@@ -1,7 +1,8 @@
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 
 import { notificationApi } from '../api/notificationApi'
 import { ApiError } from '../api/httpClient'
+import { closeOverlay, openOverlay } from './overlayStore'
 import { hasLoginSession, sessionStore } from './sessionStore'
 
 /**
@@ -23,6 +24,14 @@ export const notificationStore = reactive({
   // 当前在详情弹窗里打开的通知；null = 弹窗关闭。
   selected: null,
 })
+
+// 未读「收到信笺」通知数：供信笺入口按钮显示红点。复用全局 30s 通知轮询的数据，
+// 不额外发起会话列表轮询，避免给小内存服务器增加负担。
+export const messageNotificationUnread = computed(() =>
+  notificationStore.items.filter(
+    (n) => n.type === 'MESSAGE_RECEIVED' && n.status === 'UNREAD',
+  ).length,
+)
 
 let pollTimer = null
 // 已经"见过"的通知 ID 基线：首屏加载只记录、不弹 toast，之后才把新增的弹成角落提示。
@@ -76,12 +85,14 @@ export function dismissToast(notificationId) {
 // 打开通知详情弹窗：同时收起对应 toast，并标记为已读。
 export function openNotification(item) {
   notificationStore.selected = item
+  openOverlay('notification')
   dismissToast(item.notificationId)
   if (item.status === 'UNREAD') markNotificationRead(item.notificationId)
 }
 
 export function closeNotification() {
   notificationStore.selected = null
+  closeOverlay('notification')
 }
 
 /** 拉取最近通知与未读数。未登录时清空并直接返回。 */

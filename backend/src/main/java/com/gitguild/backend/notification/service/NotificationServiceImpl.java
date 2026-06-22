@@ -76,6 +76,20 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
+    public int markReadByRelated(Long userId, String relatedType, Long relatedId) {
+        if (relatedType == null || relatedId == null) {
+            return 0;
+        }
+        List<Notification> related = notificationRepository
+                .findByReceiverUserIdAndRelatedTypeAndRelatedIdAndStatus(
+                        userId, relatedType, relatedId, NotificationStatus.UNREAD);
+        related.forEach(Notification::markRead);
+        notificationRepository.saveAll(related);
+        return related.size();
+    }
+
+    @Override
+    @Transactional
     public int markAllRead(Long userId) {
         List<Notification> unread =
                 notificationRepository.findByReceiverUserIdAndStatus(userId, NotificationStatus.UNREAD);

@@ -38,6 +38,13 @@ public interface NotificationService {
     /** 将某条通知标记为已读；非本人或不存在则抛业务异常。返回更新后的未读数。 */
     long markRead(Long userId, Long notificationId);
 
+    /**
+     * 将某用户关联到指定资源的未读通知批量标记为已读（如读完某会话的信笺，连带清掉该会话的消息通知）。
+     *
+     * @return 本次标记的条数
+     */
+    int markReadByRelated(Long userId, String relatedType, Long relatedId);
+
     /** 将该用户全部未读标记为已读，返回本次标记的条数。 */
     int markAllRead(Long userId);
 }

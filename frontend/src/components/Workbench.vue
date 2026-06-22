@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
+import MessageEntryButton from './messages/MessageEntryButton.vue'
 import QuestStatusFlow from './QuestStatusFlow.vue'
 import { questApi } from '../api/questApi'
 import { growthApi } from '../api/growthApi'
@@ -25,6 +26,7 @@ import {
   notificationStore,
   openNotification,
 } from '../stores/notificationStore'
+import { loadMessageThreads, messageUnreadCount, openQuestMessages } from '../stores/messageStore'
 import { notificationMeta } from '../data/notificationMeta'
 
 const emit = defineEmits(['open-submission', 'open-id-card', 'open-review-desk'])
@@ -84,7 +86,7 @@ async function fetchWorkbenchData() {
           { label: '进行中任务', value: a.stats.inProgress ?? 0 },
           { label: '审核中', value: a.stats.inReview ?? 0 },
           { label: '待修改', value: a.stats.changesRequested ?? 0 },
-          { label: '未读邮件', value: 3 },
+          { label: '未读信笺', value: 0 },
         ]
       }
     }
@@ -292,7 +294,11 @@ const noticeList = computed(() => (liveNotifications.value.length > 0 ? liveNoti
 // 信箱未读数直接取真实站内通知的未读数（信箱现在只展示真实通知）。
 const totalUnreadCount = computed(() => notificationStore.unreadCount)
 const displayStats = computed(() =>
-  liveStats.value.map((stat) => (stat.label === '未读邮件' ? { ...stat, value: unreadMailCount.value } : stat)),
+  liveStats.value.map((stat) =>
+    stat.label === '未读邮件' || stat.label === '未读信笺'
+      ? { ...stat, label: '未读信笺', value: messageUnreadCount.value }
+      : stat,
+  ),
 )
 const selectedTaskRepository = computed(() =>
   repositoryList.value.find((repository) => repository.name === selectedTask.value?.repository),
@@ -626,6 +632,12 @@ function openMailNotification(item) {
   openNotification(item)
 }
 
+function openSelectedTaskMessages() {
+  if (!selectedTask.value?.questId) return
+  isMailboxOpen.value = false
+  openQuestMessages(selectedTask.value.questId)
+}
+
 function mailTime(iso) {
   if (!iso) return ''
   const d = new Date(iso)
@@ -636,6 +648,7 @@ function mailTime(iso) {
 onMounted(() => {
   // 轮询由全局 NotificationCenter 统一负责；这里只主动拉一次，保证信箱首屏未读数最新。
   loadNotifications()
+  loadMessageThreads()
   fetchWorkbenchData()
 })
 
@@ -1197,16 +1210,17 @@ function openFeedback(feedbackId, source = '审核反馈') {
       </dl>
 
       <div class="mailbox-area">
+        <MessageEntryButton variant="circle" />
         <button
           class="mail-button"
           type="button"
-          aria-label="打开信箱"
+          aria-label="打开系统通知"
           :aria-expanded="isMailboxOpen"
           @click="toggleMailbox"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 7h16v11H4z" />
-            <path d="m4 7 8 6 8-6" />
+            <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.7 21a2 2 0 0 1-3.4 0" />
           </svg>
           <span v-if="totalUnreadCount > 0" class="mail-alert" aria-label="有未读消息">!</span>
         </button>
@@ -1506,7 +1520,12 @@ function openFeedback(feedbackId, source = '审核反馈') {
             <p class="kicker">悬赏任务详情</p>
             <h2>{{ selectedTask.id }} · {{ selectedTask.title }}</h2>
           </div>
-          <span class="status-pill">{{ selectedTask.statusLabel }}</span>
+          <div class="task-detail-actions">
+            <button class="quiet-action message-task-action" type="button" @click="openSelectedTaskMessages">
+              联系任务对方
+            </button>
+            <span class="status-pill">{{ selectedTask.statusLabel }}</span>
+          </div>
         </div>
 
         <div class="detail-grid">
@@ -1808,6 +1827,9 @@ function openFeedback(feedbackId, source = '审核反馈') {
 .mailbox-area {
   position: relative;
   z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   justify-self: end;
 }
 
@@ -1875,6 +1897,18 @@ function openFeedback(feedbackId, source = '审核反馈') {
     linear-gradient(180deg, rgba(32, 17, 8, 0.96), rgba(15, 8, 4, 0.94)),
     linear-gradient(135deg, rgba(216, 154, 50, 0.18), transparent 58%);
   box-shadow: 0 24px 58px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 229, 163, 0.14);
+}
+
+.task-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.message-task-action {
+  min-height: 34px;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 
 .mailbox-head {
