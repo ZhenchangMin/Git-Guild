@@ -6,17 +6,22 @@ import { sessionStore } from '../stores/sessionStore'
 import {
   closeNotification,
   dismissToast,
+  markNotificationRead,
   notificationStore,
   openNotification,
   startNotificationPolling,
   stopNotificationPolling,
 } from '../stores/notificationStore'
+import { openMessageCenter } from '../stores/messageStore'
+import { overlayStore } from '../stores/overlayStore'
 import { notificationMeta } from '../data/notificationMeta'
 
 const router = useRouter()
 
 const toasts = computed(() => notificationStore.toasts)
-const selected = computed(() => notificationStore.selected)
+const selected = computed(() =>
+  overlayStore.activeOverlay === 'notification' ? notificationStore.selected : null,
+)
 const selectedMeta = computed(() => (selected.value ? notificationMeta(selected.value.type) : null))
 
 function metaOf(type) {
@@ -31,12 +36,25 @@ function formatTime(iso) {
 }
 
 function onToastClick(item) {
+  const meta = notificationMeta(item.type)
+  // 站内信类通知：点击 toast 直接打开对应会话，而不是弹通知详情。
+  if (meta.action?.messageThread && item.relatedType === 'MESSAGE_THREAD' && item.relatedId) {
+    dismissToast(item.notificationId)
+    if (item.status === 'UNREAD') markNotificationRead(item.notificationId)
+    openMessageCenter(item.relatedId)
+    return
+  }
   openNotification(item)
 }
 
 function takeAction() {
   const action = selectedMeta.value?.action
+  const item = selected.value
   closeNotification()
+  if (action?.messageThread && item?.relatedType === 'MESSAGE_THREAD' && item.relatedId) {
+    openMessageCenter(item.relatedId)
+    return
+  }
   if (action?.route) {
     router.push({ name: action.route }).catch(() => {})
   }

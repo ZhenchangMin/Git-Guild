@@ -7,6 +7,12 @@ export const authApi = {
   login(payload) {
     return request('/auth/login', { method: 'POST', body: payload })
   },
+  forgotPassword(payload) {
+    return request('/auth/forgot-password', { method: 'POST', body: payload })
+  },
+  resetPassword(payload) {
+    return request('/auth/reset-password', { method: 'POST', body: payload })
+  },
   me() {
     return request('/users/me')
   },

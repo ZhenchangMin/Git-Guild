@@ -21,7 +21,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['open-workbench', 'open-submission'])
+const emit = defineEmits(['open-workbench', 'open-submission', 'open-messages'])
 
 const localWorkflowState = ref('available')
 const inlineNotice = ref('')
@@ -75,6 +75,10 @@ const estimatedHoursLabel = computed(() => (estimatedHours.value === null ? '未
 const description = computed(() => props.quest.description ?? props.quest.summary)
 const hasPullRequest = computed(() => pullRequest.value.number !== 'Not created')
 const isAcceptIntent = computed(() => props.intent === 'accept' && localWorkflowState.value === 'available')
+const canOpenMessages = computed(() =>
+  sessionStore.role !== 'VISITOR'
+    && ['in-progress', 'pr-ready', 'in-review', 'changes-requested', 'completed'].includes(localWorkflowState.value),
+)
 
 // Compact, icon-backed meta chips replace the old 6-column grid.
 const metaChips = computed(() => [
@@ -397,6 +401,9 @@ function viewIssue() {
             </div>
           </dl>
           <div class="side-actions">
+            <button v-if="canOpenMessages" class="quiet-action" type="button" @click="emit('open-messages', quest.questId ?? quest.id)">
+              联系任务对方
+            </button>
             <button class="quiet-action" type="button" @click="viewIssue">查看 Issue</button>
             <button class="primary-action" type="button" @click="viewRepository">查看仓库</button>
           </div>

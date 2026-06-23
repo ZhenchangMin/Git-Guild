@@ -8,6 +8,7 @@ import MaintainerReviewActions from '../../components/MaintainerReviewActions.vu
 import MaintainerReviewDetail from '../../components/MaintainerReviewDetail.vue'
 import MaintainerReviewQueue from '../../components/MaintainerReviewQueue.vue'
 import { reviewApi, submissionApi } from '../../api'
+import { openQuestMessages } from '../../stores/messageStore'
 import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
 
 const router = useRouter()
@@ -142,6 +143,7 @@ function mapSubmissionToReview(submission) {
   return {
     id: `SUB-${padId(submission.submissionId)}`,
     submissionId: submission.submissionId,
+    questNumericId: quest.questId,
     questId: `QST-${padId(quest.questId)}`,
     questTitle: quest.title || '未命名委托',
     submitter: submission.submitter?.username || `用户 ${submission.submitter?.userId ?? '—'}`,
@@ -209,6 +211,11 @@ function selectReview(reviewId) {
   selectedReviewId.value = reviewId
   reviewResult.value = null
   reviewAlert.value = null
+}
+
+function openSelectedReviewMessages() {
+  if (!selectedReview.value?.questNumericId) return
+  openQuestMessages(selectedReview.value.questNumericId)
 }
 
 function updateReviewStatus(decision) {
@@ -426,14 +433,21 @@ onMounted(loadReviewQueue)
               :merging="isMerging"
               @merge-pr="mergeSelectedPullRequest"
             />
-            <div v-if="canReviewSelectedSubmission" class="review-action-slot">
-              <MaintainerReviewActions
-                :review="selectedReview"
-                :result="reviewResult"
-                :busy="isSubmittingReview"
-                @submit-review="submitReview"
-                @save-draft="saveDraft"
-              />
+            <div class="review-side-stack">
+              <div class="review-contact-row">
+                <button class="quiet-action" type="button" @click="openSelectedReviewMessages">
+                  给冒险家写信笺
+                </button>
+              </div>
+              <div v-if="canReviewSelectedSubmission" class="review-action-slot">
+                <MaintainerReviewActions
+                  :review="selectedReview"
+                  :result="reviewResult"
+                  :busy="isSubmittingReview"
+                  @submit-review="submitReview"
+                  @save-draft="saveDraft"
+                />
+              </div>
             </div>
           </section>
         </div>
@@ -621,6 +635,24 @@ onMounted(loadReviewQueue)
 
 .review-focus.readonly-review {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.review-side-stack {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.review-contact-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.review-contact-row .quiet-action {
+  min-height: 38px;
+  padding: 0 14px;
 }
 
 .review-action-slot {

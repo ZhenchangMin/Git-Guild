@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 
 import hallImg from '../../assets/hall.webp'
 import HallEntryTransition from '../../components/HallEntryTransition.vue'
+import MessageEntryButton from '../../components/messages/MessageEntryButton.vue'
 import NotificationBell from '../../components/NotificationBell.vue'
 import { questApi } from '../../api/questApi'
 import { clearSession, hasLoginSession, sessionStore } from '../../stores/sessionStore'
@@ -334,6 +335,7 @@ onUnmounted(() => {
 
       <div class="session-action-stack" aria-label="账号与成长入口" :aria-hidden="showHallEntry">
         <NotificationBell v-if="showNotificationBell" />
+        <MessageEntryButton v-if="showNotificationBell" />
         <button class="back-orb growth-orb" type="button" aria-label="打开成长档案" @click="openRoute('profile')">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3 15 9l6 .8-4.5 4.3 1.1 6.1L12 17.2 6.4 20.2l1.1-6.1L3 9.8 9 9z" />

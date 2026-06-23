@@ -20,6 +20,8 @@ public interface QuestAssignmentRepository extends JpaRepository<QuestAssignment
 
     Optional<QuestAssignment> findFirstByQuestQuestIdAndStatus(Long questId, AssignmentStatus status);
 
+    Optional<QuestAssignment> findFirstByQuestQuestIdAndStatusIn(Long questId, Collection<AssignmentStatus> statuses);
+
     List<QuestAssignment> findByQuestAndStatus(Quest quest, AssignmentStatus status);
 
     /**

@@ -3,7 +3,11 @@ package com.gitguild.backend.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.gitguild.backend.common.BusinessException;
@@ -14,9 +18,11 @@ import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.domain.UserStatus;
 import com.gitguild.backend.user.dto.AuthResponse;
 import com.gitguild.backend.user.dto.ChangePasswordRequest;
+import com.gitguild.backend.user.dto.ForgotPasswordRequest;
 import com.gitguild.backend.user.dto.LoginRequest;
 import com.gitguild.backend.user.dto.RefreshTokenRequest;
 import com.gitguild.backend.user.dto.RegisterRequest;
+import com.gitguild.backend.user.dto.ResetPasswordRequest;
 import com.gitguild.backend.user.dto.TokenResponse;
 import com.gitguild.backend.user.dto.UserResponse;
 import com.gitguild.backend.user.repository.UserRepository;
@@ -38,6 +44,12 @@ class AuthServiceImplTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private PasswordResetCodeService passwordResetCodeService;
+
+    @Mock
+    private MailService mailService;
+
     private PasswordEncoder passwordEncoder;
     private JwtTokenProvider jwtTokenProvider;
     private AuthServiceImpl authService;
@@ -46,7 +58,8 @@ class AuthServiceImplTest {
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
         jwtTokenProvider = new JwtTokenProvider(SECRET, 3_600_000, 86_400_000);
-        authService = new AuthServiceImpl(userRepository, passwordEncoder, jwtTokenProvider);
+        authService = new AuthServiceImpl(
+                userRepository, passwordEncoder, jwtTokenProvider, passwordResetCodeService, mailService);
     }
 
     @Test
@@ -194,6 +207,62 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void requestPasswordResetShouldIssueAndSendCodeWhenEmailExists() {
+        User user = user("alice@example.com", "GitGuild2026", UserRole.MAINTAINER);
+        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
+        when(passwordResetCodeService.issue("alice@example.com")).thenReturn("123456");
+
+        ForgotPasswordRequest request = new ForgotPasswordRequest();
+        request.setEmail("alice@example.com");
+        authService.requestPasswordReset(request);
+
+        verify(passwordResetCodeService).issue("alice@example.com");
+        verify(mailService).sendPasswordResetCode("alice@example.com", "123456");
+    }
+
+    @Test
+    void requestPasswordResetShouldRejectUnregisteredEmail() {
+        when(userRepository.findByEmail("ghost@example.com")).thenReturn(Optional.empty());
+
+        ForgotPasswordRequest request = new ForgotPasswordRequest();
+        request.setEmail("ghost@example.com");
+
+        assertThatThrownBy(() -> authService.requestPasswordReset(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("EMAIL_NOT_REGISTERED");
+        verifyNoInteractions(passwordResetCodeService);
+        verifyNoInteractions(mailService);
+    }
+
+    @Test
+    void resetPasswordShouldUpdateHashWhenCodeValid() {
+        User user = user("alice@example.com", "GitGuild2026", UserRole.MAINTAINER);
+        when(passwordResetCodeService.verifyAndConsume("alice@example.com", "123456")).thenReturn(true);
+        when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+
+        ResetPasswordRequest request = resetRequest("alice@example.com", "123456", "GitGuild2026New");
+        authService.resetPassword(request);
+
+        assertThat(passwordEncoder.matches("GitGuild2026New", user.getPasswordHash())).isTrue();
+        assertThat(user.getTokenVersion()).isEqualTo(1);
+    }
+
+    @Test
+    void resetPasswordShouldRejectInvalidCode() {
+        when(passwordResetCodeService.verifyAndConsume(eq("alice@example.com"), anyString())).thenReturn(false);
+
+        ResetPasswordRequest request = resetRequest("alice@example.com", "000000", "GitGuild2026New");
+
+        assertThatThrownBy(() -> authService.resetPassword(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("INVALID_RESET_CODE");
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
     void logoutShouldRotateTokenVersion() {
         User user = user("alice@example.com", "GitGuild2026", UserRole.BEGINNER);
         when(userRepository.findById(10001L)).thenReturn(Optional.of(user));
@@ -218,6 +287,14 @@ class AuthServiceImplTest {
         request.setAccount(account);
         request.setPassword(password);
         request.setRemember(false);
+        return request;
+    }
+
+    private ResetPasswordRequest resetRequest(String email, String code, String newPassword) {
+        ResetPasswordRequest request = new ResetPasswordRequest();
+        request.setEmail(email);
+        request.setCode(code);
+        request.setNewPassword(newPassword);
         return request;
     }
 

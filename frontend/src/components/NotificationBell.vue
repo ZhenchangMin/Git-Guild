@@ -7,10 +7,11 @@ import {
   notificationStore,
   openNotification,
 } from '../stores/notificationStore'
+import { closeOverlay, openOverlay, overlayStore } from '../stores/overlayStore'
 import { notificationMeta } from '../data/notificationMeta'
 
-const open = ref(false)
 const root = ref(null)
+const open = computed(() => overlayStore.activeOverlay === 'notification-list')
 
 const unreadCount = computed(() => notificationStore.unreadCount)
 const badgeText = computed(() => (unreadCount.value > 99 ? '99+' : String(unreadCount.value)))
@@ -22,15 +23,17 @@ function toneClass(type) {
 }
 
 function toggle() {
-  open.value = !open.value
   if (open.value) {
+    closeOverlay('notification-list')
+  } else {
+    openOverlay('notification-list')
     loadNotifications()
   }
 }
 
 function onItemClick(item) {
   // 点开通知 → 打开详情弹窗（内部会标记已读 + 提供动作按钮）。
-  open.value = false
+  closeOverlay('notification-list')
   openNotification(item)
 }
 
@@ -52,12 +55,12 @@ function relativeTime(iso) {
 
 function onDocumentClick(event) {
   if (open.value && root.value && !root.value.contains(event.target)) {
-    open.value = false
+    closeOverlay('notification-list')
   }
 }
 
 function onKeydown(event) {
-  if (event.key === 'Escape') open.value = false
+  if (event.key === 'Escape') closeOverlay('notification-list')
 }
 
 onMounted(() => {

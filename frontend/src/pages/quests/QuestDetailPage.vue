@@ -6,6 +6,7 @@ import { questApi } from '../../api/questApi'
 import questBoardImg from '../../assets/quest board.webp'
 import HomeOrb from '../../components/HomeOrb.vue'
 import QuestDetail from '../../components/QuestDetail.vue'
+import { openQuestMessages } from '../../stores/messageStore'
 import { sessionStore } from '../../stores/sessionStore'
 import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
 
@@ -198,6 +199,10 @@ function openSubmission(questId = activeQuest.value?.questId ?? activeQuest.valu
   })
 }
 
+function openMessages(questId = activeQuest.value?.questId ?? activeQuest.value?.id) {
+  openQuestMessages(questId)
+}
+
 watch(routeQuestId, loadQuestDetail)
 onMounted(loadQuestDetail)
 </script>
@@ -219,6 +224,7 @@ onMounted(loadQuestDetail)
         :intent="activeQuestIntent"
         @open-workbench="openWorkbench"
         @open-submission="openSubmission"
+        @open-messages="openMessages"
       />
 
       <div v-else class="quest-detail-message" role="status" aria-live="polite">

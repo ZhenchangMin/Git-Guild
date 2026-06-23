@@ -1278,6 +1278,13 @@ h2 {
   top: 66px;
 }
 
+.work-scene > .home-orb,
+.office-scene > .home-orb,
+.writ-scene > .home-orb {
+  top: 22px;
+  left: 68px;
+}
+
 .session-action-stack {
   position: fixed;
   top: 22px;

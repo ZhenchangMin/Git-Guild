@@ -86,6 +86,13 @@ export const NOTIFICATION_META = {
     audience: '冒险家',
     action: { label: '查看成长记录', route: 'profile' },
   },
+  MESSAGE_RECEIVED: {
+    title: '收到新信笺',
+    tone: 'tone-pending',
+    icon: '✉',
+    audience: '任务伙伴',
+    action: { label: '打开信笺', messageThread: true },
+  },
 }
 
 const FALLBACK = { title: '站内通知', tone: 'tone-pending', icon: '✉', audience: '', action: null }

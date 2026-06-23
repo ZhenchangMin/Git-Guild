@@ -327,6 +327,48 @@ CREATE TABLE IF NOT EXISTS notifications (
                                KEY idx_notifications_related (related_type, related_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS message_threads (
+                               thread_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                               quest_id BIGINT NOT NULL,
+                               publisher_id BIGINT NOT NULL,
+                               assignee_id BIGINT NOT NULL,
+                               status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+                               last_message_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                               created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                               updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                               CONSTRAINT fk_message_threads_quest FOREIGN KEY (quest_id) REFERENCES quests(quest_id),
+                               CONSTRAINT fk_message_threads_publisher FOREIGN KEY (publisher_id) REFERENCES users(user_id),
+                               CONSTRAINT fk_message_threads_assignee FOREIGN KEY (assignee_id) REFERENCES users(user_id),
+                               UNIQUE KEY uk_message_threads_quest (quest_id),
+                               KEY idx_message_threads_publisher_last (publisher_id, last_message_at),
+                               KEY idx_message_threads_assignee_last (assignee_id, last_message_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS messages (
+                               message_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                               thread_id BIGINT NOT NULL,
+                               sender_id BIGINT NOT NULL,
+                               content TEXT NOT NULL,
+                               created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                               CONSTRAINT fk_messages_thread FOREIGN KEY (thread_id) REFERENCES message_threads(thread_id),
+                               CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(user_id),
+                               KEY idx_messages_thread_created (thread_id, created_at),
+                               KEY idx_messages_sender (sender_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS message_read_states (
+                               read_state_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                               thread_id BIGINT NOT NULL,
+                               user_id BIGINT NOT NULL,
+                               last_read_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                               created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                               updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                               CONSTRAINT fk_message_read_states_thread FOREIGN KEY (thread_id) REFERENCES message_threads(thread_id),
+                               CONSTRAINT fk_message_read_states_user FOREIGN KEY (user_id) REFERENCES users(user_id),
+                               UNIQUE KEY uk_message_read_states_thread_user (thread_id, user_id),
+                               KEY idx_message_read_states_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 异常处理中心：平台自动检测到的运维异常（当前主要为仓库同步失败）。
 -- repository_id 为轻引用（不建外键，避免与仓库生命周期强耦合）。
 CREATE TABLE IF NOT EXISTS platform_exceptions (

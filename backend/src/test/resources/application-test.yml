@@ -12,6 +12,10 @@ spring:
     redis:
       repositories:
         enabled: false
+  # 测试无需真实发信，仅为让 JavaMailSender Bean 可被注入（MailSenderAutoConfiguration 依赖 host）。
+  mail:
+    host: localhost
+    port: 3025
 
 jwt:
   secret: test-secret-for-gitguild-auth-module-32bytes

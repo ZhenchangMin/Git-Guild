@@ -7,6 +7,21 @@ spring:
   config:
     import: optional:file:../.env[.properties]
 
+  # 邮件配置放在共享文档，dev / prod 等所有 profile 都继承。
+  # （MailSenderAutoConfiguration 依赖 spring.mail.host 才会创建 JavaMailSender，
+  #   若只配在 dev，生产 prod profile 启动时会因缺少该 Bean 而失败。）
+  # 163 邮箱 SMTP：MAIL_USERNAME 填完整邮箱地址，MAIL_PASSWORD 填客户端授权码（非登录密码）。
+  mail:
+    host: ${MAIL_HOST:smtp.163.com}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      # 163 的 465 端口走 SSL；若改用 25/587 端口则需把下面两项换成 starttls。
+      mail.smtp.ssl.enable: true
+      mail.smtp.starttls.enable: false
+
 ---
 # ── 开发环境（连接本地 Docker Compose 服务）──────────────────────────────────
 spring:
@@ -32,15 +47,6 @@ spring:
     redis:
       host: localhost
       port: 6379
-
-  mail:
-    host: ${MAIL_HOST:smtp.example.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail.smtp.auth: true
-      mail.smtp.starttls.enable: true
 
 server:
   port: 8080
