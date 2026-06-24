@@ -10,7 +10,6 @@ import com.gitguild.backend.codehost.gitea.dto.FileCommitInfo;
 import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
-import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
 import com.gitguild.backend.codehost.service.RepositoryService;
 import com.gitguild.backend.codehost.service.RepositorySyncService;
 import com.gitguild.backend.common.ApiResponse;
@@ -35,7 +34,6 @@ public class CodeHostController {
     private final GiteaAdapter giteaAdapter;
     private final RepositoryService repositoryService;
     private final RepositorySyncService repositorySyncService;
-    private final CodeRepositoryRepository repositoryRepository;
     private final CodeIssueRepository issueRepository;
     private final CodePullRequestRepository pullRequestRepository;
 
@@ -43,13 +41,11 @@ public class CodeHostController {
             GiteaAdapter giteaAdapter,
             RepositoryService repositoryService,
             RepositorySyncService repositorySyncService,
-            CodeRepositoryRepository repositoryRepository,
             CodeIssueRepository issueRepository,
             CodePullRequestRepository pullRequestRepository) {
         this.giteaAdapter = giteaAdapter;
         this.repositoryService = repositoryService;
         this.repositorySyncService = repositorySyncService;
-        this.repositoryRepository = repositoryRepository;
         this.issueRepository = issueRepository;
         this.pullRequestRepository = pullRequestRepository;
     }
@@ -68,13 +64,18 @@ public class CodeHostController {
     }
 
     @GetMapping("/repositories/{repositoryId}")
-    public ApiResponse<RepositoryResponse> getRepository(@PathVariable Long repositoryId) {
-        return ApiResponse.success(RepositoryResponse.from(findRepository(repositoryId)));
+    public ApiResponse<RepositoryResponse> getRepository(
+            @PathVariable Long repositoryId,
+            Authentication authentication) {
+        return ApiResponse.success(RepositoryResponse.from(readableRepository(authentication, repositoryId)));
     }
 
     @PostMapping("/repositories/{repositoryId}/sync")
-    public ApiResponse<RepositoryResponse> syncRepository(@PathVariable Long repositoryId) {
+    public ApiResponse<RepositoryResponse> syncRepository(
+            @PathVariable Long repositoryId,
+            Authentication authentication) {
         // 同步逻辑下沉到 RepositorySyncService：与异常中心「重试」共用一套实现，失败自动登记异常。
+        writableRepository(authentication, repositoryId);
         CodeRepository repository = repositorySyncService.syncRepository(repositoryId);
         return ApiResponse.success(RepositoryResponse.from(repository));
     }
@@ -84,9 +85,10 @@ public class CodeHostController {
             @PathVariable Long repositoryId,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
         validatePage(page, size);
-        findRepository(repositoryId);
+        readableRepository(authentication, repositoryId);
         List<IssueResponse> filtered = issueRepository.findAll().stream()
                 .filter(issue -> issue.getRepository().getRepositoryId().equals(repositoryId))
                 .filter(issue -> status == null || status.isBlank() || issue.getStatus().equalsIgnoreCase(status))
@@ -100,8 +102,9 @@ public class CodeHostController {
     @PostMapping("/repositories/{repositoryId}/branches")
     public ApiResponse<BranchResponse> createBranch(
             @PathVariable Long repositoryId,
-            @RequestBody BranchRequest request) {
-        CodeRepository repository = findRepository(repositoryId);
+            @RequestBody BranchRequest request,
+            Authentication authentication) {
+        CodeRepository repository = writableRepository(authentication, repositoryId);
         if (request.branchName() == null || request.branchName().isBlank()) {
             throw validation("branchName is required");
         }
@@ -114,8 +117,9 @@ public class CodeHostController {
     @PostMapping("/repositories/{repositoryId}/commits")
     public ApiResponse<CommitResponse> createCommit(
             @PathVariable Long repositoryId,
-            @RequestBody CommitRequest request) {
-        CodeRepository repository = findRepository(repositoryId);
+            @RequestBody CommitRequest request,
+            Authentication authentication) {
+        CodeRepository repository = writableRepository(authentication, repositoryId);
         if (request.branch() == null || request.branch().isBlank()) {
             throw validation("branch is required");
         }
@@ -144,8 +148,9 @@ public class CodeHostController {
     @PostMapping("/repositories/{repositoryId}/pull-requests")
     public ApiResponse<PullRequestResponse> createPullRequest(
             @PathVariable Long repositoryId,
-            @RequestBody PullRequestRequest request) {
-        CodeRepository repository = findRepository(repositoryId);
+            @RequestBody PullRequestRequest request,
+            Authentication authentication) {
+        CodeRepository repository = writableRepository(authentication, repositoryId);
         if (request.title() == null || request.title().isBlank()) {
             throw validation("title is required");
         }
@@ -168,7 +173,9 @@ public class CodeHostController {
     @GetMapping("/repositories/{repositoryId}/pull-requests/{pullRequestId}")
     public ApiResponse<PullRequestResponse> getPullRequest(
             @PathVariable Long repositoryId,
-            @PathVariable Long pullRequestId) {
+            @PathVariable Long pullRequestId,
+            Authentication authentication) {
+        readableRepository(authentication, repositoryId);
         CodePullRequest pullRequest = pullRequestRepository
                 .findByPullRequestIdAndRepositoryRepositoryId(pullRequestId, repositoryId)
                 .orElseThrow(() -> notFound("PULL_REQUEST_NOT_FOUND", "Pull request 不存在"));
@@ -178,8 +185,9 @@ public class CodeHostController {
     @PostMapping("/repositories/{repositoryId}/pull-requests/{pullRequestId}/merge")
     public ApiResponse<PullRequestResponse> mergePullRequest(
             @PathVariable Long repositoryId,
-            @PathVariable Long pullRequestId) {
-        CodeRepository repository = findRepository(repositoryId);
+            @PathVariable Long pullRequestId,
+            Authentication authentication) {
+        CodeRepository repository = writableRepository(authentication, repositoryId);
         CodePullRequest pullRequest = pullRequestRepository
                 .findByPullRequestIdAndRepositoryRepositoryId(pullRequestId, repositoryId)
                 .orElseThrow(() -> notFound("PULL_REQUEST_NOT_FOUND", "Pull request 不存在"));
@@ -200,9 +208,14 @@ public class CodeHostController {
         return ApiResponse.success(new WebhookResponse(hostType, "ACCEPTED", payload == null ? 0 : payload.length(), OffsetDateTime.now()));
     }
 
-    private CodeRepository findRepository(Long repositoryId) {
-        return repositoryRepository.findById(repositoryId)
-                .orElseThrow(() -> notFound("REPOSITORY_NOT_FOUND", "仓库不存在"));
+    private CodeRepository readableRepository(Authentication authentication, Long repositoryId) {
+        return repositoryService.requireReadableRepository(
+                SecurityPrincipalUtils.currentUserId(authentication), repositoryId);
+    }
+
+    private CodeRepository writableRepository(Authentication authentication, Long repositoryId) {
+        return repositoryService.requireWritableRepository(
+                SecurityPrincipalUtils.currentUserId(authentication), repositoryId);
     }
 
     private String blankToDefault(String value, String defaultValue) {

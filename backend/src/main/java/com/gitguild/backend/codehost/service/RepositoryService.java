@@ -40,6 +40,10 @@ public interface RepositoryService {
      */
     List<CodeRepository> listRepositories(Long currentUserId);
 
+    CodeRepository requireReadableRepository(Long currentUserId, Long repositoryId);
+
+    CodeRepository requireWritableRepository(Long currentUserId, Long repositoryId);
+
     /**
      * 删除一个已接入的仓库，并级联清理其牵连的全部业务数据（委托、提交、审核、XP、贡献、Issue、PR）
      * 与平台 Gitea 副本。

@@ -175,6 +175,26 @@ class QuestServiceImplTest {
     }
 
     @Test
+    void createQuestShouldRejectForeignRepositoryBeforeCreatingIssue() {
+        User maintainer = user(2001L, UserRole.MAINTAINER);
+        User otherOwner = user(2002L, UserRole.MAINTAINER);
+        CodeRepository repository = repository(otherOwner);
+        CreateQuestRequest request = createQuestRequest();
+        request.setIssueId(null);
+        request.setGiteaIssueTitle("New Issue");
+
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(maintainer));
+        when(codeRepositoryRepository.findById(1001L)).thenReturn(Optional.of(repository));
+
+        assertThatThrownBy(() -> questService.createQuest(2001L, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("FORBIDDEN");
+        verify(codeIssueService, never()).createFromGitea(any(), any(), any());
+        verify(issueRepository, never()).findByIssueIdAndRepositoryRepositoryId(any(), any());
+    }
+
+    @Test
     void createQuestShouldRejectWhenNeitherIssueIdNorGiteaTitleProvided() {
         User maintainer = user(2001L, UserRole.MAINTAINER);
         CodeRepository repository = repository(maintainer);

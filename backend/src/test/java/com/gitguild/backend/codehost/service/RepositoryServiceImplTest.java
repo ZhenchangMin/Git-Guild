@@ -101,7 +101,7 @@ class RepositoryServiceImplTest {
                 eq("ZhenchangMin-Operating-System"), eq("OS 课程仓库"), eq(true), eq(MIGRATION_TOKEN)))
                 .thenReturn(info);
         when(codeRepositoryRepository
-                .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc("GITEA", platformUrl))
+                .findFirstByOwnerUserIdAndHostTypeAndSourceUrlOrderByRepositoryIdAsc(42L, "GITEA", platformUrl))
                 .thenReturn(Optional.empty());
         when(codeRepositoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         // 迁移校验放行（passthrough）：本用例只验证外部源被迁入并登记
@@ -125,7 +125,7 @@ class RepositoryServiceImplTest {
 
         String internalUrl = "http://localhost:3000/spike-admin/demo-repo.git";
         when(codeRepositoryRepository
-                .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc("GITEA", internalUrl))
+                .findFirstByOwnerUserIdAndHostTypeAndSourceUrlOrderByRepositoryIdAsc(42L, "GITEA", internalUrl))
                 .thenReturn(Optional.empty());
         when(codeRepositoryRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -143,6 +143,20 @@ class RepositoryServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo("VALIDATION_FAILED");
+    }
+
+    @Test
+    void importRejectsNonMaintainerRole() {
+        User u = mockUser(3001L, UserRole.BEGINNER);
+        when(userRepository.findById(3001L)).thenReturn(Optional.of(u));
+
+        assertThatThrownBy(() -> service().importRepository(
+                3001L, "http://localhost:3000/spike-admin/demo-repo.git", null, "GITEA"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("FORBIDDEN");
+        verify(giteaAdapter, never()).migrateRepository(anyString(), anyString(), any(), anyBoolean(), any());
+        verify(codeRepositoryRepository, never()).save(any());
     }
 
     @Test
@@ -193,6 +207,37 @@ class RepositoryServiceImplTest {
     }
 
     @Test
+    void deleteRepositoryRejectsForeignMaintainerRepository() {
+        User u = mockUser(2001L, UserRole.MAINTAINER);
+        User otherOwner = mockUser(2002L, UserRole.MAINTAINER);
+        CodeRepository repo = new CodeRepository(otherOwner, "demo-repo", "GITEA",
+                "http://localhost:3000/spike-admin/demo-repo");
+        repo.setRepositoryId(55L);
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(u));
+        when(codeRepositoryRepository.findById(55L)).thenReturn(Optional.of(repo));
+
+        assertThatThrownBy(() -> service().deleteRepository(2001L, 55L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("FORBIDDEN");
+        verify(cascadeDeleter, never()).deleteCascade(any());
+    }
+
+    @Test
+    void deleteRepositoryAllowsAdminForForeignRepository() {
+        User admin = mockUser(1L, UserRole.ADMIN);
+        User otherOwner = mockUser(2002L, UserRole.MAINTAINER);
+        CodeRepository repo = new CodeRepository(otherOwner, "demo-repo", "GITEA",
+                "http://localhost:3000/spike-admin/demo-repo");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+        when(codeRepositoryRepository.findById(55L)).thenReturn(Optional.of(repo));
+
+        service().deleteRepository(1L, 55L);
+
+        verify(cascadeDeleter).deleteCascade(repo);
+    }
+
+    @Test
     void deleteRepositoryRejectsNonPrivilegedRole() {
         User u = mockUser(3001L, UserRole.BEGINNER);
         when(userRepository.findById(3001L)).thenReturn(Optional.of(u));
@@ -215,6 +260,33 @@ class RepositoryServiceImplTest {
                 .extracting("code")
                 .isEqualTo("REPOSITORY_NOT_FOUND");
         verify(cascadeDeleter, never()).deleteCascade(any());
+    }
+
+    @Test
+    void requireReadableRepositoryRejectsForeignRepository() {
+        User u = mockUser(2001L, UserRole.MAINTAINER);
+        User otherOwner = mockUser(2002L, UserRole.MAINTAINER);
+        CodeRepository repo = new CodeRepository(otherOwner, "demo-repo", "GITEA",
+                "http://localhost:3000/spike-admin/demo-repo");
+        when(userRepository.findById(2001L)).thenReturn(Optional.of(u));
+        when(codeRepositoryRepository.findById(55L)).thenReturn(Optional.of(repo));
+
+        assertThatThrownBy(() -> service().requireReadableRepository(2001L, 55L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("FORBIDDEN");
+    }
+
+    @Test
+    void requireWritableRepositoryRejectsNonPrivilegedOwner() {
+        User u = mockUser(3001L, UserRole.BEGINNER);
+        when(userRepository.findById(3001L)).thenReturn(Optional.of(u));
+
+        assertThatThrownBy(() -> service().requireWritableRepository(3001L, 55L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo("FORBIDDEN");
+        verify(codeRepositoryRepository, never()).findById(55L);
     }
 
     private User mockUser(Long id, UserRole role) {
