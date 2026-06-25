@@ -1,8 +1,11 @@
 <script setup>
-import { useRouter } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import hallImg from '../../assets/hall.webp'
+import { TUTORIAL_LAUNCH_QUERY, tutorials } from '../../data/tutorials'
 
+const route = useRoute()
 const router = useRouter()
 
 // 账号已合并：一个公会成员同时能做两件事，无需切换身份。
@@ -38,7 +41,7 @@ const faqs = [
   },
   {
     q: '能接取自己发布的委托吗？',
-    a: '不能。成员虽然同时能发布和接取，但不能接自己发的委托——请把它留给其他成员，你可以在委托人工作台跟踪进度。',
+    a: '不能。成员虽然同时能发布和接取，但不能接自己发的委托。请把它留给其他成员，你可以在委托人工作台跟踪进度。',
   },
   {
     q: '点「接取委托」提示已被别人接取？',
@@ -46,12 +49,31 @@ const faqs = [
   },
 ]
 
+const returnTo = computed(() => {
+  const value = route.query.returnTo
+  return typeof value === 'string' ? value : ''
+})
+
+const contextualTutorialId = computed(() => {
+  const value = route.query.tutorialId
+  return typeof value === 'string' && tutorials[value] ? value : ''
+})
+
+const canStartTutorial = computed(() => Boolean(returnTo.value && contextualTutorialId.value))
+
 function backToHall() {
   router.push({ name: 'hall' })
 }
 
-function startHallTutorial() {
-  router.push({ name: 'hall', query: { tutorial: 'hall' } })
+function startCurrentPageTutorial() {
+  if (!canStartTutorial.value) return
+  const target = new URL(returnTo.value, window.location.origin)
+  target.searchParams.set(TUTORIAL_LAUNCH_QUERY, contextualTutorialId.value)
+  router.push({
+    path: target.pathname,
+    query: Object.fromEntries(target.searchParams.entries()),
+    hash: target.hash,
+  })
 }
 </script>
 
@@ -123,14 +145,17 @@ function startHallTutorial() {
           </div>
 
           <div class="help-actions">
-            <button class="quiet-action" type="button" @click="startHallTutorial">
-              查看教程
+            <button
+              class="quiet-action"
+              type="button"
+              :disabled="!canStartTutorial"
+              title="返回来源页面并打开对应教程"
+              @click="startCurrentPageTutorial"
+            >
+              查看本页面教程
             </button>
             <button class="quiet-action" type="button" @click="router.push({ name: 'front-desk' })">
               咨询 AI 向导
-            </button>
-            <button class="primary-action" type="button" @click="router.push({ name: 'quest-board' })">
-              前往悬赏任务板 →
             </button>
           </div>
         </section>
@@ -272,6 +297,11 @@ function startHallTutorial() {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 4px;
+}
+
+.help-actions .quiet-action:disabled {
+  opacity: 0.48;
+  cursor: default;
 }
 
 @media (max-width: 720px) {

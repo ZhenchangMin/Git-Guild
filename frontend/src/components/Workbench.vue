@@ -145,7 +145,7 @@ const tutorialWorkbenchTaskGroups = [
         checkResult: '基础检查通过',
         counterLink: '待审核',
         counterDetail: '成果已提交，等待维护者审核。',
-        nextStep: '等待审核结果或查看站内信通知',
+        nextStep: '等待审核结果或查看信笺通知',
         externalUrl: '',
         changeRequests: [],
         tutorialMock: true,

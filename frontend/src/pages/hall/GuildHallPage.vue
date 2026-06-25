@@ -408,14 +408,6 @@ onUnmounted(() => {
 
 <template>
   <main class="app-shell">
-    <button
-      class="help-orb"
-      type="button"
-      aria-label="打开 Git Guild 使用教程"
-      data-tutorial="hall-help"
-      @click="openRoute('help')"
-    >?</button>
-
     <section class="hall-scene" :class="{ 'is-entry-loading': showHallEntry, 'is-hall-ready': hallImageReady }">
       <HallEntryTransition
         v-if="showHallEntry"

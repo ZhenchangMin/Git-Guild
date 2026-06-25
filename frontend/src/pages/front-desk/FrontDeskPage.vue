@@ -941,7 +941,7 @@ function sendPromptBubble(prompt) {
 
 .desk-status-dock {
   position: absolute;
-  top: 28px;
+  top: 74px;
   right: 32px;
   z-index: 5;
   display: flex;
