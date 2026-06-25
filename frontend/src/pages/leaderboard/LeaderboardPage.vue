@@ -46,22 +46,22 @@ onMounted(loadLeaderboard)
 <template>
   <main class="app-shell">
     <section class="scene work-scene leaderboard-route-mode" :style="{ backgroundImage: `url(${leaderboardImg})` }">
-      <button class="back-orb" type="button" aria-label="返回公会大厅" @click="backToHall">
+      <button class="back-orb" type="button" aria-label="返回" @click="backToHall">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
         </svg>
-        <span>返回公会大厅</span>
+        <span>返回</span>
       </button>
 
       <div class="standalone-page-panel compact">
-        <section class="glass-ledger standalone-hero-card">
+        <section class="glass-ledger standalone-hero-card" data-tutorial="leaderboard-metrics">
           <p class="kicker">排行榜墙</p>
           <h1>成长排行榜</h1>
           <p>按等级与 XP 排名，并列时比较完成任务数量。数据实时来自公会成长档案。</p>
         </section>
 
         <section class="glass-ledger">
-          <div class="standalone-table">
+          <div class="standalone-table" data-tutorial="leaderboard-list">
             <div class="standalone-table-row head">
               <span>排名</span>
               <span>冒险家</span>
@@ -92,11 +92,12 @@ onMounted(loadLeaderboard)
           </div>
 
           <button
-            v-if="loadError && !isLoading"
             class="primary-action leaderboard-retry"
             type="button"
+            data-tutorial="leaderboard-refresh"
+            :disabled="isLoading"
             @click="loadLeaderboard"
-          >重试</button>
+          >{{ loadError && !isLoading ? '重试' : isLoading ? '刷新中…' : '刷新榜单' }}</button>
         </section>
       </div>
     </section>

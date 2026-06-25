@@ -127,7 +127,7 @@ watch(
       <h2>审核反馈</h2>
     </div>
 
-    <div class="decision-list" role="radiogroup" aria-label="审核结论">
+    <div class="decision-list" role="radiogroup" aria-label="审核结论" data-tutorial="review-decision">
       <button
         v-for="option in maintainerReviewDecisionOptions"
         :key="option.decision"
@@ -143,7 +143,7 @@ watch(
     </div>
 
     <!-- 审核通过：不再保留下方各框，仅确认是否已查看 PR 与 Issue -->
-    <div v-if="isApprove" class="approve-confirm-box">
+    <div v-if="isApprove" class="approve-confirm-box" data-tutorial="review-feedback">
       <p class="approve-hint">通过前请确认你已经查看过对应的 <strong>PR</strong> 与 <strong>Issue</strong>。</p>
       <label class="approve-check">
         <input v-model="form.approveConfirmed" type="checkbox" />
@@ -152,12 +152,13 @@ watch(
     </div>
 
     <!-- 退回修改 / 驳回提交：一个意见框 -->
-    <label v-else class="opinion-field" :class="{ danger: isReject }">
+    <label v-else class="opinion-field" :class="{ danger: isReject }" data-tutorial="review-feedback">
       <span>{{ opinionLabel }}<em>必填</em></span>
       <textarea v-model="form.summary" rows="6" :placeholder="opinionPlaceholder"></textarea>
     </label>
 
     <div class="action-buttons">
+      <div class="action-button-target" data-tutorial="review-submit-action">
       <button class="quiet-action" type="button" :disabled="busy" @click="emit('save-draft', buildPayload())">
         保存草稿
       </button>
@@ -170,6 +171,7 @@ watch(
       >
         {{ busy ? '提交中...' : selectedDecision.label }}
       </button>
+      </div>
     </div>
 
     <section v-if="result" class="review-result" :class="result.tone">
@@ -371,7 +373,14 @@ watch(
 .action-buttons {
   display: flex;
   flex-wrap: wrap;
+}
+
+.action-button-target {
+  display: inline-flex;
+  flex-wrap: wrap;
   gap: 9px;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .action-buttons button {

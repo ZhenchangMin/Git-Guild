@@ -49,6 +49,10 @@ const faqs = [
 function backToHall() {
   router.push({ name: 'hall' })
 }
+
+function startHallTutorial() {
+  router.push({ name: 'hall', query: { tutorial: 'hall' } })
+}
 </script>
 
 <template>
@@ -119,6 +123,9 @@ function backToHall() {
           </div>
 
           <div class="help-actions">
+            <button class="quiet-action" type="button" @click="startHallTutorial">
+              查看教程
+            </button>
             <button class="quiet-action" type="button" @click="router.push({ name: 'front-desk' })">
               咨询 AI 向导
             </button>

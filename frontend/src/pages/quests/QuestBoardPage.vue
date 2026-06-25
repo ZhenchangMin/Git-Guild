@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { questApi } from '../../api/questApi'
 import questBoardImg from '../../assets/quest board.webp'
 import { questFilterGroups } from '../../data/questBoard'
+import { TUTORIAL_CLOSE_EVENT, TUTORIAL_STEP_EVENT } from '../../data/tutorials'
 import { sessionStore } from '../../stores/sessionStore'
 
 const router = useRouter()
@@ -25,6 +26,7 @@ const recommendationMeta = ref(null)
 const recommendationError = ref('')
 const isRecommendationLoading = ref(true)
 const usingRecommendedSource = ref(false)
+const isQuestBoardTutorialActive = ref(false)
 const selectedQuestFilters = ref({
   category: [],
   tag: [],
@@ -39,6 +41,29 @@ const STATUS_LABELS = {
   COMPLETED: '已完成',
   CLOSED: '已关闭',
   DRAFT: '草稿',
+}
+
+const QUEST_BOARD_TUTORIAL_ID = 'questBoard'
+const tutorialMockQuest = {
+  id: 'QST-1042',
+  routeId: 'tutorial-mock-quest',
+  title: '修复站内信未读角标同步异常',
+  issuer: '仓库 · gitguild-web',
+  category: '缺陷修复',
+  difficulty: 'B',
+  stack: 'Vue / 消息中心',
+  techStack: ['Vue', '消息中心'],
+  status: '可接取',
+  tags: ['前端修复', '通知中心'],
+  reward: '120 XP',
+  summary: '进入大厅后，站内信未读角标偶尔不会随消息状态刷新，需要排查消息中心状态同步并补充必要的前端处理。',
+  criteria: ['未读角标能随已读操作实时更新', '刷新页面后角标数量保持一致', '提交关联 PR 并说明验证步骤'],
+  mine: false,
+  recommendationReasons: ['影响任务反馈闭环', '问题边界清晰'],
+  recommendationRank: 0,
+  recommendationScore: 1,
+  strongMatch: true,
+  tutorialMock: true,
 }
 
 function unwrapApiData(payload) {
@@ -267,6 +292,15 @@ const pagedQuestCommissions = computed(() => {
   const start = (questPage.value - 1) * questPageSize
   return rankedQuestCommissions.value.slice(start, start + questPageSize)
 })
+const shouldShowTutorialMockQuest = computed(
+  () => isQuestBoardTutorialActive.value && pagedQuestCommissions.value.length === 0,
+)
+const displayedQuestCommissions = computed(() =>
+  shouldShowTutorialMockQuest.value ? [tutorialMockQuest] : pagedQuestCommissions.value,
+)
+const displayedQuestCount = computed(() =>
+  shouldShowTutorialMockQuest.value ? 1 : rankedQuestCommissions.value.length,
+)
 
 function toggleQuestFilter(groupId, option) {
   const current = selectedQuestFilters.value[groupId]
@@ -422,6 +456,7 @@ async function loadTaxonomyFilterOptions() {
 }
 
 function openQuestDetail(questId, intent = 'view') {
+  if (questId === tutorialMockQuest.routeId) return
   // 任务板上「接取委托」只负责进入详情（带 accept 意图）；游客真正在详情里点接取时
   // 才跳登录——保证看清完成标准后再决定，登录回流也回到该详情。
   router.push({
@@ -436,10 +471,7 @@ function openQuestDetail(questId, intent = 'view') {
 const isVisitor = computed(() => sessionStore.role === 'VISITOR')
 // 从前台进入时，返回应回到前台而非默认的公会大厅（来源由 query.from 标记）。
 const fromFrontDesk = computed(() => route.query.from === 'front-desk')
-const backLabel = computed(() => {
-  if (fromFrontDesk.value) return '返回前台'
-  return isVisitor.value ? '返回登录' : '返回公会大厅'
-})
+const backLabel = '返回'
 
 function goBack() {
   if (fromFrontDesk.value) {
@@ -476,18 +508,34 @@ function handleBoardVisibility() {
   if (document.visibilityState === 'visible') refreshBoardSilently()
 }
 
+function handleQuestTutorialStep(event) {
+  if (event.detail?.tutorialId === QUEST_BOARD_TUTORIAL_ID) {
+    isQuestBoardTutorialActive.value = true
+  }
+}
+
+function handleQuestTutorialClose(event) {
+  if (event.detail?.tutorialId === QUEST_BOARD_TUTORIAL_ID) {
+    isQuestBoardTutorialActive.value = false
+  }
+}
+
 onMounted(() => {
   loadTaxonomyFilterOptions()
   loadRecommendedQuests()
   boardRefreshTimer = window.setInterval(refreshBoardSilently, BOARD_REFRESH_MS)
   document.addEventListener('visibilitychange', handleBoardVisibility)
   window.addEventListener('focus', refreshBoardSilently)
+  window.addEventListener(TUTORIAL_STEP_EVENT, handleQuestTutorialStep)
+  window.addEventListener(TUTORIAL_CLOSE_EVENT, handleQuestTutorialClose)
 })
 
 onUnmounted(() => {
   window.clearInterval(boardRefreshTimer)
   document.removeEventListener('visibilitychange', handleBoardVisibility)
   window.removeEventListener('focus', refreshBoardSilently)
+  window.removeEventListener(TUTORIAL_STEP_EVENT, handleQuestTutorialStep)
+  window.removeEventListener(TUTORIAL_CLOSE_EVENT, handleQuestTutorialClose)
 })
 </script>
 
@@ -509,7 +557,7 @@ onUnmounted(() => {
           <p class="board-sub">挑选一份契约，开启你的冒险旅程。</p>
         </header>
 
-        <div class="quest-toolbar">
+        <div class="quest-toolbar" data-tutorial="quest-search">
           <label class="quest-search" for="quest-search">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="11" cy="11" r="7" />
@@ -523,12 +571,12 @@ onUnmounted(() => {
               placeholder="搜索任务、技术栈或完成标准…"
             />
           </label>
-          <span class="quest-count">{{ rankedQuestCommissions.length }} 份委托</span>
+          <span class="quest-count">{{ displayedQuestCount }} 份委托</span>
         </div>
         </div>
 
         <div class="board-body">
-          <aside class="quest-filter-rail" aria-label="筛选条件">
+          <aside class="quest-filter-rail" aria-label="筛选条件" data-tutorial="quest-filters">
             <div class="filter-rail-head">
               <h2>筛选条件</h2>
               <button type="button" :disabled="activeFilterCount === 0" @click="clearQuestFilters">
@@ -571,7 +619,7 @@ onUnmounted(() => {
               <span>{{ recommendationStatusText }}</span>
             </div>
 
-            <div v-if="isRecommendationLoading" class="commission-grid loading" aria-label="正在加载委托">
+            <div v-if="isRecommendationLoading && !shouldShowTutorialMockQuest" class="commission-grid loading" aria-label="正在加载委托">
               <article
                 v-for="item in loadingSkeletonCards"
                 :key="item"
@@ -587,13 +635,20 @@ onUnmounted(() => {
               </article>
             </div>
 
-            <div v-else-if="pagedQuestCommissions.length > 0" class="commission-grid">
+            <div v-else-if="displayedQuestCommissions.length > 0" class="commission-grid">
               <article
-                v-for="quest in pagedQuestCommissions"
+                v-for="(quest, index) in displayedQuestCommissions"
                 :key="quest.routeId ?? quest.id"
                 class="commission-card"
                 :class="{ 'is-strong-match': quest.strongMatch }"
               >
+                <span
+                  v-if="index === 0"
+                  class="commission-card-tutorial-target"
+                  data-tutorial="quest-primary-card"
+                  data-tutorial-boundary="viewport"
+                  aria-hidden="true"
+                ></span>
                 <div class="commission-card-top">
                   <span class="commission-id">{{ quest.id }}</span>
                   <div class="commission-meta-group">
@@ -639,11 +694,17 @@ onUnmounted(() => {
                 <footer class="commission-foot">
                   <span class="commission-reward">{{ quest.reward }}</span>
                   <div class="commission-actions">
-                    <button class="quiet-action" type="button" @click="openQuestDetail(quest.routeId ?? quest.id, 'view')">详情</button>
+                    <button
+                      class="quiet-action"
+                      type="button"
+                      :data-tutorial="index === 0 ? 'quest-detail-action' : undefined"
+                      @click="openQuestDetail(quest.routeId ?? quest.id, 'view')"
+                    >详情</button>
                     <button
                       v-if="!quest.mine"
                       class="primary-action"
                       type="button"
+                      :data-tutorial="index === 0 ? 'quest-accept-action' : undefined"
                       @click="openQuestDetail(quest.routeId ?? quest.id, 'accept')"
                     >接取委托</button>
                     <span v-else class="commission-own-note" title="不能接取自己发布的委托">我发布的委托</span>

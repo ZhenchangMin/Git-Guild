@@ -266,11 +266,11 @@ function unwrapItems(payload) {
   <main class="app-shell">
     <section class="scene writ-scene">
       <HomeOrb />
-      <button class="back-orb" type="button" aria-label="返回委托人事务所" @click="backToWorkbench">
+      <button class="back-orb" type="button" aria-label="返回" @click="backToWorkbench">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
         </svg>
-        <span>返回事务所</span>
+        <span>返回</span>
       </button>
 
       <article class="writ-panel" :style="{ '--writ-sheet-image': `url(${parchmentFormImg})` }">
@@ -299,7 +299,7 @@ function unwrapItems(payload) {
         <form v-else class="writ-form" @submit.prevent="publish">
           <p v-if="metaError" class="writ-banner error writ-wide">{{ metaError }}</p>
 
-          <label class="writ-field">
+          <label class="writ-field" data-tutorial="publish-repository">
             <span>目标仓库</span>
             <select v-model="form.repositoryId" :disabled="loadingMeta">
               <option v-if="loadingMeta" value="" disabled>载入仓库中…</option>
@@ -322,7 +322,7 @@ function unwrapItems(payload) {
             <small v-if="errors.categoryId" class="writ-error">{{ errors.categoryId }}</small>
           </label>
 
-          <fieldset class="writ-field writ-wide">
+          <fieldset class="writ-field writ-wide" data-tutorial="publish-taxonomy">
             <span>标签</span>
             <div v-if="tagOptions.length" class="writ-tag-options" aria-label="任务标签">
               <label v-for="tag in tagOptions" :key="tag.tagId" class="writ-tag-option">
@@ -334,7 +334,7 @@ function unwrapItems(payload) {
             <small v-else class="writ-hint">暂无可用标签；可先在管理员平台配置中新增。</small>
           </fieldset>
 
-          <fieldset class="writ-field writ-wide writ-issue">
+          <fieldset class="writ-field writ-wide writ-issue" data-tutorial="publish-issue">
             <span>关联 Issue</span>
             <div class="writ-segmented" role="tablist" aria-label="Issue 来源">
               <button
@@ -368,6 +368,7 @@ function unwrapItems(payload) {
             <small v-if="errors.issue" class="writ-error">{{ errors.issue }}</small>
           </fieldset>
 
+          <div class="writ-task-basics" data-tutorial="publish-task-basics">
           <label class="writ-field writ-wide">
             <span>任务标题</span>
             <input v-model.trim="form.title" placeholder="例：Hello World" />
@@ -424,8 +425,10 @@ function unwrapItems(payload) {
             <small v-if="errors.rewardXp" class="writ-error">{{ errors.rewardXp }}</small>
           </label>
 
+          </div>
+
           <div class="writ-actions">
-            <button class="primary-action" type="submit" :disabled="!canSubmit">
+            <button class="primary-action" type="submit" data-tutorial="publish-submit" :disabled="!canSubmit">
               {{ submitting ? '发布中…' : '发布并提交审核' }}
             </button>
             <p v-if="submitError" class="writ-banner error">{{ submitError }}</p>
@@ -563,6 +566,19 @@ function unwrapItems(payload) {
 .writ-issue {
   grid-column: 1 / -1;
 }
+
+.writ-task-basics {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.writ-task-basics .writ-wide {
+  grid-column: 1 / -1;
+}
+
 .writ-field > span {
   color: var(--ink-soft);
   font-size: 0.74rem;
@@ -848,6 +864,10 @@ function unwrapItems(payload) {
   }
 
   .writ-form {
+    grid-template-columns: 1fr;
+  }
+
+  .writ-task-basics {
     grid-template-columns: 1fr;
   }
 

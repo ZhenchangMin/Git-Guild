@@ -7,6 +7,7 @@ import HallEntryTransition from '../../components/HallEntryTransition.vue'
 import MessageEntryButton from '../../components/messages/MessageEntryButton.vue'
 import NotificationBell from '../../components/NotificationBell.vue'
 import { questApi } from '../../api/questApi'
+import { TUTORIAL_CLOSE_EVENT, TUTORIAL_COMPLETE_STEP_EVENT, TUTORIAL_STEP_EVENT } from '../../data/tutorials'
 import { clearSession, hasLoginSession, sessionStore } from '../../stores/sessionStore'
 
 const router = useRouter()
@@ -22,6 +23,11 @@ const hallOffset = ref(0)
 const isDragging = ref(false)
 const dragStartX = ref(0)
 const dragStartOffset = ref(0)
+const dragTutorialCompleted = ref(false)
+const dragTutorialCompletionPending = ref(false)
+const isHallDragTutorialActive = ref(false)
+const dragStartedOnHotspot = ref(false)
+const suppressNextHotspotClick = ref(false)
 const activeHotspotId = ref('')
 const shapeTooltipPosition = ref({ x: 0, y: 0, below: false })
 
@@ -34,6 +40,7 @@ const hallImageReady = ref(false)
 const showHallEntry = ref(false)
 const isHallEntryLeaving = ref(false)
 let hallEntryExitTimer = 0
+let suppressHotspotClickTimer = 0
 const hallEntryStatusText = ref('正在点亮公会大厅...')
 const shouldFadeHallEntry = ref(false)
 
@@ -200,6 +207,39 @@ function centerHall() {
   hallOffset.value = clampHallOffset((viewport.clientWidth - track.offsetWidth) / 2)
 }
 
+function centerHallRoom(roomId) {
+  const viewport = hallViewport.value
+  const track = hallTrack.value
+  const room = rooms.value.find((item) => item.id === roomId)
+  if (!viewport || !track || !room) return
+
+  const roomCenterRatio = (room.left + room.width / 2) / 100
+  hallOffset.value = clampHallOffset(viewport.clientWidth / 2 - track.offsetWidth * roomCenterRatio)
+}
+
+function handleTutorialStep(event) {
+  const detail = event.detail ?? {}
+  if (detail.tutorialId !== 'hall') return
+  isHallDragTutorialActive.value = detail.stepId === 'hall-drag'
+
+  if (detail.stepId === 'hall-drag') {
+    dragTutorialCompleted.value = false
+    dragTutorialCompletionPending.value = false
+    centerHall()
+    return
+  }
+
+  if (typeof detail.target === 'string' && detail.target.startsWith('hall-')) {
+    centerHallRoom(detail.target.replace('hall-', ''))
+  }
+}
+
+function handleTutorialClose(event) {
+  if (event.detail?.tutorialId !== 'hall') return
+  isHallDragTutorialActive.value = false
+  dragTutorialCompletionPending.value = false
+}
+
 function finishHallEntryIfReady() {
   if (!showHallEntry.value || isHallEntryLeaving.value || !hallImageReady.value) return
 
@@ -238,12 +278,19 @@ function consumeHallEntrySource() {
   }
 }
 
-function isHallHotspotTarget(target) {
+function isRawHallHotspotTarget(target) {
   return Boolean(target?.closest?.('.hotspot, .hall-hotspot-path'))
+}
+
+function isHallHotspotTarget(target) {
+  return !isHallDragTutorialActive.value && isRawHallHotspotTarget(target)
 }
 
 function beginHallDrag(event) {
   if (isHallHotspotTarget(event.target)) return
+  window.clearTimeout(suppressHotspotClickTimer)
+  suppressNextHotspotClick.value = false
+  dragStartedOnHotspot.value = isRawHallHotspotTarget(event.target)
   isDragging.value = true
   dragStartX.value = event.clientX
   dragStartOffset.value = hallOffset.value
@@ -254,12 +301,39 @@ function dragHall(event) {
   if (!isDragging.value) return
   const delta = event.clientX - dragStartX.value
   hallOffset.value = clampHallOffset(dragStartOffset.value + delta)
+
+  if (dragStartedOnHotspot.value && Math.abs(delta) >= 6) {
+    suppressNextHotspotClick.value = true
+  }
+
+  if (isHallDragTutorialActive.value && !dragTutorialCompleted.value && Math.abs(delta) >= 12) {
+    dragTutorialCompletionPending.value = true
+  }
 }
 
 function endHallDrag(event) {
   if (!isDragging.value) return
   isDragging.value = false
   hallViewport.value?.releasePointerCapture(event.pointerId)
+  if (suppressNextHotspotClick.value) {
+    window.clearTimeout(suppressHotspotClickTimer)
+    suppressHotspotClickTimer = window.setTimeout(() => {
+      suppressNextHotspotClick.value = false
+    }, 250)
+  }
+  if (dragTutorialCompletionPending.value && !dragTutorialCompleted.value) {
+    dragTutorialCompletionPending.value = false
+    dragTutorialCompleted.value = true
+    window.dispatchEvent(
+      new CustomEvent(TUTORIAL_COMPLETE_STEP_EVENT, {
+        detail: {
+          tutorialId: 'hall',
+          stepId: 'hall-drag',
+        },
+      }),
+    )
+  }
+  dragStartedOnHotspot.value = false
 }
 
 function openRoute(routeName) {
@@ -267,6 +341,11 @@ function openRoute(routeName) {
 }
 
 function openRoom(room) {
+  if (suppressNextHotspotClick.value) {
+    window.clearTimeout(suppressHotspotClickTimer)
+    suppressNextHotspotClick.value = false
+    return
+  }
   openRoute(room.routeName)
 }
 
@@ -306,6 +385,8 @@ function handleOpenQuestVisibility() {
 onMounted(async () => {
   consumeHallEntrySource()
   window.addEventListener('resize', centerHall)
+  window.addEventListener(TUTORIAL_STEP_EVENT, handleTutorialStep)
+  window.addEventListener(TUTORIAL_CLOSE_EVENT, handleTutorialClose)
   nextTick(centerHall)
   await refreshOpenQuestCount()
   openQuestTimer = window.setInterval(refreshOpenQuestCount, OPEN_QUEST_REFRESH_MS)
@@ -315,7 +396,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', centerHall)
+  window.removeEventListener(TUTORIAL_STEP_EVENT, handleTutorialStep)
+  window.removeEventListener(TUTORIAL_CLOSE_EVENT, handleTutorialClose)
   window.clearTimeout(hallEntryExitTimer)
+  window.clearTimeout(suppressHotspotClickTimer)
   window.clearInterval(openQuestTimer)
   document.removeEventListener('visibilitychange', handleOpenQuestVisibility)
   window.removeEventListener('focus', refreshOpenQuestCount)
@@ -324,7 +408,13 @@ onUnmounted(() => {
 
 <template>
   <main class="app-shell">
-    <button class="help-orb" type="button" aria-label="打开 Git Guild 使用教程" @click="openRoute('help')">?</button>
+    <button
+      class="help-orb"
+      type="button"
+      aria-label="打开 Git Guild 使用教程"
+      data-tutorial="hall-help"
+      @click="openRoute('help')"
+    >?</button>
 
     <section class="hall-scene" :class="{ 'is-entry-loading': showHallEntry, 'is-hall-ready': hallImageReady }">
       <HallEntryTransition
@@ -334,9 +424,15 @@ onUnmounted(() => {
       />
 
       <div class="session-action-stack" aria-label="账号与成长入口" :aria-hidden="showHallEntry">
-        <NotificationBell v-if="showNotificationBell" />
-        <MessageEntryButton v-if="showNotificationBell" />
-        <button class="back-orb growth-orb" type="button" aria-label="打开成长档案" @click="openRoute('profile')">
+        <NotificationBell v-if="showNotificationBell" data-tutorial="hall-notification" />
+        <MessageEntryButton v-if="showNotificationBell" data-tutorial="hall-message" />
+        <button
+          class="back-orb growth-orb"
+          type="button"
+          aria-label="打开成长档案"
+          data-tutorial="hall-profile"
+          @click="openRoute('profile')"
+        >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3 15 9l6 .8-4.5 4.3 1.1 6.1L12 17.2 6.4 20.2l1.1-6.1L3 9.8 9 9z" />
           </svg>
@@ -356,6 +452,7 @@ onUnmounted(() => {
         ref="hallViewport"
         class="hall-viewport"
         :class="{ dragging: isDragging }"
+        data-tutorial="hall-drag"
         @pointerdown="beginHallDrag"
         @pointermove="dragHall"
         @pointerup="endHallDrag"
@@ -377,10 +474,10 @@ onUnmounted(() => {
               class="hall-hotspot-path"
               role="button"
               tabindex="0"
+              :data-tutorial="`hall-${room.id}`"
               :aria-label="room.label"
               :d="room.shape.path"
               :transform="shapeTransform(room.shape)"
-              @pointerdown.stop
               @click.stop="openRoom(room)"
               @keydown.enter.prevent="openRoom(room)"
               @keydown.space.prevent="openRoom(room)"
@@ -409,6 +506,7 @@ onUnmounted(() => {
             :key="room.id"
             class="hotspot"
             type="button"
+            :data-tutorial="`hall-${room.id}`"
             :aria-label="room.label"
             :style="{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }"
             @click="openRoom(room)"

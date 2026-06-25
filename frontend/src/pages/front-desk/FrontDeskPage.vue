@@ -8,9 +8,12 @@ import { questApi } from '../../api/questApi'
 import { submissionApi } from '../../api/submissionApi'
 import { sessionStore } from '../../stores/sessionStore'
 import { useAssistantChat } from '../../composables/useAssistantChat'
+import { TUTORIAL_CLOSE_EVENT, TUTORIAL_STEP_EVENT } from '../../data/tutorials'
 
 const router = useRouter()
 const pageEnteredAt = Date.now()
+const FRONT_DESK_TUTORIAL_ID = 'frontDesk'
+const FRONT_DESK_ACTION_STEP_ID = 'frontdesk-actions'
 
 const {
   messages,
@@ -37,6 +40,7 @@ const userBubbleSize = ref({ width: 260, height: 74 })
 const userBubbleScrollable = ref(false)
 const promptRevealCount = ref(0)
 const promptBubbleLayouts = ref({})
+const frontDeskTutorialStepId = ref('')
 let sceneResizeObserver = null
 let bubbleResizeObserver = null
 let promptRevealTimers = []
@@ -141,6 +145,19 @@ const welcomeBubbleText = computed(() => {
 const welcomeBubbleActions = computed(() => {
   if (loading.value) return []
   return latestAssistantMessage.value?.actions ?? []
+})
+
+const showTutorialQuickAction = computed(() => frontDeskTutorialStepId.value === FRONT_DESK_ACTION_STEP_ID)
+
+const visibleWelcomeBubbleActions = computed(() => {
+  if (welcomeBubbleActions.value.length) return welcomeBubbleActions.value
+  if (!showTutorialQuickAction.value) return []
+  return [
+    {
+      label: '前往悬赏板',
+      routeName: 'quest-board',
+    },
+  ]
 })
 
 const promptBubblePath = [
@@ -500,8 +517,31 @@ function closeHistory() {
   historyOpen.value = false
 }
 
+function handleFrontDeskTutorialStep(event) {
+  const detail = event.detail ?? {}
+  if (detail.tutorialId !== FRONT_DESK_TUTORIAL_ID) return
+
+  frontDeskTutorialStepId.value = detail.stepId ?? ''
+  if (detail.stepId === 'frontdesk-prompts') {
+    clearPromptRevealTimers()
+    syncPromptBubbleLayouts(allPromptBubbles.value)
+    promptRevealCount.value = allPromptBubbles.value.length
+  }
+
+  nextTick(refreshBubbleObservers)
+}
+
+function handleFrontDeskTutorialClose(event) {
+  const detail = event.detail ?? {}
+  if (detail.tutorialId !== FRONT_DESK_TUTORIAL_ID) return
+  frontDeskTutorialStepId.value = ''
+  nextTick(refreshBubbleObservers)
+}
+
 onMounted(async () => {
   updateSceneMetrics()
+  window.addEventListener(TUTORIAL_STEP_EVENT, handleFrontDeskTutorialStep)
+  window.addEventListener(TUTORIAL_CLOSE_EVENT, handleFrontDeskTutorialClose)
   if (sceneRef.value && typeof ResizeObserver !== 'undefined') {
     sceneResizeObserver = new ResizeObserver(updateSceneMetrics)
     sceneResizeObserver.observe(sceneRef.value)
@@ -547,7 +587,7 @@ onMounted(async () => {
   statusReady.value = true
 })
 
-watch([latestUserMessage, welcomeBubbleText, welcomeBubbleActions], () => {
+watch([latestUserMessage, welcomeBubbleText, visibleWelcomeBubbleActions], () => {
   nextTick(refreshBubbleObservers)
 })
 
@@ -564,6 +604,8 @@ watch(
 
 onBeforeUnmount(() => {
   clearPromptRevealTimers()
+  window.removeEventListener(TUTORIAL_STEP_EVENT, handleFrontDeskTutorialStep)
+  window.removeEventListener(TUTORIAL_CLOSE_EVENT, handleFrontDeskTutorialClose)
   sceneResizeObserver?.disconnect()
   sceneResizeObserver = null
   bubbleResizeObserver?.disconnect()
@@ -589,14 +631,20 @@ function sendPromptBubble(prompt) {
     <section ref="sceneRef" class="desk-scene" :style="{ backgroundImage: `url(${deskImg})` }">
       <div class="desk-scrim" aria-hidden="true"></div>
 
-      <button class="back-orb" type="button" aria-label="返回公会大厅" @click="backToHall">
+      <button class="back-orb" type="button" aria-label="返回" @click="backToHall">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M19 12H5M12 19l-7-7 7-7" />
         </svg>
-        <span>返回大厅</span>
+        <span>返回</span>
       </button>
 
-      <button class="back-orb desk-history-orb" type="button" aria-label="打开历史记录" @click="openHistory">
+      <button
+        class="back-orb desk-history-orb"
+        type="button"
+        aria-label="打开历史记录"
+        data-tutorial="frontdesk-history"
+        @click="openHistory"
+      >
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 8v5l3 2" />
           <path d="M4 12a8 8 0 1 0 2.34-5.66" />
@@ -660,12 +708,16 @@ function sendPromptBubble(prompt) {
             <span v-else class="source-badge fallback">&#9888; 降级回答</span>
           </div>
 
-          <div v-if="welcomeBubbleActions.length" class="desk-actions desk-welcome-actions">
+          <div
+            v-if="visibleWelcomeBubbleActions.length"
+            class="desk-actions desk-welcome-actions"
+          >
             <button
-              v-for="action in welcomeBubbleActions"
-              :key="action.routeName"
+              v-for="(action, index) in visibleWelcomeBubbleActions"
+              :key="`${action.routeName}-${action.label}`"
               class="desk-action-btn"
               type="button"
+              :data-tutorial="index === 0 ? 'frontdesk-actions' : undefined"
               @click="navigate(action.routeName)"
             >{{ action.label }}</button>
           </div>
@@ -710,47 +762,53 @@ function sendPromptBubble(prompt) {
         </section>
       </Transition>
 
-      <section class="desk-prompt-cloud" :style="promptCloudStyle" aria-label="推荐问题">
-        <button
-          v-for="(prompt, index) in promptBubblesWithLayout"
-          :key="prompt.id"
-          class="desk-quick-chip"
-          type="button"
-          :style="prompt.style"
-          :disabled="loading"
-          :aria-label="`快速发送：${prompt.message}`"
-          @click="sendPromptBubble(prompt)"
-        >
-          <svg
-            class="desk-quick-frame"
-            viewBox="0 0 360 64"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-            focusable="false"
+      <section
+        class="desk-prompt-cloud"
+        :style="promptCloudStyle"
+        aria-label="推荐问题"
+      >
+        <div class="desk-prompt-stack" data-tutorial="frontdesk-prompts">
+          <button
+            v-for="(prompt, index) in promptBubblesWithLayout"
+            :key="prompt.id"
+            class="desk-quick-chip"
+            type="button"
+            :style="prompt.style"
+            :disabled="loading"
+            :aria-label="`快速发送：${prompt.message}`"
+            @click="sendPromptBubble(prompt)"
           >
-            <defs>
-              <linearGradient :id="`deskPromptBubbleFill-${index}`" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stop-color="#22130a" stop-opacity="0.94" />
-                <stop offset="1" stop-color="#0f0905" stop-opacity="0.86" />
-              </linearGradient>
-            </defs>
-            <path
-              class="desk-quick-frame-path"
-              :d="promptBubblePath"
-              :fill="`url(#deskPromptBubbleFill-${index})`"
-              stroke="#eeb85b"
-              stroke-opacity="0.42"
-              stroke-width="1.2"
-              stroke-linejoin="round"
-              vector-effect="non-scaling-stroke"
-            />
-          </svg>
-          <span class="desk-quick-label">{{ prompt.label }}</span>
-        </button>
+            <svg
+              class="desk-quick-frame"
+              viewBox="0 0 360 64"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <defs>
+                <linearGradient :id="`deskPromptBubbleFill-${index}`" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#22130a" stop-opacity="0.94" />
+                  <stop offset="1" stop-color="#0f0905" stop-opacity="0.86" />
+                </linearGradient>
+              </defs>
+              <path
+                class="desk-quick-frame-path"
+                :d="promptBubblePath"
+                :fill="`url(#deskPromptBubbleFill-${index})`"
+                stroke="#eeb85b"
+                stroke-opacity="0.42"
+                stroke-width="1.2"
+                stroke-linejoin="round"
+                vector-effect="non-scaling-stroke"
+              />
+            </svg>
+            <span class="desk-quick-label">{{ prompt.label }}</span>
+          </button>
+        </div>
       </section>
 
       <footer class="desk-input-dock" aria-label="向艾丽丝提问">
-        <div class="desk-input-row">
+        <div class="desk-input-row" data-tutorial="frontdesk-input">
           <input
             v-model="draft"
             class="desk-input"
@@ -764,6 +822,7 @@ function sendPromptBubble(prompt) {
             class="desk-send"
             type="button"
             aria-label="发送"
+            data-tutorial="frontdesk-send"
             :disabled="!canSend"
             @click="send()"
           >
@@ -1193,12 +1252,27 @@ function sendPromptBubble(prompt) {
   pointer-events: none;
 }
 
+.desk-prompt-stack {
+  --prompt-overflow-left: 108px;
+  --prompt-overflow-right: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  align-items: flex-start;
+  width: calc(100% + var(--prompt-overflow-left) + var(--prompt-overflow-right));
+  box-sizing: border-box;
+  padding-left: var(--prompt-overflow-left);
+  padding-right: var(--prompt-overflow-right);
+  pointer-events: none;
+  transform: translateX(calc(-1 * var(--prompt-overflow-left)));
+}
+
 .desk-quick-chip {
   position: relative;
   display: inline-grid;
   place-items: center start;
   width: max-content;
-  max-width: 100%;
+  max-width: calc(100% - var(--prompt-overflow-left) - var(--prompt-overflow-right));
   min-height: 44px;
   box-sizing: border-box;
   border: 0;

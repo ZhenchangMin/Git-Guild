@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import workbenchImg from '../../assets/workbench.webp'
@@ -8,6 +8,7 @@ import MaintainerReviewActions from '../../components/MaintainerReviewActions.vu
 import MaintainerReviewDetail from '../../components/MaintainerReviewDetail.vue'
 import MaintainerReviewQueue from '../../components/MaintainerReviewQueue.vue'
 import { reviewApi, submissionApi } from '../../api'
+import { TUTORIAL_CLOSE_EVENT, TUTORIAL_STEP_EVENT } from '../../data/tutorials'
 import { openQuestMessages } from '../../stores/messageStore'
 import { toBrowsableGiteaUrl } from '../../utils/giteaUrl'
 
@@ -22,19 +23,119 @@ const loadError = ref('')
 const isLoadingReviews = ref(false)
 const isSubmittingReview = ref(false)
 const isMerging = ref(false)
+const isReviewTutorialActive = ref(false)
 
-const selectedReview = computed(
-  () => reviews.value.find((review) => review.id === selectedReviewId.value) ?? null,
+const MAINTAINER_REVIEW_TUTORIAL_ID = 'maintainerReview'
+const tutorialReviewQueue = [
+  {
+    id: 'SUB-1042',
+    submissionId: 1042,
+    questNumericId: 1042,
+    questId: 'QST-1042',
+    questTitle: '修复站内信未读角标同步异常',
+    submitter: '林星河',
+    repository: 'gitguild-web',
+    repositoryBranch: 'feature/qst-1042-message-badge-sync',
+    repositoryBranchUrl: 'http://localhost:3000/gitguild/gitguild-web/src/branch/feature/qst-1042-message-badge-sync/',
+    pullRequest: 'PR #27',
+    pullRequestUrl: 'http://localhost:3000/gitguild/gitguild-web/pulls/27',
+    pullRequestTitle: '修复站内信未读状态同步',
+    prState: 'OPEN',
+    branch: 'feature/qst-1042-message-badge-sync -> main',
+    latestCommit: 'b7c9a21 · sync unread badge after message read',
+    status: '待审核',
+    statusTone: 'review',
+    submittedAt: '2026-06-25 10:42',
+    submittedAtOrder: new Date('2026-06-25T10:42:00').getTime(),
+    rewardXp: 120,
+    summary:
+      '已修复大厅通知角标与站内信已读状态不同步的问题。现在用户在信笺中心阅读消息后，大厅左上角未读数量会立即刷新；刷新页面后也会从后端重新同步最新数量。',
+    completionCriteria: [
+      {
+        checkpoint: '未读角标能随已读操作实时更新',
+        passed: true,
+        comment: '已在消息中心已读回调后刷新通知计数，并补充本地状态同步。',
+      },
+      {
+        checkpoint: '刷新页面后角标数量保持一致',
+        passed: true,
+        comment: '页面初始化会重新拉取未读消息数量，验证刷新后仍保持一致。',
+      },
+      {
+        checkpoint: '提交关联 PR 并说明验证步骤',
+        passed: true,
+        comment: 'PR 描述中包含手动验证步骤：打开信笺、阅读消息、回到大厅观察角标。',
+      },
+    ],
+    evidence: [
+      'PR 链接：http://localhost:3000/gitguild/gitguild-web/pulls/27',
+      '验证记录：Chrome 138，阅读站内信后大厅未读角标由 3 变为 0，刷新后保持 0。',
+    ],
+    evidenceFiles: [],
+    suggestedSummary: 'PR 与成果说明已核对，未读角标同步路径完整，可以通过审核。',
+  },
+  {
+    id: 'SUB-1038',
+    submissionId: 1038,
+    questNumericId: 1038,
+    questId: 'QST-1038',
+    questTitle: '优化委托详情页验收标准排版',
+    submitter: '周明远',
+    repository: 'gitguild-web',
+    repositoryBranch: 'feature/qst-1038-criteria-layout',
+    pullRequest: 'PR #24',
+    pullRequestUrl: 'http://localhost:3000/gitguild/gitguild-web/pulls/24',
+    pullRequestTitle: '优化验收标准展示密度',
+    prState: 'MERGED',
+    branch: 'feature/qst-1038-criteria-layout -> main',
+    latestCommit: '6ef41da · refine criteria list layout',
+    status: '审核通过',
+    statusTone: 'approved',
+    submittedAt: '2026-06-24 17:18',
+    submittedAtOrder: new Date('2026-06-24T17:18:00').getTime(),
+    rewardXp: 80,
+    summary: '已调整验收标准列表的行距与对齐方式，移动端不再挤压按钮区域。',
+    completionCriteria: [
+      { checkpoint: '桌面端和移动端排版稳定', passed: true, comment: '已在两种视口验证。' },
+    ],
+    evidence: ['PR 链接：http://localhost:3000/gitguild/gitguild-web/pulls/24'],
+    evidenceFiles: [],
+    suggestedSummary: '已通过审核。',
+  },
+]
+
+const hasTutorialReadyReview = computed(() =>
+  reviews.value.some(
+    (review) =>
+      review.status === '待审核' &&
+      review.prState === 'OPEN' &&
+      review.pullRequestUrl &&
+      review.repositoryBranchUrl,
+  ),
 )
+const shouldShowTutorialReviews = computed(
+  () => isReviewTutorialActive.value && !hasTutorialReadyReview.value,
+)
+const displayedReviews = computed(() =>
+  shouldShowTutorialReviews.value ? tutorialReviewQueue : reviews.value,
+)
+const selectedReview = computed(
+  () =>
+    displayedReviews.value.find((review) => review.id === selectedReviewId.value) ??
+    displayedReviews.value.find((review) => review.status === '待审核') ??
+    displayedReviews.value[0] ??
+    null,
+)
+const activeReviewId = computed(() => selectedReview.value?.id ?? selectedReviewId.value)
 const canReviewSelectedSubmission = computed(() => selectedReview.value?.status === '待审核')
-const pendingReviewCount = computed(() => reviews.value.filter((review) => review.status === '待审核').length)
-const reviewedCount = computed(() => reviews.value.length - pendingReviewCount.value)
-const returnedCount = computed(() => reviews.value.filter((review) => review.status.includes('修改')).length)
+const pendingReviewCount = computed(() => displayedReviews.value.filter((review) => review.status === '待审核').length)
+const reviewedCount = computed(() => displayedReviews.value.length - pendingReviewCount.value)
+const returnedCount = computed(() => displayedReviews.value.filter((review) => review.status.includes('修改')).length)
 const reviewStats = computed(() => [
   { label: '待审核提交', value: pendingReviewCount.value },
   { label: '已审核提交', value: reviewedCount.value },
   { label: '需退回修改', value: returnedCount.value },
-  { label: '队列总数', value: reviews.value.length },
+  { label: '队列总数', value: displayedReviews.value.length },
 ])
 
 function padId(value) {
@@ -352,7 +453,28 @@ function openPullRequest(review) {
   }
 }
 
-onMounted(loadReviewQueue)
+function handleReviewTutorialStep(event) {
+  if (event.detail?.tutorialId === MAINTAINER_REVIEW_TUTORIAL_ID) {
+    isReviewTutorialActive.value = true
+  }
+}
+
+function handleReviewTutorialClose(event) {
+  if (event.detail?.tutorialId === MAINTAINER_REVIEW_TUTORIAL_ID) {
+    isReviewTutorialActive.value = false
+  }
+}
+
+onMounted(() => {
+  loadReviewQueue()
+  window.addEventListener(TUTORIAL_STEP_EVENT, handleReviewTutorialStep)
+  window.addEventListener(TUTORIAL_CLOSE_EVENT, handleReviewTutorialClose)
+})
+
+onUnmounted(() => {
+  window.removeEventListener(TUTORIAL_STEP_EVENT, handleReviewTutorialStep)
+  window.removeEventListener(TUTORIAL_CLOSE_EVENT, handleReviewTutorialClose)
+})
 </script>
 
 <template>
@@ -362,11 +484,11 @@ onMounted(loadReviewQueue)
       :style="{ backgroundImage: `url(${workbenchImg})` }"
     >
       <HomeOrb />
-      <button class="back-orb" type="button" aria-label="返回委托人工作台" @click="backToWorkbench">
+      <button class="back-orb" type="button" aria-label="返回" @click="backToWorkbench">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
         </svg>
-        <span>返回委托人工作台</span>
+        <span>返回</span>
       </button>
 
       <div class="maintainer-review-shell" :class="{ 'has-review-alert': reviewAlert }">
@@ -374,7 +496,7 @@ onMounted(loadReviewQueue)
           <div>
             <h1>委托人审核台</h1>
           </div>
-          <div class="maintainer-review-stats" aria-label="维护者审核统计">
+          <div class="maintainer-review-stats" aria-label="维护者审核统计" data-tutorial="review-stats">
             <article v-for="stat in reviewStats" :key="stat.label">
               <span>{{ stat.label }}</span>
               <strong>{{ stat.value }}</strong>
@@ -397,19 +519,28 @@ onMounted(loadReviewQueue)
 
         <div class="maintainer-review-workspace">
           <MaintainerReviewQueue
-            :reviews="reviews"
-            :selected-review-id="selectedReviewId"
+            data-tutorial="review-queue"
+            :reviews="displayedReviews"
+            :selected-review-id="activeReviewId"
             @select="selectReview"
           />
 
-          <section v-if="isLoadingReviews" class="review-empty-state" aria-label="审核队列加载中">
+          <section
+            v-if="isLoadingReviews && !shouldShowTutorialReviews"
+            class="review-empty-state"
+            aria-label="审核队列加载中"
+          >
             <div>
               <h2>正在读取审核队列</h2>
               <p>请稍候。</p>
             </div>
           </section>
 
-          <section v-else-if="loadError" class="review-empty-state" aria-label="审核队列加载失败">
+          <section
+            v-else-if="loadError && !shouldShowTutorialReviews"
+            class="review-empty-state"
+            aria-label="审核队列加载失败"
+          >
             <div>
               <h2>审核队列加载失败</h2>
               <p>{{ loadError }}</p>
@@ -429,17 +560,23 @@ onMounted(loadReviewQueue)
             :class="{ 'readonly-review': !canReviewSelectedSubmission }"
           >
             <MaintainerReviewDetail
+              data-tutorial="review-detail"
               :review="selectedReview"
               :merging="isMerging"
               @merge-pr="mergeSelectedPullRequest"
             />
             <div class="review-side-stack">
               <div class="review-contact-row">
-                <button class="quiet-action" type="button" @click="openSelectedReviewMessages">
+                <button
+                  class="quiet-action"
+                  type="button"
+                  data-tutorial="review-contact"
+                  @click="openSelectedReviewMessages"
+                >
                   给冒险家写信笺
                 </button>
               </div>
-              <div v-if="canReviewSelectedSubmission" class="review-action-slot">
+              <div v-if="canReviewSelectedSubmission" class="review-action-slot" data-tutorial="review-actions">
                 <MaintainerReviewActions
                   :review="selectedReview"
                   :result="reviewResult"

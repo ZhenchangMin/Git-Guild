@@ -70,6 +70,7 @@ function toggleSection(sectionId) {
             class="submission-card"
             :class="[{ active: selectedReviewId === review.id }, review.statusTone]"
             type="button"
+            :data-tutorial="selectedReviewId === review.id ? 'review-queue-card' : undefined"
             @click="emit('select', review.id)"
           >
             <strong>{{ review.questTitle }}</strong>

@@ -101,11 +101,7 @@ const backTarget = computed(() => {
   return { name: 'hall' }
 })
 
-const backLabel = computed(() =>
-  sessionStore.role === 'ADVENTURER' || sessionStore.role === 'MAINTAINER'
-    ? '返回工作台'
-    : '返回公会大厅',
-)
+const backLabel = '返回'
 
 // 有站内历史就弹出（回到真正的来路），避免 push 到工作台后与工作台的 back() 来回 ping-pong；
 // 无历史（深链直入）时才兜底 push 到角色对应的工作台 / 大厅。

@@ -7,6 +7,7 @@ import { questApi } from '../api/questApi'
 import { growthApi } from '../api/growthApi'
 import { repositoryApi } from '../api/repositoryApi'
 import { submissionApi } from '../api/submissionApi'
+import { TUTORIAL_CLOSE_EVENT, TUTORIAL_STEP_EVENT } from '../data/tutorials'
 import { workbenchStats, workbenchUser } from '../data/workbench'
 import { toBrowsableGiteaUrl } from '../utils/giteaUrl'
 
@@ -19,6 +20,173 @@ const fallbackRepositories = []
 const reviewFeedbacks = []
 const fallbackTaskGroups = []
 const workbenchEmails = []
+const ADVENTURER_WORKBENCH_TUTORIAL_ID = 'adventurerWorkbench'
+const tutorialWorkbenchRepository = {
+  name: 'gitguild-web',
+  syncStatus: 'Synced',
+  defaultBranch: 'main',
+  branches: 3,
+  issues: 12,
+  pullRequests: 4,
+  lastCommit: 'c7a42f1',
+  repositoryId: 1042,
+  hostType: 'GITEA',
+  sourceUrl: 'http://127.0.0.1:3000/gitguild/gitguild-web.git',
+  giteaUrl: 'http://127.0.0.1:3000/gitguild/gitguild-web',
+}
+const tutorialWorkbenchTaskGroups = [
+  {
+    id: 'in-progress',
+    label: '进行中',
+    tasks: [
+      {
+        id: 'QST-1042',
+        questId: 1042,
+        title: '修复站内信未读角标同步异常',
+        repository: tutorialWorkbenchRepository.name,
+        repositoryId: tutorialWorkbenchRepository.repositoryId,
+        issue: '#128',
+        prStatus: '未发起',
+        branch: 'feature/qst-1042-message-badge-sync',
+        recentCommit: '待上传',
+        prNumber: '',
+        prState: '未创建',
+        checkResult: '等待提交',
+        counterLink: '未登记',
+        counterDetail: '分支已准备好；完成修改并推送后，再到提交柜台登记成果。',
+        nextStep: '克隆仓库，切换任务分支并完成修复',
+        externalUrl: '',
+        changeRequests: [],
+        tutorialMock: true,
+        actions: [
+          { label: '同步 PR 状态', type: 'sync-pr' },
+          { label: '去提交柜台', type: 'submit', primary: true },
+        ],
+      },
+      {
+        id: 'QST-1036',
+        questId: 1036,
+        title: '补齐任务详情页验收标准展示',
+        repository: tutorialWorkbenchRepository.name,
+        repositoryId: tutorialWorkbenchRepository.repositoryId,
+        issue: '#121',
+        prStatus: '未发起',
+        branch: 'feature/qst-1036-criteria-panel',
+        recentCommit: '待上传',
+        prNumber: '',
+        prState: '未创建',
+        checkResult: '等待提交',
+        counterLink: '未登记',
+        counterDetail: '任务已接取，完成页面补充后再登记成果。',
+        nextStep: '确认详情页数据结构并补齐验收标准区域',
+        externalUrl: '',
+        changeRequests: [],
+        tutorialMock: true,
+        actions: [
+          { label: '同步 PR 状态', type: 'sync-pr' },
+          { label: '去提交柜台', type: 'submit', primary: true },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'changes-requested',
+    label: '待修改',
+    tasks: [
+      {
+        id: 'QST-1028',
+        questId: 1028,
+        title: '调整排行榜移动端文字换行',
+        repository: tutorialWorkbenchRepository.name,
+        repositoryId: tutorialWorkbenchRepository.repositoryId,
+        issue: '#115',
+        prStatus: 'PR #42 退回修改',
+        branch: 'feature/qst-1028-mobile-ranking',
+        recentCommit: '已同步',
+        prNumber: 'PR #42',
+        prState: '退回修改',
+        checkResult: '复审前待修改',
+        counterLink: '需重新提交',
+        counterDetail: '维护者要求补充小屏宽度下的换行处理。',
+        nextStep: '按反馈修改样式后重新提交成果',
+        externalUrl: '',
+        changeRequests: [
+          {
+            reviewedAt: '06-24 15:20',
+            reviewerName: '维护者',
+            comment: '排行榜用户名过长时会挤压等级信息，请补充换行或截断处理。',
+            checklist: ['小屏用户名不遮挡等级', '刷新按钮仍可点击'],
+          },
+        ],
+        tutorialMock: true,
+        actions: [
+          { label: '同步 PR 状态', type: 'sync-pr' },
+          { label: '去提交柜台', type: 'submit', primary: true },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'in-review',
+    label: '审核中',
+    tasks: [
+      {
+        id: 'QST-1019',
+        questId: 1019,
+        title: '优化提交柜台证据上传提示',
+        repository: tutorialWorkbenchRepository.name,
+        repositoryId: tutorialWorkbenchRepository.repositoryId,
+        issue: '#109',
+        prStatus: 'PR #39 待审核',
+        branch: 'feature/qst-1019-evidence-hint',
+        recentCommit: '已同步',
+        prNumber: 'PR #39',
+        prState: '待审核',
+        checkResult: '基础检查通过',
+        counterLink: '待审核',
+        counterDetail: '成果已提交，等待维护者审核。',
+        nextStep: '等待审核结果或查看站内信通知',
+        externalUrl: '',
+        changeRequests: [],
+        tutorialMock: true,
+        actions: [
+          { label: '同步 PR 状态', type: 'sync-pr' },
+          { label: '去提交柜台', type: 'submit', primary: true },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'completed',
+    label: '已完成',
+    tasks: [
+      {
+        id: 'QST-1007',
+        questId: 1007,
+        title: '修复帮助页快捷入口跳转',
+        repository: tutorialWorkbenchRepository.name,
+        repositoryId: tutorialWorkbenchRepository.repositoryId,
+        issue: '#97',
+        prStatus: 'PR #31 已合并',
+        branch: 'feature/qst-1007-help-links',
+        recentCommit: '已同步',
+        prNumber: 'PR #31',
+        prState: '已合并',
+        checkResult: '审核通过',
+        counterLink: '已登记',
+        counterDetail: '任务成果已通过审核并写入成长记录。',
+        nextStep: '查看成长档案中的贡献记录',
+        externalUrl: '',
+        changeRequests: [],
+        tutorialMock: true,
+        actions: [
+          { label: '同步 PR 状态', type: 'sync-pr' },
+          { label: '去提交柜台', type: 'submit', primary: true },
+        ],
+      },
+    ],
+  },
+]
 import { sessionStore } from '../stores/sessionStore'
 import {
   loadNotifications,
@@ -54,6 +222,7 @@ const liveRepositories = ref([])      // Repo[]
 const livePullRequests = ref([])      // PR[]
 // 初始展示占位符 '-'，避免真实数据到达前闪现 workbenchStats 演示数值（2/1/1/3）
 const liveStats = ref(workbenchStats.map((stat) => ({ ...stat, value: '-' })))
+const isAdventurerWorkbenchTutorialActive = ref(false)
 const liveLoading = ref(true) // 起始即加载态：成长数据由 onMounted 拉取，首帧先显示占位符而非演示值
 
 async function fetchWorkbenchData() {
@@ -119,6 +288,7 @@ async function fetchWorkbenchData() {
 // Task groups derived from live assignments
 const taskGroups = computed(() => {
   const items = liveAssignments.value
+  if (items.length === 0 && isAdventurerWorkbenchTutorialActive.value) return tutorialWorkbenchTaskGroups
   if (items.length === 0) return fallbackTaskGroups
 
   // 顺序：进行中 → 待修改 → 审核中 → 已完成（Object.values 保留插入顺序）
@@ -390,6 +560,11 @@ watch(
     branchError.value = ''
     taskRepoSourceUrl.value = ''
     taskCloneUrlAuth.value = ''
+    if (selectedTask.value?.tutorialMock) {
+      realTaskBranch.value = selectedTask.value.branch
+      taskRepoSourceUrl.value = tutorialWorkbenchRepository.sourceUrl
+      return
+    }
     fetchTaskRepoSourceUrl(selectedTask.value?.repositoryId)
     const state = selectedTask.value?.workflowState
     if (questId && (state === 'in-progress' || state === 'changes-requested')) {
@@ -645,11 +820,30 @@ function mailTime(iso) {
   return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+function handleAdventurerWorkbenchTutorialStep(event) {
+  if (event.detail?.tutorialId === ADVENTURER_WORKBENCH_TUTORIAL_ID) {
+    isAdventurerWorkbenchTutorialActive.value = true
+  }
+}
+
+function handleAdventurerWorkbenchTutorialClose(event) {
+  if (event.detail?.tutorialId === ADVENTURER_WORKBENCH_TUTORIAL_ID) {
+    isAdventurerWorkbenchTutorialActive.value = false
+  }
+}
+
 onMounted(() => {
   // 轮询由全局 NotificationCenter 统一负责；这里只主动拉一次，保证信箱首屏未读数最新。
   loadNotifications()
   loadMessageThreads()
   fetchWorkbenchData()
+  window.addEventListener(TUTORIAL_STEP_EVENT, handleAdventurerWorkbenchTutorialStep)
+  window.addEventListener(TUTORIAL_CLOSE_EVENT, handleAdventurerWorkbenchTutorialClose)
+})
+
+onUnmounted(() => {
+  window.removeEventListener(TUTORIAL_STEP_EVENT, handleAdventurerWorkbenchTutorialStep)
+  window.removeEventListener(TUTORIAL_CLOSE_EVENT, handleAdventurerWorkbenchTutorialClose)
 })
 
 function showGrowthDetails(source = '个人成长档案') {
@@ -1250,7 +1444,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
       </div>
     </header>
 
-    <aside class="workbench-panel todo-panel">
+    <aside class="workbench-panel todo-panel" data-tutorial="workbench-task-list">
       <div class="panel-head">
         <p class="kicker">My Todo</p>
         <h2>我的待办</h2>
@@ -1521,7 +1715,12 @@ function openFeedback(feedbackId, source = '审核反馈') {
             <h2>{{ selectedTask.id }} · {{ selectedTask.title }}</h2>
           </div>
           <div class="task-detail-actions">
-            <button class="quiet-action message-task-action" type="button" @click="openSelectedTaskMessages">
+            <button
+              class="quiet-action message-task-action"
+              type="button"
+              data-tutorial="workbench-contact-client"
+              @click="openSelectedTaskMessages"
+            >
               联系任务对方
             </button>
             <span class="status-pill">{{ selectedTask.statusLabel }}</span>
@@ -1531,13 +1730,18 @@ function openFeedback(feedbackId, source = '审核反馈') {
         <div class="detail-grid">
           <QuestStatusFlow
             class="task-flow-card"
+            data-tutorial="workbench-task-overview"
             :status="selectedTask.workflowState"
             :context="selectedTaskFlowContext"
             compact
           />
 
           <!-- 「已提交/审核中」阶段不再需要克隆并推送的命令提示，隐藏整张卡片 -->
-          <article v-if="selectedTask.workflowState !== 'in-review'" class="detail-card wide task-clone-card">
+          <article
+            v-if="selectedTask.workflowState !== 'in-review'"
+            class="detail-card wide task-clone-card"
+            data-tutorial="workbench-clone-card"
+          >
             <div class="clone-head">
               <div>
                 <p class="kicker">Clone &amp; Push</p>
@@ -1581,7 +1785,7 @@ function openFeedback(feedbackId, source = '审核反馈') {
               <button class="clone-retry" type="button" @click="ensureRealTaskBranch(selectedTask.questId)">重试</button>
             </p>
 
-            <ol class="clone-steps" aria-label="克隆与推送步骤">
+            <ol class="clone-steps" aria-label="克隆与推送步骤" data-tutorial="workbench-copy-command">
               <li v-for="step in taskCloneSteps" :key="step.title">
                 <div class="step-head">
                   <strong>{{ step.title }}</strong>
@@ -1601,7 +1805,12 @@ function openFeedback(feedbackId, source = '审核反馈') {
               <button class="quiet-action" type="button" :disabled="!taskCloneUrl" @click="openTaskRepository">
                 在 Gitea 打开仓库
               </button>
-              <button class="primary-action" type="button" @click="goSubmissionCounter">去提交柜台</button>
+              <button
+                class="primary-action"
+                type="button"
+                data-tutorial="workbench-submit-counter"
+                @click="goSubmissionCounter"
+              >去提交柜台</button>
             </div>
           </article>
         </div>
@@ -2109,11 +2318,13 @@ dd {
 
 .todo-group-list {
   display: grid;
+  align-content: start;
   gap: 14px;
 }
 
 .todo-group {
   display: grid;
+  align-content: start;
   gap: 8px;
 }
 
@@ -2147,6 +2358,8 @@ dd {
 
 .todo-task {
   display: grid;
+  align-content: start;
+  justify-items: start;
   gap: 7px;
   width: 100%;
   border: 1px solid rgba(240, 198, 118, 0.2);
@@ -2156,6 +2369,14 @@ dd {
   text-align: left;
   background: rgba(11, 6, 3, 0.34);
   transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.todo-task .status-pill {
+  align-self: start;
+  justify-self: start;
+  min-height: 0;
+  white-space: nowrap;
+  line-height: 1.1;
 }
 
 .todo-task:hover,
@@ -2169,8 +2390,10 @@ dd {
 .todo-task strong,
 .detail-card h3 {
   display: block;
+  max-width: 100%;
   color: #ffe8b9;
   line-height: 1.22;
+  overflow-wrap: anywhere;
 }
 
 .todo-task small,
@@ -2180,6 +2403,7 @@ dd {
   margin: 0;
   color: rgba(255, 231, 183, 0.76);
   line-height: 1.36;
+  overflow-wrap: anywhere;
 }
 
 .feedback-archive-card {
