@@ -12,5 +12,8 @@ public interface CodeRepositoryRepository extends JpaRepository<CodeRepository, 
      */
     List<CodeRepository> findByOwnerUserId(Long userId);
 
-    Optional<CodeRepository> findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc(String hostType, String sourceUrl);
+    Optional<CodeRepository> findFirstByOwnerUserIdAndHostTypeAndSourceUrlOrderByRepositoryIdAsc(
+            Long ownerUserId,
+            String hostType,
+            String sourceUrl);
 }

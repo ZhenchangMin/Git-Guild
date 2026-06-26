@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 
 import parchmentFormImg from '../assets/submission-form-parchment-v0-clean.webp'
 import { submissionApi } from '../api/submissionApi'
+import { TUTORIAL_STEP_EVENT } from '../data/tutorials'
 import { sessionStore } from '../stores/sessionStore'
 import {
   evidenceTypes,
@@ -233,6 +234,14 @@ function openSheet() {
 function closeSheet() {
   if (stage.value === 'submitting') return
   isFormOpen.value = false
+}
+
+function revealSubmissionTutorialTarget(event) {
+  const detail = event.detail ?? {}
+  if (detail.tutorialId !== 'submissionCounter') return
+  if (detail.target && detail.target !== 'submission-open-sheet' && !isFormOpen.value) {
+    openSheet()
+  }
 }
 
 // ── Behaviour: draft / submit ──────────────────────────────────────────────
@@ -534,9 +543,13 @@ function onKeydown(event) {
   }
 }
 
-onMounted(() => window.addEventListener('keydown', onKeydown))
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  window.addEventListener(TUTORIAL_STEP_EVENT, revealSubmissionTutorialTarget)
+})
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener(TUTORIAL_STEP_EVENT, revealSubmissionTutorialTarget)
   window.clearTimeout(toastTimer)
 })
 
@@ -552,6 +565,7 @@ function formatDateTime(date) {
     <button
       class="submission-paper-hotspot"
       type="button"
+      data-tutorial="submission-open-sheet"
       :aria-label="stage === 'submitted' ? '查看回执' : '打开委托提交单'"
       @click="openSheet"
     >
@@ -604,7 +618,12 @@ function formatDateTime(date) {
               <p>{{ displayLinkedSubmission.meta }}</p>
             </section>
 
-            <form class="submission-form-panel" novalidate @submit.prevent="submitForReview">
+            <form
+              class="submission-form-panel"
+              novalidate
+              data-tutorial="submission-form"
+              @submit.prevent="submitForReview"
+            >
               <!-- 仓库与任务分支均为服务端派生、只读展示；提交时平台基于任务分支自动创建 PR。 -->
               <label>
                 <span>所属仓库</span>
@@ -663,7 +682,7 @@ function formatDateTime(date) {
               </p>
             </section>
 
-            <section class="submission-evidence-panel" aria-label="附件与证据">
+            <section class="submission-evidence-panel" aria-label="附件与证据" data-tutorial="submission-evidence">
               <div>
                 <p class="kicker">附件与证据</p>
                 <h2>附上佐证（运行截图或文档说明）</h2>
@@ -768,6 +787,8 @@ function formatDateTime(date) {
             <button
               class="quiet-action"
               type="button"
+              data-tutorial="submission-draft"
+              data-tutorial-boundary="viewport"
               :disabled="isLocked"
               @click="saveDraft"
             >保存草稿</button>
@@ -775,6 +796,8 @@ function formatDateTime(date) {
               class="primary-action submit-cta"
               :class="{ ringing: ringingBell, sealed: stage === 'submitted' }"
               type="button"
+              data-tutorial="submission-submit"
+              data-tutorial-boundary="viewport"
               :disabled="!canSubmit && stage === 'draft' || isLocked"
               @click="submitForReview"
             >

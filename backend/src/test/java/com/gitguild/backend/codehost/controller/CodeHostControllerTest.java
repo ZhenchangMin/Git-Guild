@@ -17,7 +17,6 @@ import com.gitguild.backend.codehost.gitea.dto.FileCommitInfo;
 import com.gitguild.backend.codehost.gitea.dto.PrInfo;
 import com.gitguild.backend.codehost.repository.CodeIssueRepository;
 import com.gitguild.backend.codehost.repository.CodePullRequestRepository;
-import com.gitguild.backend.codehost.repository.CodeRepositoryRepository;
 import com.gitguild.backend.codehost.service.RepositoryService;
 import com.gitguild.backend.codehost.service.RepositorySyncService;
 import com.gitguild.backend.security.CurrentUserPrincipal;
@@ -37,7 +36,6 @@ class CodeHostControllerTest {
     private GiteaAdapter giteaAdapter;
     private RepositoryService repositoryService;
     private RepositorySyncService repositorySyncService;
-    private CodeRepositoryRepository repositoryRepository;
     private CodeIssueRepository issueRepository;
     private CodePullRequestRepository pullRequestRepository;
     private MockMvc mockMvc;
@@ -48,14 +46,12 @@ class CodeHostControllerTest {
         giteaAdapter = org.mockito.Mockito.mock(GiteaAdapter.class);
         repositoryService = org.mockito.Mockito.mock(RepositoryService.class);
         repositorySyncService = org.mockito.Mockito.mock(RepositorySyncService.class);
-        repositoryRepository = org.mockito.Mockito.mock(CodeRepositoryRepository.class);
         issueRepository = org.mockito.Mockito.mock(CodeIssueRepository.class);
         pullRequestRepository = org.mockito.Mockito.mock(CodePullRequestRepository.class);
         mockMvc = MockMvcBuilders.standaloneSetup(new CodeHostController(
                 giteaAdapter,
                 repositoryService,
                 repositorySyncService,
-                repositoryRepository,
                 issueRepository,
                 pullRequestRepository)).build();
         objectMapper = new ObjectMapper();
@@ -95,7 +91,7 @@ class CodeHostControllerTest {
     @Test
     void createCommitShouldUploadFileToGitea() throws Exception {
         CodeRepository repository = repository();
-        when(repositoryRepository.findById(1001L)).thenReturn(Optional.of(repository));
+        when(repositoryService.requireWritableRepository(42L, 1001L)).thenReturn(repository);
         when(giteaAdapter.createFile(
                 eq("spike-admin"),
                 eq("demo-repo"),
@@ -106,6 +102,7 @@ class CodeHostControllerTest {
                 .thenReturn(new FileCommitInfo("abc123", "task/quest-1", "proof.md", "http://localhost:3000/commit/abc123"));
 
         mockMvc.perform(post("/api/v1/repositories/1001/commits")
+                        .principal(auth(42L))
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "branch", "task/quest-1",
@@ -121,7 +118,7 @@ class CodeHostControllerTest {
     @Test
     void createPullRequestShouldCallGiteaAndPersistLocalMirror() throws Exception {
         CodeRepository repository = repository();
-        when(repositoryRepository.findById(1001L)).thenReturn(Optional.of(repository));
+        when(repositoryService.requireWritableRepository(42L, 1001L)).thenReturn(repository);
         when(giteaAdapter.createPullRequest(
                 eq("spike-admin"),
                 eq("demo-repo"),
@@ -140,6 +137,7 @@ class CodeHostControllerTest {
         });
 
         mockMvc.perform(post("/api/v1/repositories/1001/pull-requests")
+                        .principal(auth(42L))
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "title", "QST-1 finish quest",
@@ -170,7 +168,7 @@ class CodeHostControllerTest {
                 "http://localhost:3000/spike-admin/demo-repo/pulls/7");
         pullRequest.setPullRequestId(8001L);
 
-        when(repositoryRepository.findById(1001L)).thenReturn(Optional.of(repository));
+        when(repositoryService.requireWritableRepository(42L, 1001L)).thenReturn(repository);
         when(pullRequestRepository.findByPullRequestIdAndRepositoryRepositoryId(8001L, 1001L))
                 .thenReturn(Optional.of(pullRequest));
         when(giteaAdapter.mergePullRequest("spike-admin", "demo-repo", 7))
@@ -178,7 +176,8 @@ class CodeHostControllerTest {
                         "task/quest-1", "main", "http://localhost:3000/spike-admin/demo-repo/pulls/7", "spike-admin"));
         when(pullRequestRepository.save(any(CodePullRequest.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        mockMvc.perform(post("/api/v1/repositories/1001/pull-requests/8001/merge"))
+        mockMvc.perform(post("/api/v1/repositories/1001/pull-requests/8001/merge")
+                        .principal(auth(42L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pullRequestId").value(8001))
                 .andExpect(jsonPath("$.data.status").value("MERGED"));
@@ -193,5 +192,10 @@ class CodeHostControllerTest {
         repository.setRepositoryId(1001L);
         repository.setDefaultBranch("main");
         return repository;
+    }
+
+    private UsernamePasswordAuthenticationToken auth(Long userId) {
+        return new UsernamePasswordAuthenticationToken(
+                new CurrentUserPrincipal(userId, List.of("MAINTAINER"), 1), null);
     }
 }

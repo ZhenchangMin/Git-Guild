@@ -291,7 +291,7 @@ function viewIssue() {
 
 <template>
   <div class="quest-detail-workspace" aria-label="任务详情">
-    <header class="quest-detail-hero">
+    <header class="quest-detail-hero" data-tutorial="quest-detail-summary">
       <p class="kicker">悬赏任务详情</p>
       <div class="hero-title-row">
         <h1>{{ quest.code ?? quest.id }} · {{ quest.title }}</h1>
@@ -347,7 +347,7 @@ function viewIssue() {
           </dl>
         </section>
 
-        <section class="quest-detail-card">
+        <section class="quest-detail-card" data-tutorial="quest-detail-criteria">
           <h2>完成标准</h2>
           <div class="criteria-list">
             <label v-for="line in quest.criteria" :key="line">
@@ -362,6 +362,7 @@ function viewIssue() {
 
       <aside class="quest-side-column">
         <QuestActionRail
+          data-tutorial="quest-detail-primary"
           :status="localWorkflowState"
           :config="workflowConfig"
           :notice="inlineNotice"
@@ -371,7 +372,7 @@ function viewIssue() {
           @secondary="handleSecondaryAction"
         />
 
-        <section class="quest-detail-card side-card">
+        <section class="quest-detail-card side-card" data-tutorial="quest-detail-links">
           <p class="kicker">仓库与 Issue</p>
           <h2>关联仓库与 Issue</h2>
           <dl>

@@ -244,7 +244,7 @@ onUnmounted(() => {
         </header>
 
         <div class="office-portals">
-          <button class="office-portal" type="button" @click="goPublish">
+          <button class="office-portal" type="button" data-tutorial="maintainer-publish-entry" @click="goPublish">
             <span class="office-portal-glyph" aria-hidden="true">✎</span>
             <span class="office-portal-body">
               <strong>发布委托</strong>
@@ -253,7 +253,7 @@ onUnmounted(() => {
             <span class="office-portal-arrow" aria-hidden="true">→</span>
           </button>
 
-          <button class="office-portal" type="button" @click="goReviews">
+          <button class="office-portal" type="button" data-tutorial="maintainer-review-entry" @click="goReviews">
             <span class="office-portal-glyph" aria-hidden="true">
               ⚖
               <span v-if="pendingReviews" class="office-portal-badge">{{ pendingReviews }}</span>
@@ -265,7 +265,7 @@ onUnmounted(() => {
             <span class="office-portal-arrow" aria-hidden="true">→</span>
           </button>
 
-          <button class="office-portal" type="button" @click="goRepoSync">
+          <button class="office-portal" type="button" data-tutorial="maintainer-repo-sync-entry" @click="goRepoSync">
             <span class="office-portal-glyph" aria-hidden="true">⤓</span>
             <span class="office-portal-body">
               <strong>新建或导入仓库</strong>
@@ -274,7 +274,12 @@ onUnmounted(() => {
             <span class="office-portal-arrow" aria-hidden="true">→</span>
           </button>
 
-          <button class="office-portal office-portal-adventure" type="button" @click="goAdventureWorkbench">
+          <button
+            class="office-portal office-portal-adventure"
+            type="button"
+            data-tutorial="maintainer-adventure-entry"
+            @click="goAdventureWorkbench"
+          >
             <span class="office-portal-glyph" aria-hidden="true">◆</span>
             <span class="office-portal-body">
               <strong>完成委托</strong>
@@ -284,7 +289,7 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <section class="office-myquests" aria-label="我发布的委托">
+        <section class="office-myquests" aria-label="我发布的委托" data-tutorial="maintainer-my-quests">
           <header class="office-repos-head">
             <p class="kicker">我发布的委托 · My Commissions</p>
             <button class="quiet-action office-sync-btn" type="button" @click="goPublish">发布新委托</button>
@@ -352,7 +357,7 @@ onUnmounted(() => {
           </ul>
         </section>
 
-        <section class="office-repos" aria-label="受托仓库">
+        <section class="office-repos" aria-label="受托仓库" data-tutorial="maintainer-repositories">
           <header class="office-repos-head">
             <p class="kicker">受托仓库 · Repositories</p>
             <button class="quiet-action office-sync-btn" type="button" @click="goRepoSync">

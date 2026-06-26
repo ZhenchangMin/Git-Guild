@@ -80,6 +80,7 @@ public class RepositoryServiceImpl implements RepositoryService {
                     "请求参数不合法", "sourceUrl is required");
         }
         User owner = findUser(currentUserId);
+        requireMaintainerOrAdmin(owner, currentUserId, "import repository");
         String trimmedSource = sourceUrl.trim();
         String resolvedHostType = hostType == null || hostType.isBlank()
                 ? DEFAULT_HOST_TYPE
@@ -102,7 +103,8 @@ public class RepositoryServiceImpl implements RepositoryService {
     private CodeRepository findOrCreate(
             String hostType, String sourceUrl, User owner, String name, RepositoryInfo info) {
         return codeRepositoryRepository
-                .findFirstByHostTypeAndSourceUrlOrderByRepositoryIdAsc(hostType, sourceUrl)
+                .findFirstByOwnerUserIdAndHostTypeAndSourceUrlOrderByRepositoryIdAsc(
+                        owner.getUserId(), hostType, sourceUrl)
                 .orElseGet(() -> {
                     CodeRepository repository = new CodeRepository(owner, name, hostType, sourceUrl);
                     if (info != null) {
@@ -139,6 +141,25 @@ public class RepositoryServiceImpl implements RepositoryService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public CodeRepository requireReadableRepository(Long currentUserId, Long repositoryId) {
+        User user = findUser(currentUserId);
+        CodeRepository repository = findRepository(repositoryId);
+        requireOwnerOrAdmin(user, repository, "read repository");
+        return repository;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CodeRepository requireWritableRepository(Long currentUserId, Long repositoryId) {
+        User user = findUser(currentUserId);
+        requireMaintainerOrAdmin(user, currentUserId, "write repository");
+        CodeRepository repository = findRepository(repositoryId);
+        requireOwnerOrAdmin(user, repository, "write repository");
+        return repository;
+    }
+
+    @Override
     @Transactional
     public void deleteRepository(Long currentUserId, Long repositoryId) {
         User user = findUser(currentUserId);
@@ -150,7 +171,39 @@ public class RepositoryServiceImpl implements RepositoryService {
         CodeRepository repository = codeRepositoryRepository.findById(repositoryId)
                 .orElseThrow(() -> new BusinessException("REPOSITORY_NOT_FOUND", HttpStatus.NOT_FOUND,
                         "仓库不存在", "repositoryId=" + repositoryId));
+        requireOwnerOrAdmin(user, repository, "delete repository");
         cascadeDeleter.deleteCascade(repository);
+    }
+
+    private CodeRepository findRepository(Long repositoryId) {
+        return codeRepositoryRepository.findById(repositoryId)
+                .orElseThrow(() -> new BusinessException("REPOSITORY_NOT_FOUND", HttpStatus.NOT_FOUND,
+                        "Repository not found", "repositoryId=" + repositoryId));
+    }
+
+    private void requireMaintainerOrAdmin(User user, Long currentUserId, String action) {
+        if (user.getRole() != UserRole.MAINTAINER && user.getRole() != UserRole.ADMIN) {
+            throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN,
+                    "Current user has no permission",
+                    "action=" + action + ", userId=" + currentUserId + ", role=" + user.getRole());
+        }
+    }
+
+    private void requireOwnerOrAdmin(User user, CodeRepository repository, String action) {
+        if (user.getRole() == UserRole.ADMIN || isRepositoryOwner(user, repository)) {
+            return;
+        }
+        throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN,
+                "Current user has no permission",
+                "action=" + action
+                        + ", userId=" + user.getUserId()
+                        + ", repositoryId=" + repository.getRepositoryId());
+    }
+
+    private boolean isRepositoryOwner(User user, CodeRepository repository) {
+        return repository.getOwner() != null
+                && repository.getOwner().getUserId() != null
+                && repository.getOwner().getUserId().equals(user.getUserId());
     }
 
     private User findUser(Long userId) {

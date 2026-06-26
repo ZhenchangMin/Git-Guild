@@ -3495,6 +3495,13 @@ h2 {
   box-shadow: 0 24px 42px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
+.commission-card-tutorial-target {
+  position: absolute;
+  inset: -7px 0 0;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
 .commission-grid.loading {
   pointer-events: none;
 }

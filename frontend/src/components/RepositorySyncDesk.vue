@@ -487,7 +487,7 @@ onBeforeUnmount(stopCreep)
         <span v-if="lastRepository" class="repo-id">ID {{ lastRepository.repositoryId }}</span>
       </div>
 
-      <div class="mode-switch" role="tablist" aria-label="仓库接入方式">
+      <div class="mode-switch" role="tablist" aria-label="仓库接入方式" data-tutorial="repo-sync-mode">
         <button
           type="button"
           role="tab"
@@ -504,7 +504,7 @@ onBeforeUnmount(stopCreep)
         >导入已有仓库</button>
       </div>
 
-      <section v-if="mode === 'create'" class="form-section">
+      <section v-if="mode === 'create'" class="form-section" data-tutorial="repo-sync-form">
         <div class="section-head">
           <strong>新建仓库</strong>
           <span>在平台本地 Gitea 创建</span>
@@ -521,6 +521,7 @@ onBeforeUnmount(stopCreep)
         <button
           class="primary-action section-action"
           type="submit"
+          data-tutorial="repo-sync-submit"
           :class="{ 'action-done': completed }"
           :disabled="!canCreate || completed"
         >
@@ -528,7 +529,7 @@ onBeforeUnmount(stopCreep)
         </button>
       </section>
 
-      <section v-else class="form-section">
+      <section v-else class="form-section" data-tutorial="repo-sync-form">
         <div class="section-head">
           <strong>仓库来源</strong>
           <span>GitHub / Gitea 公网地址</span>
@@ -559,6 +560,7 @@ onBeforeUnmount(stopCreep)
         <button
           class="primary-action section-action"
           type="submit"
+          data-tutorial="repo-sync-submit"
           :class="{ 'action-done': completed }"
           :disabled="!canImport || completed"
         >
@@ -639,7 +641,7 @@ onBeforeUnmount(stopCreep)
         </dl>
       </section>
 
-      <div v-if="stage === 'imported' || stage === 'created'" class="next-step">
+      <div v-if="stage === 'imported' || stage === 'created'" class="next-step" data-tutorial="repo-sync-next-step">
         <div class="next-step-buttons">
           <button
             v-if="lastRepository?.sourceUrl"

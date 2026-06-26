@@ -156,6 +156,7 @@ public class QuestServiceImpl implements QuestService {
         CodeRepository repository = codeRepositoryRepository.findById(request.getRepositoryId())
                 .orElseThrow(() -> new BusinessException("REPOSITORY_NOT_FOUND", HttpStatus.NOT_FOUND, "仓库不存在", "repositoryId=" + request.getRepositoryId()));
         // Issue 来源二选一：优先「新建 Gitea Issue」路径，否则关联已有本地 Issue。
+        requireRepositoryOwnerOrAdmin(publisher, repository, publisherId);
         CodeIssue issue;
         String newIssueTitle = request.getGiteaIssueTitle();
         if (newIssueTitle != null && !newIssueTitle.isBlank()) {
@@ -468,6 +469,18 @@ public class QuestServiceImpl implements QuestService {
             throw new BusinessException("VALIDATION_FAILED", HttpStatus.BAD_REQUEST, "请求参数不合法", "tagIds 包含已禁用标签");
         }
         return new LinkedHashSet<>(tags);
+    }
+
+    private void requireRepositoryOwnerOrAdmin(User publisher, CodeRepository repository, Long publisherId) {
+        if (publisher.getRole() == UserRole.ADMIN) {
+            return;
+        }
+        if (repository.getOwner() != null && publisherId.equals(repository.getOwner().getUserId())) {
+            return;
+        }
+        throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN,
+                "Current user has no permission",
+                "publisherId=" + publisherId + ", repositoryId=" + repository.getRepositoryId());
     }
 
     private User findUser(Long userId) {

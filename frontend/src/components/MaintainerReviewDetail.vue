@@ -100,7 +100,7 @@ function confirmMerge() {
 
 <template>
   <section class="maintainer-review-detail">
-    <div class="detail-hero">
+    <div class="detail-hero" data-tutorial="review-overview" data-tutorial-boundary="viewport">
       <div>
         <h1>{{ review.questTitle }}</h1>
         <dl class="hero-meta">
@@ -118,7 +118,8 @@ function confirmMerge() {
           </div>
         </dl>
         <div class="gitea-link-row">
-          <a
+          <div class="gitea-link-target" data-tutorial="review-links" data-tutorial-boundary="viewport">
+            <a
             v-if="review.pullRequestUrl"
             class="gitea-btn"
             :href="review.pullRequestUrl"
@@ -127,7 +128,7 @@ function confirmMerge() {
           >
             前往 Gitea 查看 PR ↗
           </a>
-          <a
+            <a
             v-if="review.repositoryBranchUrl"
             class="gitea-btn"
             :href="review.repositoryBranchUrl"
@@ -135,7 +136,8 @@ function confirmMerge() {
             rel="noopener noreferrer"
           >
             前往分支查看提交 ↗
-          </a>
+            </a>
+          </div>
         </div>
       </div>
       <aside>
@@ -145,7 +147,7 @@ function confirmMerge() {
     </div>
 
     <div class="detail-grid">
-      <article class="detail-card deliverable-card">
+      <article class="detail-card deliverable-card" data-tutorial="review-deliverables" data-tutorial-boundary="viewport">
         <h2>成果材料</h2>
         <div class="deliverable-block">
           <span class="deliverable-label">成果说明</span>
@@ -181,7 +183,7 @@ function confirmMerge() {
         </div>
       </article>
 
-      <article class="detail-card pr-card">
+      <article class="detail-card pr-card" data-tutorial="review-pr-status" data-tutorial-boundary="viewport">
         <h2>PR 状态</h2>
         <dl>
           <div>
@@ -200,7 +202,14 @@ function confirmMerge() {
         <div class="pr-merge-row">
           <span v-if="review.prState === 'MERGED'" class="pr-merged-badge">已合并</span>
           <template v-else-if="review.prState === 'OPEN'">
-            <button class="pr-merge-btn" type="button" :disabled="merging" @click="requestMerge">
+            <button
+              class="pr-merge-btn"
+              type="button"
+              data-tutorial="review-merge"
+              data-tutorial-boundary="viewport"
+              :disabled="merging"
+              @click="requestMerge"
+            >
               {{ merging ? '合并中…' : '合并 PR' }}
             </button>
             <small>接受提交不会自动合并；是否合并由你决定。</small>
@@ -309,10 +318,16 @@ function confirmMerge() {
 }
 
 .gitea-link-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
   margin-top: 14px;
+}
+
+.gitea-link-target {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .gitea-btn {
