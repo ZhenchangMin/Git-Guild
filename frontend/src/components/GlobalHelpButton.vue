@@ -1,22 +1,21 @@
 <script setup>
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 
+import { openHelpManual } from '../composables/useHelpManual'
 import { routeTutorialMap } from '../data/tutorials'
 
 const route = useRoute()
-const router = useRouter()
 
 const routeName = computed(() => (typeof route.name === 'string' ? route.name : ''))
 const tutorialId = computed(() => routeTutorialMap[routeName.value] ?? '')
 const shouldShow = computed(() => routeName.value !== 'help')
 
 function openHelp() {
-  const query = {
-    returnTo: route.fullPath,
-  }
-  if (tutorialId.value) query.tutorialId = tutorialId.value
-  router.push({ name: 'help', query }).catch(() => {})
+  openHelpManual({
+    sourceRoute: routeName.value,
+    tutorialId: tutorialId.value,
+  })
 }
 </script>
 
