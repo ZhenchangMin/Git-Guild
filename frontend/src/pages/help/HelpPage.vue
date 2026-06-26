@@ -2,11 +2,67 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import deskImg from '../../assets/desk.webp'
+import doorImg from '../../assets/door.webp'
 import hallImg from '../../assets/hall.webp'
+import leaderboardImg from '../../assets/leader board wall.webp'
+import operationRoomImg from '../../assets/operation room.webp'
+import profileArchiveBg from '../../assets/profile-archive-bg.webp'
+import questBoardImg from '../../assets/quest board.webp'
+import submissionCounterImg from '../../assets/submission-counter-clerk-v0.webp'
+import workbenchImg from '../../assets/workbench.webp'
 import { TUTORIAL_LAUNCH_QUERY, tutorials } from '../../data/tutorials'
 
 const route = useRoute()
 const router = useRouter()
+
+const HELP_BACKGROUNDS = {
+  login: doorImg,
+  'forgot-password': doorImg,
+  hall: hallImg,
+  'quest-board': questBoardImg,
+  'quest-detail': questBoardImg,
+  'front-desk': deskImg,
+  'adventurer-workbench': workbenchImg,
+  'maintainer-workbench': deskImg,
+  'repository-sync': deskImg,
+  'maintainer-publish': workbenchImg,
+  'maintainer-review': workbenchImg,
+  'submission-counter': submissionCounterImg,
+  leaderboard: leaderboardImg,
+  profile: profileArchiveBg,
+  'growth-profile': profileArchiveBg,
+  'admin-review': operationRoomImg,
+  'admin-exceptions': operationRoomImg,
+  'admin-taxonomy': operationRoomImg,
+}
+
+const HELP_BACKGROUND_BY_PATH = [
+  [/^\/login$/, 'login'],
+  [/^\/forgot-password$/, 'forgot-password'],
+  [/^\/hall$/, 'hall'],
+  [/^\/quests\/[^/]+$/, 'quest-detail'],
+  [/^\/quests$/, 'quest-board'],
+  [/^\/front-desk$/, 'front-desk'],
+  [/^\/workbench$/, 'adventurer-workbench'],
+  [/^\/maintainer$/, 'maintainer-workbench'],
+  [/^\/maintainer\/publish$/, 'maintainer-publish'],
+  [/^\/maintainer\/reviews$/, 'maintainer-review'],
+  [/^\/repositories\/sync$/, 'repository-sync'],
+  [/^\/submissions$/, 'submission-counter'],
+  [/^\/leaderboard$/, 'leaderboard'],
+  [/^\/profile$/, 'profile'],
+  [/^\/growth$/, 'growth-profile'],
+  [/^\/admin(?:\/review)?$/, 'admin-review'],
+  [/^\/admin\/exceptions$/, 'admin-exceptions'],
+  [/^\/admin\/taxonomy$/, 'admin-taxonomy'],
+]
+
+function inferSourceRouteFromReturnTo(path) {
+  const pathname = path.split('?')[0].split('#')[0]
+  const match = HELP_BACKGROUND_BY_PATH.find(([pattern]) => pattern.test(pathname))
+  return match?.[1] ?? ''
+}
 
 // 账号已合并：一个公会成员同时能做两件事，无需切换身份。
 const memberCan = [
@@ -54,6 +110,14 @@ const returnTo = computed(() => {
   return typeof value === 'string' ? value : ''
 })
 
+const sourceRouteName = computed(() => {
+  const value = route.query.sourceRoute
+  if (typeof value === 'string' && HELP_BACKGROUNDS[value]) return value
+  return inferSourceRouteFromReturnTo(returnTo.value)
+})
+
+const helpBackground = computed(() => HELP_BACKGROUNDS[sourceRouteName.value] ?? hallImg)
+
 const contextualTutorialId = computed(() => {
   const value = route.query.tutorialId
   return typeof value === 'string' && tutorials[value] ? value : ''
@@ -61,30 +125,57 @@ const contextualTutorialId = computed(() => {
 
 const canStartTutorial = computed(() => Boolean(returnTo.value && contextualTutorialId.value))
 
-function backToHall() {
-  router.push({ name: 'hall' })
+function createReturnLocation(extraQuery = {}) {
+  if (!returnTo.value) return null
+  const target = new URL(returnTo.value, window.location.origin)
+  if (target.origin !== window.location.origin) return null
+
+  Object.entries(extraQuery).forEach(([key, value]) => {
+    target.searchParams.set(key, value)
+  })
+
+  return {
+    path: target.pathname,
+    query: Object.fromEntries(target.searchParams.entries()),
+    hash: target.hash,
+  }
+}
+
+function isPreviousHistoryEntry(location) {
+  const previousPath = window.history.state?.back
+  return typeof previousPath === 'string' && previousPath === router.resolve(location).fullPath
+}
+
+function backToPreviousPage() {
+  const target = createReturnLocation()
+  if (!target) {
+    router.replace({ name: 'hall' })
+    return
+  }
+
+  if (isPreviousHistoryEntry(target)) {
+    router.back()
+    return
+  }
+
+  router.replace(target)
 }
 
 function startCurrentPageTutorial() {
   if (!canStartTutorial.value) return
-  const target = new URL(returnTo.value, window.location.origin)
-  target.searchParams.set(TUTORIAL_LAUNCH_QUERY, contextualTutorialId.value)
-  router.push({
-    path: target.pathname,
-    query: Object.fromEntries(target.searchParams.entries()),
-    hash: target.hash,
-  })
+  const target = createReturnLocation({ [TUTORIAL_LAUNCH_QUERY]: contextualTutorialId.value })
+  if (target) router.replace(target)
 }
 </script>
 
 <template>
   <main class="app-shell">
-    <section class="scene work-scene help-route-mode" :style="{ backgroundImage: `url(${hallImg})` }">
-      <button class="back-orb" type="button" aria-label="返回公会大厅" @click="backToHall">
+    <section class="scene work-scene help-route-mode" :style="{ backgroundImage: `url(${helpBackground})` }">
+      <button class="back-orb" type="button" aria-label="返回" @click="backToPreviousPage">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M15 6 9 12l6 6" />
         </svg>
-        <span>返回公会大厅</span>
+        <span>返回</span>
       </button>
 
       <div class="standalone-page-panel compact">
