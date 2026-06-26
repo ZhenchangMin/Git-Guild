@@ -18,8 +18,10 @@ export const routeTutorialMap = {
   leaderboard: 'leaderboard',
 }
 
-export function getTutorialStorageKey(tutorialId) {
-  return `${TUTORIAL_STORAGE_PREFIX}${tutorialId}Seen`
+// 教程「已看过」标记按账号隔离：localStorage 同源共享，不带 scope 会让同一浏览器里
+// 先登录的账号看完教程后，后续新账号被误判为「已看过」而不再触发首次引导。
+export function getTutorialStorageKey(tutorialId, scope = 'guest') {
+  return `${TUTORIAL_STORAGE_PREFIX}${scope}.${tutorialId}Seen`
 }
 
 export const tutorials = {

@@ -11,6 +11,7 @@ import {
   TUTORIAL_STEP_EVENT,
   tutorials,
 } from '../data/tutorials'
+import { sessionStore } from '../stores/sessionStore'
 
 const route = useRoute()
 const router = useRouter()
@@ -84,9 +85,17 @@ const spotlightStyle = computed(() => {
   }
 })
 
+// 「已看过」标记按当前登录账号隔离，避免同浏览器多账号共用一份记录。
+function currentTutorialScope() {
+  const user = sessionStore.user
+  if (user?.userId != null) return `u${user.userId}`
+  if (user?.username) return `n:${user.username}`
+  return 'guest'
+}
+
 function hasSeenTutorial(tutorialId) {
   try {
-    return window.localStorage.getItem(getTutorialStorageKey(tutorialId)) === 'true'
+    return window.localStorage.getItem(getTutorialStorageKey(tutorialId, currentTutorialScope())) === 'true'
   } catch {
     return false
   }
@@ -94,7 +103,7 @@ function hasSeenTutorial(tutorialId) {
 
 function markTutorialSeen(tutorialId) {
   try {
-    window.localStorage.setItem(getTutorialStorageKey(tutorialId), 'true')
+    window.localStorage.setItem(getTutorialStorageKey(tutorialId, currentTutorialScope()), 'true')
   } catch {
     // Local persistence is a convenience only; the tutorial should still work.
   }
