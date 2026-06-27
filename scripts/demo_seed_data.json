@@ -1,0 +1,100 @@
+{
+  "_comment": "Git-Guild 演示数据素材。供 scripts/seed_demo_data.py 通过真实 REST API 驱动填充。人设借鉴 fabric create_npc 的冒险者风味（座右铭 motto），任务内容贴近真实软件工程。密码统一 admin123。",
+  "password": "admin123",
+
+  "categories": [
+    {"name": "前端开发", "description": "Web 前端页面、组件与交互"},
+    {"name": "后端开发", "description": "服务端 API、业务逻辑与数据层"},
+    {"name": "文档工程", "description": "README、API 文档与使用手册"},
+    {"name": "测试质量", "description": "单元测试、集成测试与质量保障"},
+    {"name": "DevOps", "description": "CI/CD、容器化与部署运维"},
+    {"name": "数据与存储", "description": "数据库建模、查询优化与缓存"}
+  ],
+
+  "tags": [
+    {"name": "good-first-issue", "color": "#7057ff"},
+    {"name": "feature", "color": "#0e8a16"},
+    {"name": "bugfix", "color": "#d73a4a"},
+    {"name": "refactor", "color": "#fbca04"},
+    {"name": "docs", "color": "#0075ca"},
+    {"name": "enhancement", "color": "#a2eeef"},
+    {"name": "urgent", "color": "#b60205"}
+  ],
+
+  "techStacks": [
+    "Java", "Spring Boot", "Spring Security", "JPA", "Vue", "TypeScript",
+    "JavaScript", "Vite", "MySQL", "Redis", "Docker", "Git", "Markdown",
+    "Python", "JUnit", "Maven", "REST API", "Gitea"
+  ],
+
+  "maintainers": [
+    {"username": "guildmaster_ye", "email": "ye.guildmaster@gg.local", "motto": "公会的章程，由我执笔。"},
+    {"username": "archmage_lin", "email": "lin.archmage@gg.local", "motto": "代码即咒文，逻辑即魔力。"},
+    {"username": "warden_zhao", "email": "zhao.warden@gg.local", "motto": "守好主分支这道城门。"},
+    {"username": "smith_huang", "email": "huang.smith@gg.local", "motto": "好工具是反复锻打出来的。"},
+    {"username": "scribe_qian", "email": "qian.scribe@gg.local", "motto": "没有文档的功能等于不存在。"},
+    {"username": "alchemist_sun", "email": "sun.alchemist@gg.local", "motto": "把混乱的数据炼成秩序。"},
+    {"username": "captain_zhou", "email": "zhou.captain@gg.local", "motto": "部署上线，稳字当头。"},
+    {"username": "ranger_wu", "email": "wu.ranger@gg.local", "motto": "在最深的调用栈里追踪 bug。"},
+    {"username": "elder_feng", "email": "feng.elder@gg.local", "motto": "评审是公会的良心。"},
+    {"username": "merchant_he", "email": "he.merchant@gg.local", "motto": "悬赏要开得让人愿意接。"}
+  ],
+
+  "adventurers": [
+    {"username": "novice_chen", "email": "chen.novice@gg.local", "motto": "从第一个 commit 开始成长。"},
+    {"username": "squire_liu", "email": "liu.squire@gg.local", "motto": "今天比昨天多懂一个报错。"},
+    {"username": "rogue_tang", "email": "tang.rogue@gg.local", "motto": "专挑硬骨头的任务啃。"},
+    {"username": "mage_apprentice_xu", "email": "xu.apprentice@gg.local", "motto": "前端的世界由我点亮。"},
+    {"username": "archer_deng", "email": "deng.archer@gg.local", "motto": "一发入魂，一测即过。"},
+    {"username": "monk_pan", "email": "pan.monk@gg.local", "motto": "重构是一种修行。"},
+    {"username": "bard_xie", "email": "xie.bard@gg.local", "motto": "用 README 把故事讲清楚。"},
+    {"username": "knight_cao", "email": "cao.knight@gg.local", "motto": "接下的任务必有交代。"},
+    {"username": "druid_lu", "email": "lu.druid@gg.local", "motto": "让数据库长成它该有的样子。"},
+    {"username": "thief_meng", "email": "meng.thief@gg.local", "motto": "悄悄修好它，惊艳所有人。"},
+    {"username": "paladin_yao", "email": "yao.paladin@gg.local", "motto": "守护代码质量的最后一道光。"},
+    {"username": "scout_jiang", "email": "jiang.scout@gg.local", "motto": "先侦察清楚 issue 再动手。"},
+    {"username": "hunter_fang", "email": "fang.hunter@gg.local", "motto": "猎 bug 是我的本职。"},
+    {"username": "sorcerer_yu", "email": "yu.sorcerer@gg.local", "motto": "异步与并发，皆在掌控。"},
+    {"username": "warrior_ma", "email": "ma.warrior@gg.local", "motto": "硬刚最复杂的业务逻辑。"},
+    {"username": "cleric_shen", "email": "shen.cleric@gg.local", "motto": "为生产环境祈祷，也为它写监控。"},
+    {"username": "ninja_gao", "email": "gao.ninja@gg.local", "motto": "悄无声息地交付高质量代码。"},
+    {"username": "apprentice_dai", "email": "dai.apprentice@gg.local", "motto": "公会新人，前来报到。"},
+    {"username": "trader_lei", "email": "lei.trader@gg.local", "motto": "用最少的改动换最大的收益。"},
+    {"username": "wizard_qiu", "email": "qiu.wizard@gg.local", "motto": "TypeScript 是我的法杖。"},
+    {"username": "guard_bai", "email": "bai.guard@gg.local", "motto": "守住测试覆盖率。"},
+    {"username": "explorer_song", "email": "song.explorer@gg.local", "motto": "每个仓库都是一片新大陆。"}
+  ],
+
+  "repos": [
+    {"owner": "archmage_lin", "name": "gitguild-web", "description": "Git Guild 冒险者公会 Web 前端（Vue 3 + Vite）"},
+    {"owner": "warden_zhao", "name": "gitguild-api", "description": "Git Guild 后端服务（Spring Boot 3 + JPA）"},
+    {"owner": "smith_huang", "name": "quest-cli", "description": "公会任务命令行工具，开发者本地管理悬赏"},
+    {"owner": "scribe_qian", "name": "guild-docs", "description": "Git Guild 文档站点与使用手册"},
+    {"owner": "alchemist_sun", "name": "notify-service", "description": "站内通知与邮件下发微服务"},
+    {"owner": "captain_zhou", "name": "leaderboard-svc", "description": "成长档案与排行榜统计服务"}
+  ],
+
+  "quests": [
+    {"repo": "gitguild-web", "category": "前端开发", "difficulty": "C", "rewardXp": 80, "estimatedHours": 6, "tags": ["good-first-issue", "feature"], "techStack": ["Vue", "TypeScript", "Vite"], "issueTitle": "任务板增加难度筛选下拉框", "title": "任务板：增加难度筛选 / Quest board difficulty filter", "outcome": "complete", "description": "悬赏任务板目前只能按分类筛选。需要新增一个难度（A/B/C/D）下拉筛选器，并与现有筛选条件组合生效。\n\nThe quest board only filters by category. Add a difficulty (A/B/C/D) dropdown filter that composes with the existing filters.", "completionCriteria": "下拉框可选 A/B/C/D 与“全部”；切换后列表实时刷新；与分类筛选可叠加；新增组件单测。"},
+    {"repo": "gitguild-web", "category": "前端开发", "difficulty": "B", "rewardXp": 140, "estimatedHours": 10, "tags": ["feature"], "techStack": ["Vue", "TypeScript"], "issueTitle": "冒险者工作台显示任务进度条", "title": "工作台进度可视化 / Workbench progress bar", "outcome": "complete", "description": "在冒险者工作台为每个进行中的任务加上状态进度条（接取→分支→提交→审核→合并）。\n\nAdd a status progress bar to each active quest on the adventurer workbench.", "completionCriteria": "进度条按任务真实状态高亮当前阶段；移动端自适应；含快照测试。"},
+    {"repo": "gitguild-web", "category": "前端开发", "difficulty": "D", "rewardXp": 40, "estimatedHours": 3, "tags": ["good-first-issue", "bugfix"], "techStack": ["Vue", "JavaScript"], "issueTitle": "登录页回车键无法提交", "title": "修复登录页回车不提交 / Fix Enter key on login", "outcome": "complete", "description": "登录表单在输入框按下回车不会触发提交，必须点击按钮。需修复键盘可达性。\n\nPressing Enter in the login form does not submit; fix keyboard accessibility.", "completionCriteria": "用户名/密码框回车均可提交；不破坏已有按钮点击；补充交互测试。"},
+    {"repo": "gitguild-api", "category": "后端开发", "difficulty": "B", "rewardXp": 160, "estimatedHours": 12, "tags": ["feature", "enhancement"], "techStack": ["Java", "Spring Boot", "JPA"], "issueTitle": "任务搜索支持按奖励 XP 排序", "title": "任务搜索增加按 XP 排序 / Sort quests by reward XP", "outcome": "complete", "description": "GET /api/v1/quests 目前仅支持按创建时间排序。需要支持 sortBy=rewardXp 的升降序。\n\nAdd sortBy=rewardXp (asc/desc) to the quest search endpoint.", "completionCriteria": "sortBy 接受 rewardXp 且方向可控；分页正确；新增 service 与 MVC 测试。"},
+    {"repo": "gitguild-api", "category": "后端开发", "difficulty": "A", "rewardXp": 260, "estimatedHours": 20, "tags": ["feature", "urgent"], "techStack": ["Java", "Spring Boot", "Redis"], "issueTitle": "为任务详情接口增加 Redis 缓存", "title": "任务详情接口缓存 / Cache quest detail with Redis", "outcome": "complete", "description": "热门任务详情被频繁读取。引入 Redis 缓存任务详情，并在任务状态变更时正确失效。\n\nCache quest detail in Redis and invalidate it on quest state transitions.", "completionCriteria": "命中缓存不走库；审核/接取/合并后缓存失效；含缓存失效集成测试与压测说明。"},
+    {"repo": "gitguild-api", "category": "后端开发", "difficulty": "C", "rewardXp": 90, "estimatedHours": 6, "tags": ["bugfix"], "techStack": ["Java", "Spring Boot"], "issueTitle": "接取自己发布的任务应被拒绝并返回明确错误", "title": "禁止接取自己发布的任务 / Block self-assignment", "outcome": "complete", "description": "发布者接取自己的任务时返回了 500。应返回 409 并给出业务错误码。\n\nReturn a clean 409 business error when a publisher accepts their own quest.", "completionCriteria": "自接取返回 409 + 错误码；其他接取路径不受影响；补回归测试。"},
+    {"repo": "gitguild-api", "category": "测试质量", "difficulty": "B", "rewardXp": 130, "estimatedHours": 9, "tags": ["docs", "enhancement"], "techStack": ["Java", "JUnit", "Maven"], "issueTitle": "为提交-审核-合并闭环补集成测试", "title": "提交闭环集成测试 / Integration test for submission flow", "outcome": "complete", "description": "发布→接取→提交→审核→合并的全链路缺少端到端集成测试，回归风险高。\n\nAdd an end-to-end integration test for the full quest lifecycle.", "completionCriteria": "覆盖正常通过与打回两条路径；使用 H2；CI 中稳定运行。"},
+    {"repo": "quest-cli", "category": "后端开发", "difficulty": "C", "rewardXp": 100, "estimatedHours": 7, "tags": ["feature"], "techStack": ["Python", "REST API"], "issueTitle": "CLI 增加 quest list 命令", "title": "CLI: quest list 命令 / Add `quest list` command", "outcome": "complete", "description": "为 quest-cli 增加 `quest list` 子命令，调用平台 API 拉取并表格化展示可接取任务。\n\nAdd a `quest list` subcommand that fetches and tabulates open quests.", "completionCriteria": "支持按难度/分类过滤；无 token 时友好提示；含命令单测。"},
+    {"repo": "quest-cli", "category": "DevOps", "difficulty": "D", "rewardXp": 50, "estimatedHours": 3, "tags": ["good-first-issue", "docs"], "techStack": ["Python", "Markdown"], "issueTitle": "补充 CLI 安装与鉴权说明", "title": "CLI 安装文档 / CLI install & auth docs", "outcome": "active", "description": "quest-cli 缺少安装与 token 配置说明，新人无法上手。\n\nThe CLI lacks install and token-config docs.", "completionCriteria": "README 含安装、登录、常见命令示例；中英双语。"},
+    {"repo": "guild-docs", "category": "文档工程", "difficulty": "D", "rewardXp": 45, "estimatedHours": 3, "tags": ["good-first-issue", "docs"], "techStack": ["Markdown"], "issueTitle": "撰写冒险者快速上手指南", "title": "冒险者快速上手 / Adventurer quick start", "outcome": "complete", "description": "为新冒险者撰写一页式快速上手指南：注册、浏览任务板、接取、提交。\n\nWrite a one-page quick start for new adventurers.", "completionCriteria": "覆盖注册→接取→提交全流程；含截图占位；通过文档站构建。"},
+    {"repo": "guild-docs", "category": "文档工程", "difficulty": "C", "rewardXp": 85, "estimatedHours": 6, "tags": ["docs", "enhancement"], "techStack": ["Markdown", "REST API"], "issueTitle": "整理对外 REST API 参考", "title": "REST API 参考文档 / REST API reference", "outcome": "active", "description": "把分散在代码里的接口整理成一份对外 API 参考，按模块分章。\n\nConsolidate the scattered endpoints into a public API reference.", "completionCriteria": "覆盖认证/任务/提交三大模块；每个接口含请求响应示例。"},
+    {"repo": "notify-service", "category": "后端开发", "difficulty": "B", "rewardXp": 150, "estimatedHours": 11, "tags": ["feature"], "techStack": ["Java", "Spring Boot", "Redis"], "issueTitle": "提交被打回时给冒险者发站内通知", "title": "打回通知 / Notify on changes requested", "outcome": "complete", "description": "审核结论为“需修改”时，应给提交者发送站内通知并标记未读。\n\nSend an in-app notification to the submitter when a review requests changes.", "completionCriteria": "打回即产生 UNREAD 通知；通知含任务标题与审核摘要；含单测。"},
+    {"repo": "notify-service", "category": "测试质量", "difficulty": "C", "rewardXp": 95, "estimatedHours": 6, "tags": ["bugfix", "urgent"], "techStack": ["Java", "JUnit"], "issueTitle": "通知已读状态偶发不生效", "title": "修复通知已读不生效 / Fix mark-as-read flakiness", "outcome": "abandoned", "description": "并发标记已读时偶发状态回滚，导致红点不消失。\n\nConcurrent mark-as-read occasionally rolls back, leaving the unread badge.", "completionCriteria": "并发标记结果一致；补并发测试复现并验证修复。"},
+    {"repo": "leaderboard-svc", "category": "数据与存储", "difficulty": "A", "rewardXp": 240, "estimatedHours": 18, "tags": ["feature", "enhancement"], "techStack": ["Java", "MySQL", "JPA"], "issueTitle": "排行榜按月度维度统计", "title": "月度排行榜 / Monthly leaderboard", "outcome": "complete", "description": "现有排行榜只有总榜。需要增加按自然月聚合的 XP 排行，并支持月份切换。\n\nAdd a monthly XP leaderboard aggregated by calendar month.", "completionCriteria": "可切换月份；空月份正确显示；聚合查询有索引；含数据层测试。"},
+    {"repo": "leaderboard-svc", "category": "数据与存储", "difficulty": "B", "rewardXp": 120, "estimatedHours": 8, "tags": ["refactor"], "techStack": ["Java", "MySQL"], "issueTitle": "成长档案查询消除 N+1", "title": "成长档案 N+1 优化 / Fix N+1 in growth profile", "outcome": "active", "description": "拉取成长档案时逐条查询 XP 流水，产生 N+1。需用一次聚合查询替代。\n\nFetching growth profiles triggers N+1 on XP transactions; replace with one aggregate query.", "completionCriteria": "查询次数从 N+1 降为常数；结果一致；附优化前后说明。"},
+    {"repo": "gitguild-api", "category": "DevOps", "difficulty": "C", "rewardXp": 100, "estimatedHours": 7, "tags": ["feature"], "techStack": ["Docker", "Maven"], "issueTitle": "后端补充多阶段 Docker 构建", "title": "后端多阶段 Docker 构建 / Multi-stage Docker build", "outcome": "published", "description": "为后端补一个多阶段 Dockerfile，缩小镜像体积并加快构建。\n\nAdd a multi-stage Dockerfile for the backend to shrink the image.", "completionCriteria": "镜像体积明显下降；构建可缓存；附构建与运行说明。"},
+    {"repo": "gitguild-web", "category": "前端开发", "difficulty": "C", "rewardXp": 90, "estimatedHours": 6, "tags": ["enhancement"], "techStack": ["Vue", "TypeScript"], "issueTitle": "任务卡片展示技术栈标签", "title": "任务卡片技术栈标签 / Tech-stack chips on quest card", "outcome": "published", "description": "任务卡片当前不展示技术栈。需要把技术栈渲染成彩色小标签，便于快速识别。\n\nRender the quest tech stack as colored chips on the quest card.", "completionCriteria": "标签溢出折叠为 +N；颜色稳定可读；含组件测试。"},
+    {"repo": "gitguild-api", "category": "后端开发", "difficulty": "A", "rewardXp": 220, "estimatedHours": 16, "tags": ["feature"], "techStack": ["Java", "Spring Security", "REST API"], "issueTitle": "接入刷新令牌轮换", "title": "刷新令牌轮换 / Refresh token rotation", "outcome": "pending", "description": "目前刷新令牌长期有效存在安全隐患。需实现一次性刷新令牌轮换与重放检测。\n\nImplement one-time refresh-token rotation with replay detection.", "completionCriteria": "刷新后旧令牌失效；重放被拒；含安全测试。"},
+    {"repo": "notify-service", "category": "后端开发", "difficulty": "B", "rewardXp": 130, "estimatedHours": 9, "tags": ["feature"], "techStack": ["Java", "Spring Boot"], "issueTitle": "通知支持批量已读", "title": "通知批量已读 / Bulk mark notifications read", "outcome": "pending", "description": "用户希望一键清空未读。需要提供批量已读接口。\n\nProvide a bulk mark-as-read endpoint.", "completionCriteria": "一次请求标记当前用户全部未读；幂等；含测试。"},
+    {"repo": "guild-docs", "category": "文档工程", "difficulty": "D", "rewardXp": 40, "estimatedHours": 2, "tags": ["docs"], "techStack": ["Markdown"], "issueTitle": "补充贡献者行为准则", "title": "贡献者行为准则 / Code of conduct", "outcome": "draft", "description": "仓库缺少 CODE_OF_CONDUCT，社区协作无明确规范。\n\nThe repo lacks a CODE_OF_CONDUCT.", "completionCriteria": "基于通用模板本地化；中英双语；链接到 README。"},
+    {"repo": "quest-cli", "category": "测试质量", "difficulty": "C", "rewardXp": 95, "estimatedHours": 6, "tags": ["refactor"], "techStack": ["Python", "JUnit"], "issueTitle": "CLI 命令补充集成测试", "title": "CLI 集成测试 / CLI integration tests", "outcome": "draft", "description": "CLI 命令缺测试，重构易回归。\n\nThe CLI commands lack tests, making refactors risky.", "completionCriteria": "覆盖 list/accept/submit 命令；mock 平台 API；CI 接入。"}
+  ]
+}
