@@ -335,7 +335,7 @@ onUnmounted(() => {
             没有符合该状态的委托。
           </p>
 
-          <ul v-else class="office-quest-list">
+          <ul v-else class="office-quest-list office-scroll-list">
             <li v-for="q in filteredMyQuests" :key="q.questId" class="office-quest-row">
               <span class="office-quest-title">{{ q.title }}</span>
               <span class="office-quest-repo">{{ q.repository?.name || '—' }}</span>
@@ -359,7 +359,7 @@ onUnmounted(() => {
 
         <section class="office-repos" aria-label="受托仓库" data-tutorial="maintainer-repositories">
           <header class="office-repos-head">
-            <p class="kicker">受托仓库 · Repositories</p>
+            <p class="kicker">受托仓库 · Repositories<span v-if="repos.length" class="office-head-count">{{ repos.length }}</span></p>
             <button class="quiet-action office-sync-btn" type="button" @click="goRepoSync">
               新建 / 导入
             </button>
@@ -377,7 +377,7 @@ onUnmounted(() => {
             ，之后即可基于其发布委托。
           </p>
 
-          <ul v-else class="office-repo-list">
+          <ul v-else class="office-repo-list office-scroll-list">
             <li v-for="r in repos" :key="r.repositoryId" class="office-repo-row">
               <span class="office-repo-name">{{ r.name }}</span>
               <span class="office-repo-actions">
@@ -879,6 +879,44 @@ onUnmounted(() => {
 }
 .office-repos-head .kicker {
   margin: 0;
+}
+/* 区块标题旁的计数徽标：让维护者一眼看到受托仓库总量。 */
+.office-head-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #221205;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  background: linear-gradient(180deg, #ffd98a, #b56c22);
+  vertical-align: middle;
+}
+/* 委托 / 仓库列表：数量多时（可能上百条）限高并在区块内用滚轮上下滚动，
+   而非把整页撑成一长串。max-height 用 vh 让其随窗口高度自适应。 */
+.office-scroll-list {
+  max-height: clamp(220px, 38vh, 460px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+}
+.office-scroll-list::-webkit-scrollbar {
+  width: 9px;
+}
+.office-scroll-list::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: var(--scrollbar-track);
+}
+.office-scroll-list::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scrollbar-thumb-border);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--scrollbar-thumb-hover), var(--scrollbar-thumb));
+  background-clip: padding-box;
 }
 .office-sync-btn {
   min-height: 34px;
