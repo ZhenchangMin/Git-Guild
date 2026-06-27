@@ -1,6 +1,7 @@
 package com.gitguild.backend.growth.repository;
 
 import com.gitguild.backend.growth.domain.GrowthProfile;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
@@ -13,6 +14,8 @@ public interface GrowthProfileRepository extends JpaRepository<GrowthProfile, Lo
      * 首次完成任务前不存在，调用方需走"查无则建"。
      */
     Optional<GrowthProfile> findByUserUserId(Long userId);
+
+    List<GrowthProfile> findByUserUserIdIn(Collection<Long> userIds);
 
     List<GrowthProfile> findByOrderByTotalXpDescCompletedQuestCountDescUserUserIdAsc(Pageable pageable);
 }

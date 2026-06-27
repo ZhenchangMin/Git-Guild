@@ -123,14 +123,43 @@ class GrowthServiceImplTest {
         assertThat(response.items()).hasSize(2);
         assertThat(response.items().get(0).rank()).isEqualTo(1);
         assertThat(response.items().get(0).username()).isEqualTo("alice");
+        assertThat(response.items().get(0).title()).isEqualTo("前端协作学徒");
         assertThat(response.items().get(0).totalXp()).isEqualTo(250);
         assertThat(response.items().get(1).rank()).isEqualTo(2);
         assertThat(response.items().get(1).username()).isEqualTo("bob");
+        assertThat(response.items().get(1).title()).isEqualTo("协作学徒");
+    }
+
+    @Test
+    void getXpLeaderboardReturnsWeeklyRows() {
+        User user = org.mockito.Mockito.mock(User.class);
+        when(user.getUserId()).thenReturn(1001L);
+        GrowthProfile profile = new GrowthProfile(user);
+        profile.recordQuestCompletion(250);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        when(xpTransactionRepository.findLeaderboardSince(any(OffsetDateTime.class), any(Pageable.class)))
+                .thenReturn(List.of(periodRow(1001L, "alice", 80, 1)));
+        when(growthProfileRepository.findByUserUserIdIn(List.of(1001L))).thenReturn(List.of(profile));
+
+        LeaderboardResponse response = service().getXpLeaderboard("weekly", 5);
+
+        verify(xpTransactionRepository).findLeaderboardSince(any(OffsetDateTime.class), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(5);
+        assertThat(response.period()).isEqualTo("WEEKLY");
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).rank()).isEqualTo(1);
+        assertThat(response.items().get(0).userId()).isEqualTo(1001L);
+        assertThat(response.items().get(0).username()).isEqualTo("alice");
+        assertThat(response.items().get(0).level()).isEqualTo(3);
+        assertThat(response.items().get(0).title()).isEqualTo("前端协作学徒");
+        assertThat(response.items().get(0).totalXp()).isEqualTo(80);
+        assertThat(response.items().get(0).completedQuestCount()).isEqualTo(1);
     }
 
     @Test
     void getXpLeaderboardRejectsUnsupportedPeriod() {
-        assertThatThrownBy(() -> service().getXpLeaderboard("WEEKLY", 10))
+        assertThatThrownBy(() -> service().getXpLeaderboard("SEASON", 10))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("请求参数不合法");
     }
@@ -187,5 +216,33 @@ class GrowthServiceImplTest {
         assertThat(response.items())
                 .extracting(BadgeResponse.BadgeItem::earnedAt)
                 .containsOnly(completedAt);
+    }
+
+    private com.gitguild.backend.growth.repository.XpTransactionRepository.LeaderboardPeriodRow periodRow(
+            Long userId,
+            String username,
+            long totalXp,
+            long completedQuestCount) {
+        return new com.gitguild.backend.growth.repository.XpTransactionRepository.LeaderboardPeriodRow() {
+            @Override
+            public Long getUserId() {
+                return userId;
+            }
+
+            @Override
+            public String getUsername() {
+                return username;
+            }
+
+            @Override
+            public long getTotalXp() {
+                return totalXp;
+            }
+
+            @Override
+            public long getCompletedQuestCount() {
+                return completedQuestCount;
+            }
+        };
     }
 }

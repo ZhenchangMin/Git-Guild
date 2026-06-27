@@ -33,7 +33,7 @@ class LeaderboardControllerTest {
                         "ALL_TIME",
                         OffsetDateTime.parse("2026-06-02T20:30:00+08:00"),
                         List.of(new LeaderboardResponse.LeaderboardItem(
-                                1, 3001L, "alice", 4, 320, 5))));
+                                1, 3001L, "alice", 4, "前端协作学徒", 320, 5))));
 
         mockMvc.perform(get("/api/v1/leaderboards/xp")
                         .param("period", "ALL_TIME")
@@ -44,6 +44,7 @@ class LeaderboardControllerTest {
                 .andExpect(jsonPath("$.data.items[0].rank").value(1))
                 .andExpect(jsonPath("$.data.items[0].userId").value(3001))
                 .andExpect(jsonPath("$.data.items[0].username").value("alice"))
+                .andExpect(jsonPath("$.data.items[0].title").value("前端协作学徒"))
                 .andExpect(jsonPath("$.data.items[0].totalXp").value(320));
 
         verify(growthService).getXpLeaderboard("ALL_TIME", 3);

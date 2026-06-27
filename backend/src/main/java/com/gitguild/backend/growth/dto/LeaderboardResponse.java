@@ -13,6 +13,7 @@ public record LeaderboardResponse(
             Long userId,
             String username,
             int level,
+            String title,
             int totalXp,
             int completedQuestCount) {
     }
