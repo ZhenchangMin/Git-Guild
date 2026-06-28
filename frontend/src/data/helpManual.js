@@ -11,6 +11,7 @@ export const helpTopicRouteMap = {
   leaderboard: 'rank-growth',
   profile: 'rank-growth',
   'growth-profile': 'rank-growth',
+  'public-profile': 'rank-growth',
   'front-desk': 'letters-contact',
 }
 

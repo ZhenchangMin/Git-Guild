@@ -7,6 +7,7 @@ import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.dto.ChangePasswordRequest;
 import com.gitguild.backend.user.dto.DisplayBadgeRequest;
 import com.gitguild.backend.user.dto.PasswordChangedResponse;
+import com.gitguild.backend.user.dto.PublicUserProfileResponse;
 import com.gitguild.backend.user.dto.UpdateProfileRequest;
 import com.gitguild.backend.user.dto.UserResponse;
 import com.gitguild.backend.user.repository.UserRepository;
@@ -23,6 +24,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -46,6 +48,11 @@ public class UserController {
     @GetMapping("/me")
     public ApiResponse<UserResponse> currentUser(Authentication authentication) {
         return ApiResponse.success(authService.getCurrentUser(SecurityPrincipalUtils.currentUserId(authentication)));
+    }
+
+    @GetMapping("/{userId}")
+    public ApiResponse<PublicUserProfileResponse> publicProfile(@PathVariable Long userId) {
+        return ApiResponse.success(PublicUserProfileResponse.from(findUser(userId)));
     }
 
     @PatchMapping("/me/password")

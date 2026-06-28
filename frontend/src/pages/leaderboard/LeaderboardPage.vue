@@ -127,6 +127,12 @@ async function refreshLeaderboard() {
   completeTutorialStep('leaderboard-refresh')
 }
 
+function openProfile(row) {
+  if (row.userId == null) return
+  completeTutorialStep('leaderboard-profile')
+  router.push({ name: 'public-profile', params: { userId: row.userId } })
+}
+
 function backToHall() {
   router.push({ name: 'hall' })
 }
@@ -267,7 +273,15 @@ onBeforeUnmount(() => {
                 :data-user-id="row.userId"
               >
                 <strong class="rank-mark">#{{ row.rank }}</strong>
-                <span class="rank-name">{{ row.name }}</span>
+                <button
+                  class="rank-name"
+                  type="button"
+                  :data-tutorial="row.rank === 1 ? 'leaderboard-profile' : undefined"
+                  :aria-label="`查看 ${row.name} 的成长档案`"
+                  @click="openProfile(row)"
+                >
+                  {{ row.name }}
+                </button>
                 <span class="rank-title">Level {{ row.level }} · {{ row.title }}</span>
                 <span class="rank-completed">{{ row.completed }} 项</span>
               </article>
@@ -288,7 +302,14 @@ onBeforeUnmount(() => {
                 :data-user-id="row.userId"
               >
                 <strong class="rank-mark">#{{ row.rank }}</strong>
-                <span class="rank-name">{{ row.name }}</span>
+                <button
+                  class="rank-name"
+                  type="button"
+                  :aria-label="`查看 ${row.name} 的成长档案`"
+                  @click="openProfile(row)"
+                >
+                  {{ row.name }}
+                </button>
                 <span class="rank-title">Level {{ row.level }} · {{ row.title }}</span>
                 <span class="rank-completed">{{ row.completed }} 项</span>
               </article>
@@ -516,12 +537,30 @@ onBeforeUnmount(() => {
 
 .rank-name {
   overflow: hidden;
+  min-width: 0;
+  border: 0;
+  padding: 0;
   color: #080808;
+  background: transparent;
   font-family: var(--font-title, inherit);
   font-size: 1.06rem;
   font-weight: 900;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.rank-name:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.rank-name:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid rgba(112, 71, 6, 0.72);
+  outline-offset: 3px;
 }
 
 .rank-title {

@@ -131,3 +131,71 @@ export function getMockLeaderboard(period) {
     completed,
   }))
 }
+
+export function getMockLeaderboardProfile(userId) {
+  const row = getMockLeaderboard('ALL_TIME').find(item => item.userId === Number(userId))
+  if (!row) return null
+
+  const totalXp = (row.level - 1) * 100 + Math.min(90, row.completed * 3)
+  const contributionTemplates = [
+    ['排行榜交互优化', 'git-guild / frontend', 'C', 80, ['Vue', 'CSS']],
+    ['成长档案公开接口', 'git-guild / backend', 'B', 120, ['Java', 'Spring Boot']],
+    ['教程流程校验', 'git-guild / frontend', 'D', 60, ['Vue', '交互设计']],
+  ]
+  const contributions = contributionTemplates
+    .slice(0, Math.min(3, Math.max(1, Math.ceil(row.completed / 20))))
+    .map(([questTitle, repository, difficulty, xp, techStack], index) => ({
+      recordId: row.userId * 10 - index,
+      questId: Math.abs(row.userId) * 10 + index,
+      questTitle,
+      repository,
+      difficulty,
+      xp,
+      completedAt: `2026-06-${String(24 - index * 4).padStart(2, '0')}T10:00:00+08:00`,
+      summary: `${row.name} 在课程项目中完成了该项协作任务。`,
+      techStack,
+    }))
+
+  return {
+    identity: {
+      userId: row.userId,
+      username: row.name,
+      avatarUrl: '',
+      motto: `${row.title}，在协作中持续积累经验。`,
+      displayBadgeId: 'first-quest',
+      createdAt: '2026-03-01T08:00:00+08:00',
+    },
+    growth: {
+      level: row.level,
+      totalXp,
+      nextLevelXp: row.level * 100,
+      completedQuestCount: row.completed,
+    },
+    badges: {
+      items: [
+        {
+          badgeId: 'first-quest',
+          name: '初出茅庐',
+          description: '完成第一个任务',
+          earned: true,
+          earnedAt: '2026-03-08T12:00:00+08:00',
+          progress: 1,
+          target: 1,
+        },
+        {
+          badgeId: 'ten-quests',
+          name: '公会支柱',
+          description: '完成 10 个任务',
+          earned: row.completed >= 10,
+          earnedAt: row.completed >= 10 ? '2026-05-18T12:00:00+08:00' : null,
+          progress: Math.min(row.completed, 10),
+          target: 10,
+        },
+      ],
+    },
+    contributions: {
+      items: contributions,
+      repoCount: new Set(contributions.map(item => item.repository)).size,
+    },
+  }
+}
