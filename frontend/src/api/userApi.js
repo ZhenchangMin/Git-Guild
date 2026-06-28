@@ -4,6 +4,9 @@ export const userApi = {
   me() {
     return request('/users/me')
   },
+  publicProfile(userId) {
+    return request(`/users/${userId}`)
+  },
   updateProfile(payload) {
     return request('/users/me', { method: 'PATCH', body: payload })
   },

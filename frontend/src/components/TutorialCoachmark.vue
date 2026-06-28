@@ -35,6 +35,8 @@ const isLastStep = computed(() => currentStepIndex.value >= steps.value.length -
 const progressText = computed(() => `${currentStepIndex.value + 1}/${steps.value.length}`)
 const dismissLabel = computed(() => activeTutorial.value?.dismissLabel ?? '跳过教程')
 const showDragGesture = computed(() => activeStep.value?.gesture === 'drag-horizontal' && !targetRect.value)
+const advancesOnTargetInteraction = computed(() => ['event', 'scroll'].includes(activeStep.value?.advanceOn))
+const isPassThrough = computed(() => showDragGesture.value || advancesOnTargetInteraction.value)
 
 function fitSpotlightAxis(start, end, boundaryStart, boundaryEnd, padding) {
   let boxStart = start - padding
@@ -413,6 +415,23 @@ function handleTargetClick(event) {
   goNext()
 }
 
+function handleTutorialWheel(event) {
+  if (!isActive.value || activeStep.value?.advanceOn !== 'scroll') return
+  if (Math.abs(event.deltaX) + Math.abs(event.deltaY) < 2) return
+
+  const element = findTargetElement()
+  const rect = element ? getVisibleTargetRect(element) : null
+  if (!rect) return
+
+  const isInsideTarget =
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom
+
+  if (isInsideTarget) goNext()
+}
+
 function startTutorial(tutorialId, { forced = false } = {}) {
   if (!tutorials[tutorialId]) return
   if (!forced && hasSeenTutorial(tutorialId)) return
@@ -478,6 +497,7 @@ watch([activeTutorialId, currentStepIndex], () => {
 onMounted(() => {
   window.addEventListener('resize', queuePositionUpdate)
   window.addEventListener('scroll', queuePositionUpdate, true)
+  window.addEventListener('wheel', handleTutorialWheel, { capture: true, passive: true })
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener(TUTORIAL_COMPLETE_STEP_EVENT, handleStepCompletion)
 })
@@ -488,6 +508,7 @@ onBeforeUnmount(() => {
   window.cancelAnimationFrame(updateFrame)
   window.removeEventListener('resize', queuePositionUpdate)
   window.removeEventListener('scroll', queuePositionUpdate, true)
+  window.removeEventListener('wheel', handleTutorialWheel, true)
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener(TUTORIAL_COMPLETE_STEP_EVENT, handleStepCompletion)
   disconnectObserver()
@@ -500,13 +521,13 @@ onBeforeUnmount(() => {
       <div
         v-if="isActive"
         class="tutorial-layer"
-        :class="{ 'is-pass-through': showDragGesture }"
+        :class="{ 'is-pass-through': isPassThrough }"
         role="presentation"
       >
         <div class="tutorial-scrim" :class="{ 'has-target': targetRect }"></div>
         <div v-if="targetRect" class="tutorial-spotlight" :style="spotlightStyle"></div>
         <button
-          v-if="targetRect"
+          v-if="targetRect && !advancesOnTargetInteraction"
           class="tutorial-target-hitbox"
           type="button"
           :style="spotlightStyle"
@@ -546,7 +567,11 @@ onBeforeUnmount(() => {
             <button class="tutorial-button quiet" type="button" @click="completeTutorial">
               {{ dismissLabel }}
             </button>
-            <button class="tutorial-button primary" type="button" @click="goNext">
+            <button
+              class="tutorial-button primary"
+              type="button"
+              @click="goNext()"
+            >
               {{ isLastStep ? '完成教程' : '下一步' }}
             </button>
           </footer>

@@ -463,25 +463,35 @@ export const tutorials = {
   },
 
   leaderboard: {
-    title: '排行榜',
+    title: '公会荣誉榜',
     steps: [
       {
-        id: 'leaderboard-list',
-        target: 'leaderboard-list',
-        title: '比较成员排名',
-        body: '排行榜按成员累计经验排序，用于查看不同用户之间的贡献差异和当前名次。',
-      },
-      {
-        id: 'leaderboard-metrics',
-        target: 'leaderboard-metrics',
-        title: '理解排名指标',
-        body: 'XP、等级和完成记录共同反映成员在平台中的贡献规模，是排名比较的主要依据。',
+        id: 'leaderboard-period',
+        target: 'leaderboard-period',
+        title: '选择时间范围',
+        body: '选择“本周”“本月”或“全部”，查看对应时间范围内的成员排名。',
+        advanceOn: 'event',
       },
       {
         id: 'leaderboard-refresh',
         target: 'leaderboard-refresh',
-        title: '刷新最新数据',
-        body: '当新的任务通过审核后，可以刷新排行榜，获取最新的成员名次和经验变化。',
+        title: '刷新当前榜单',
+        body: '点击“刷新榜单”可重新获取当前时间范围的最新排名、等级和任务数据。',
+        advanceOn: 'event',
+      },
+      {
+        id: 'leaderboard-scroll',
+        target: 'leaderboard-scroll',
+        title: '滚动查看更多成员',
+        body: '前三名会固定展示。将鼠标移入第四名之后的榜单区域并滚动滚轮，可以继续查看直到第五十名。',
+        advanceOn: 'scroll',
+      },
+      {
+        id: 'leaderboard-profile',
+        target: 'leaderboard-profile',
+        title: '访问冒险家成长档案',
+        body: '排行榜中的冒险家名称都可以点击。点击高亮名称即可进入其主页查看该成员的贡献历程、成就与成长里程碑。',
+        advanceOn: 'event',
       },
     ],
   },

@@ -113,6 +113,12 @@ export const routes = [
     meta: { requiresAuth: true, roles: ['ADVENTURER', 'MAINTAINER', 'ADMIN'] },
   },
   {
+    path: '/profiles/:userId',
+    name: 'public-profile',
+    component: ProfilePage,
+    meta: { requiresAuth: true, roles: ['ADVENTURER', 'MAINTAINER', 'ADMIN'] },
+  },
+  {
     path: '/leaderboard',
     name: 'leaderboard',
     component: LeaderboardPage,

@@ -1,9 +1,10 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { growthApi } from '../../api/growthApi'
 import { questApi } from '../../api/questApi'
 import { userApi } from '../../api/userApi'
+import { getMockLeaderboardProfile } from '../../mocks/leaderboardMockData'
 import { sessionStore, updateSessionUser } from '../../stores/sessionStore'
 import profileArchiveBg from '../../assets/profile-archive-bg.webp'
 import DifficultyTrendChart from '../../components/DifficultyTrendChart.vue'
@@ -15,12 +16,36 @@ import {
   badgeShowcase,
 } from '../../data/profileData'
 
+const route = useRoute()
 const router = useRouter()
+const viewedUserId = computed(() => {
+  const parsed = Number(route.params.userId)
+  return Number.isSafeInteger(parsed) && parsed !== 0 ? parsed : null
+})
+const sessionUserId = computed(() => Number(sessionStore.user?.userId ?? sessionStore.user?.id ?? 0))
+const isOwnProfile = computed(() =>
+  route.name !== 'public-profile' || viewedUserId.value === sessionUserId.value,
+)
+const mockViewedProfile = computed(() =>
+  isOwnProfile.value ? null : getMockLeaderboardProfile(viewedUserId.value),
+)
+
+function publicIdentityFallback() {
+  const mockIdentity = mockViewedProfile.value?.identity
+  return {
+    userId: viewedUserId.value ?? 0,
+    name: mockIdentity?.username ?? '',
+    avatarUrl: mockIdentity?.avatarUrl ?? '',
+    motto: mockIdentity?.motto ?? '',
+    createdAt: mockIdentity?.createdAt ?? '',
+  }
+}
 
 // 身份卡初始值取自当前登录会话（已在内存），而非演示兜底，
 // 避免 /me 返回前闪现别人的演示身份（如 "Minera Dawn"）。
 // 缺失字段用中性空值占位，由 loadProfilePage 拿到真实资料后覆盖。
 function initialIdentity() {
+  if (!isOwnProfile.value) return publicIdentityFallback()
   const u = sessionStore.user
   if (!u) return { ...profileIdentityFallback }
   return {
@@ -58,13 +83,14 @@ function unwrapApiData(payload) {
 
 function normalizeUser(payload) {
   const d = unwrapApiData(payload)
+  const fallback = isOwnProfile.value ? profileIdentityFallback : publicIdentityFallback()
   const hasDisplayBadgeId = Object.prototype.hasOwnProperty.call(d, 'displayBadgeId')
   return {
-    userId: d.userId ?? d.id ?? profileIdentityFallback.userId,
-    name: d.username ?? d.displayName ?? d.email ?? profileIdentityFallback.name,
+    userId: d.userId ?? d.id ?? fallback.userId,
+    name: d.username ?? d.displayName ?? d.email ?? fallback.name,
     avatarUrl: d.avatarUrl ?? '',
-    motto: d.motto ?? profileIdentityFallback.motto,
-    createdAt: d.createdAt ?? profileIdentityFallback.createdAt,
+    motto: d.motto ?? fallback.motto,
+    createdAt: d.createdAt ?? fallback.createdAt,
     displayBadgeId: hasDisplayBadgeId ? d.displayBadgeId : undefined,
   }
 }
@@ -79,10 +105,10 @@ function normalizeGrowth(payload) {
   }
 }
 
-function normalizeBadges(payload) {
+function normalizeBadges(payload, useFallback = true) {
   const d = unwrapApiData(payload)
   const items = Array.isArray(d.items) ? d.items : Array.isArray(d) ? d : []
-  if (items.length === 0) return [...badgeShowcase]
+  if (items.length === 0) return useFallback ? [...badgeShowcase] : []
 
   return items.map(item => ({
     id: item.badgeId ?? item.id,
@@ -108,50 +134,83 @@ function applyUser(payload) {
   if (user.displayBadgeId !== undefined) {
     displayBadgeId.value = user.displayBadgeId
   }
-  updateSessionUser({
-    userId: user.userId,
-    id: user.userId,
-    displayName: user.name,
-    avatarUrl: user.avatarUrl,
-    motto: user.motto,
-    createdAt: user.createdAt,
-  })
+  if (isOwnProfile.value) {
+    updateSessionUser({
+      userId: user.userId,
+      id: user.userId,
+      displayName: user.name,
+      avatarUrl: user.avatarUrl,
+      motto: user.motto,
+      createdAt: user.createdAt,
+    })
+  }
 }
 
 async function loadProfilePage() {
   isLoading.value = true
   loadError.value = ''
+  isEditingMotto.value = false
+  contributions.value = []
+  repoCount.value = 0
+  pendingReviewCount.value = 0
+  displayBadgeId.value = null
   const failures = []
 
+  if (!isOwnProfile.value && mockViewedProfile.value) {
+    const mock = mockViewedProfile.value
+    applyUser(mock.identity)
+    growth.value = normalizeGrowth(mock.growth)
+    badgeCards.value = normalizeBadges(mock.badges, false)
+    contributions.value = mock.contributions.items
+    repoCount.value = mock.contributions.repoCount
+    isLoading.value = false
+    return
+  }
+
+  if (!isOwnProfile.value && viewedUserId.value == null) {
+    Object.assign(profileIdentity, publicIdentityFallback())
+    growth.value = { level: 1, totalXp: 0, nextLevelXp: 100, completedQuestCount: 0 }
+    badgeCards.value = []
+    loadError.value = '无法识别要查看的冒险家。'
+    isLoading.value = false
+    return
+  }
+
+  const targetUserId = viewedUserId.value
   // 五个接口相互独立，并行发起：总耗时从"五个串行相加（约 5s）"降到"最慢的一个"。
   // 用 allSettled 而非 all，保证单个失败不影响其余结果，仍各自走原有兜底逻辑。
   const [meRes, summaryRes, badgesRes, contribRes, assignRes] = await Promise.allSettled([
-    userApi.me(),
-    growthApi.summary(),
-    growthApi.badges(),
-    growthApi.contributions(),
-    questApi.myAssignments(),
+    isOwnProfile.value ? userApi.me() : userApi.publicProfile(targetUserId),
+    isOwnProfile.value ? growthApi.summary() : growthApi.summaryFor(targetUserId),
+    isOwnProfile.value ? growthApi.badges() : growthApi.badgesFor(targetUserId),
+    isOwnProfile.value ? growthApi.contributions() : growthApi.contributionsFor(targetUserId),
+    isOwnProfile.value ? questApi.myAssignments() : Promise.resolve({ data: { stats: {} } }),
   ])
 
   if (meRes.status === 'fulfilled') {
     applyUser(meRes.value)
   } else {
     failures.push('用户资料')
-    Object.assign(profileIdentity, { ...profileIdentityFallback })
+    Object.assign(
+      profileIdentity,
+      isOwnProfile.value ? { ...profileIdentityFallback } : publicIdentityFallback(),
+    )
   }
 
   if (summaryRes.status === 'fulfilled') {
     growth.value = normalizeGrowth(summaryRes.value)
   } else {
     failures.push('成长摘要')
-    growth.value = { ...growthFallback }
+    growth.value = isOwnProfile.value
+      ? { ...growthFallback }
+      : { level: 1, totalXp: 0, nextLevelXp: 100, completedQuestCount: 0 }
   }
 
   if (badgesRes.status === 'fulfilled') {
-    badgeCards.value = normalizeBadges(badgesRes.value)
+    badgeCards.value = normalizeBadges(badgesRes.value, isOwnProfile.value)
   } else {
     failures.push('徽章')
-    badgeCards.value = [...badgeShowcase]
+    badgeCards.value = isOwnProfile.value ? [...badgeShowcase] : []
   }
 
   if (contribRes.status === 'fulfilled') {
@@ -165,7 +224,7 @@ async function loadProfilePage() {
   }
 
   // 待审核 = 当前用户处于 IN_REVIEW 的接取数（真实统计）
-  if (assignRes.status === 'fulfilled') {
+  if (isOwnProfile.value && assignRes.status === 'fulfilled') {
     const stats = unwrapApiData(assignRes.value).stats ?? {}
     pendingReviewCount.value = stats.inReview ?? 0
   } else {
@@ -173,14 +232,18 @@ async function loadProfilePage() {
   }
 
   if (failures.length > 0) {
-    loadError.value = `${failures.join('、')}暂时无法读取，请确认后端服务已启动。`
+    loadError.value = isOwnProfile.value
+      ? `${failures.join('、')}暂时无法读取，请确认后端服务已启动。`
+      : `${failures.join('、')}暂时无法读取，无法完整展示该冒险家的成长档案。`
   }
   isLoading.value = false
 }
 
 onMounted(loadProfilePage)
+watch(() => route.params.userId, loadProfilePage)
 
 async function editProfileMotto() {
+  if (!isOwnProfile.value) return
   mottoDraft.value = profileIdentity.motto ?? ''
   mottoError.value = ''
   isEditingMotto.value = true
@@ -221,6 +284,7 @@ async function saveProfileMotto() {
 }
 
 function openAvatarPicker() {
+  if (!isOwnProfile.value) return
   avatarInput.value?.click()
 }
 
@@ -373,8 +437,12 @@ const derivedMilestones = computed(() => {
 })
 
 // ─── stats word-cloud ──────────────────────────────
+const visibleProfileStats = computed(() =>
+  isOwnProfile.value ? profileStats : profileStats.filter(stat => stat.key !== 'pendingReview'),
+)
+
 const statCards = computed(() => {
-  const raw = profileStats.map(s => {
+  const raw = visibleProfileStats.value.map(s => {
     const numeric = statValues.value[s.key] ?? 0
     // 全部指标均来自真实接口，加载完成前以占位符显示，避免闪现旧值
     return {
@@ -401,6 +469,7 @@ const displayBadge = computed(() =>
 )
 
 async function wearBadge(id) {
+  if (!isOwnProfile.value) return
   const nextBadgeId = displayBadgeId.value === id ? null : id
   const previousBadgeId = displayBadgeId.value
   displayBadgeId.value = nextBadgeId
@@ -502,6 +571,7 @@ const icons = {
                 <span v-else class="avatar-initial">{{ avatarInitial }}</span>
               </div>
               <input
+                v-if="isOwnProfile"
                 ref="avatarInput"
                 class="avatar-input"
                 type="file"
@@ -509,6 +579,7 @@ const icons = {
                 @change="uploadAvatar"
               />
               <button
+                v-if="isOwnProfile"
                 class="avatar-upload-btn"
                 type="button"
                 :disabled="isSavingProfile"
@@ -524,6 +595,7 @@ const icons = {
               <div class="license-top-row">
                 <h1>{{ profileIdentity.name }}</h1>
                 <button
+                  v-if="isOwnProfile"
                   class="edit-btn"
                   type="button"
                   aria-label="编辑签名"
@@ -540,7 +612,7 @@ const icons = {
                 {{ isLoading ? '—' : guildTitle }}
               </p>
 
-              <div v-if="isEditingMotto" class="motto-editor">
+              <div v-if="isOwnProfile && isEditingMotto" class="motto-editor">
                 <label class="sr-only" for="profile-motto">座右铭</label>
                 <textarea
                   id="profile-motto"
@@ -637,7 +709,9 @@ const icons = {
             <p class="kicker">难度攀升曲线</p>
             <h2>挑战轨迹</h2>
             <DifficultyTrendChart v-if="hasActivity" :data="difficultyTrend" />
-            <p v-else class="section-empty">完成你的第一个任务后，这里会绘制你的难度攀升曲线。</p>
+            <p v-else class="section-empty">
+              {{ isOwnProfile ? '完成你的第一个任务后，这里会绘制你的难度攀升曲线。' : '该冒险家尚未留下可绘制的挑战轨迹。' }}
+            </p>
           </article>
           <article class="glass-ledger fun-card">
             <p class="kicker">技能雷达</p>
@@ -661,7 +735,9 @@ const icons = {
               <em>{{ tag.count }}</em>
             </span>
           </div>
-          <p v-else class="section-empty">完成任务后，会按委托标注的技术栈自动积累你的技能标签。</p>
+          <p v-else class="section-empty">
+            {{ isOwnProfile ? '完成任务后，会按委托标注的技术栈自动积累你的技能标签。' : '该冒险家尚未积累公开的技能标签。' }}
+          </p>
         </section>
 
         <!-- ═══════ §3.5 Tab 切换内容区 ═══════ -->
@@ -701,7 +777,9 @@ const icons = {
               </div>
             </article>
             <p v-if="contributionList.length === 0" class="ms-empty">
-              你还没有已完成的贡献。完成第一个任务后，这里会记录你的贡献历程。
+              {{ isOwnProfile
+                ? '你还没有已完成的贡献。完成第一个任务后，这里会记录你的贡献历程。'
+                : '该冒险家尚未留下公开的贡献历程。' }}
             </p>
           </div>
 
@@ -724,7 +802,7 @@ const icons = {
                 </svg>
                 <!-- wear button -->
                 <button
-                  v-if="badge.earned"
+                  v-if="isOwnProfile && badge.earned"
                   class="wear-btn"
                   :class="{ worn: displayBadgeId === badge.id }"
                   type="button"
@@ -757,13 +835,13 @@ const icons = {
               </div>
             </article>
             <p v-if="derivedMilestones.length === 0" class="ms-empty">
-              完成你的第一个任务，开启冒险旅程。
+              {{ isOwnProfile ? '完成你的第一个任务，开启冒险旅程。' : '该冒险家尚未解锁公开里程碑。' }}
             </p>
           </div>
         </section>
 
         <!-- ═══════ §3.6 快捷操作栏 ═══════ -->
-        <section class="quick-actions" aria-label="快捷操作">
+        <section v-if="isOwnProfile" class="quick-actions" aria-label="快捷操作">
           <button type="button" class="action-btn glass-ledger" @click="openQuestBoard">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path :d="icons.scroll" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>浏览悬赏任务</span>

@@ -17,11 +17,15 @@ import com.gitguild.backend.notification.domain.NotificationType;
 import com.gitguild.backend.notification.service.NotificationService;
 import com.gitguild.backend.quest.domain.Quest;
 import com.gitguild.backend.user.domain.User;
+import java.time.DayOfWeek;
 import java.time.OffsetDateTime;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.ToIntFunction;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -51,8 +55,17 @@ public class GrowthServiceImpl implements GrowthService {
     private static final Logger log = LoggerFactory.getLogger(GrowthServiceImpl.class);
 
     private static final String REASON_QUEST_COMPLETED = "QUEST_COMPLETED";
+    private static final String PERIOD_WEEKLY = "WEEKLY";
+    private static final String PERIOD_MONTHLY = "MONTHLY";
     private static final String PERIOD_ALL_TIME = "ALL_TIME";
     private static final int DEFAULT_LEVEL = 1;
+    private static final List<TitleRule> TITLE_RULES = List.of(
+            new TitleRule(12, "公会大师"),
+            new TitleRule(8, "公会精英"),
+            new TitleRule(5, "代码工匠"),
+            new TitleRule(3, "前端协作学徒"),
+            new TitleRule(2, "协作学徒"),
+            new TitleRule(1, "见习冒险者"));
 
     /** 徽章规则的唯一来源：徽章展示（getBadges）与解锁通知（detect-on-completion）共用，避免阈值漂移。 */
     private static final List<BadgeRule> BADGE_RULES = List.of(
@@ -149,6 +162,10 @@ public class GrowthServiceImpl implements GrowthService {
         String normalizedPeriod = normalizePeriod(period);
         validateLimit(limit);
 
+        if (!PERIOD_ALL_TIME.equals(normalizedPeriod)) {
+            return getPeriodLeaderboard(normalizedPeriod, limit);
+        }
+
         List<GrowthProfile> profiles = growthProfileRepository
                 .findByOrderByTotalXpDescCompletedQuestCountDescUserUserIdAsc(PageRequest.of(0, limit));
 
@@ -161,11 +178,76 @@ public class GrowthServiceImpl implements GrowthService {
                     user.getUserId(),
                     user.getUsername(),
                     profile.getLevel(),
+                    titleForLevel(profile.getLevel()),
                     profile.getTotalXp(),
                     profile.getCompletedQuestCount()));
         }
 
         return new LeaderboardResponse(normalizedPeriod, OffsetDateTime.now(), items);
+    }
+
+    private LeaderboardResponse getPeriodLeaderboard(String period, int limit) {
+        OffsetDateTime start = periodStart(period);
+        List<com.gitguild.backend.growth.repository.XpTransactionRepository.LeaderboardPeriodRow> rows =
+                xpTransactionRepository.findLeaderboardSince(start, PageRequest.of(0, limit));
+        if (rows.isEmpty()) {
+            return new LeaderboardResponse(period, OffsetDateTime.now(), List.of());
+        }
+        List<Long> userIds = rows.stream()
+                .map(com.gitguild.backend.growth.repository.XpTransactionRepository.LeaderboardPeriodRow::getUserId)
+                .toList();
+        Map<Long, GrowthProfile> profilesByUserId = growthProfileRepository.findByUserUserIdIn(userIds).stream()
+                .collect(Collectors.toMap(profile -> profile.getUser().getUserId(), profile -> profile));
+
+        List<LeaderboardResponse.LeaderboardItem> items = new ArrayList<>(rows.size());
+        for (int i = 0; i < rows.size(); i++) {
+            com.gitguild.backend.growth.repository.XpTransactionRepository.LeaderboardPeriodRow row = rows.get(i);
+            GrowthProfile profile = profilesByUserId.get(row.getUserId());
+            int level = profile == null ? levelFromXp(row.getTotalXp()) : profile.getLevel();
+            items.add(new LeaderboardResponse.LeaderboardItem(
+                    i + 1,
+                    row.getUserId(),
+                    row.getUsername(),
+                    level,
+                    titleForLevel(level),
+                    safeInt(row.getTotalXp()),
+                    safeInt(row.getCompletedQuestCount())));
+        }
+        return new LeaderboardResponse(period, OffsetDateTime.now(), items);
+    }
+
+    private OffsetDateTime periodStart(String period) {
+        OffsetDateTime now = OffsetDateTime.now();
+        if (PERIOD_WEEKLY.equals(period)) {
+            return now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                    .toLocalDate()
+                    .atStartOfDay()
+                    .atOffset(now.getOffset());
+        }
+        if (PERIOD_MONTHLY.equals(period)) {
+            return now.withDayOfMonth(1)
+                    .toLocalDate()
+                    .atStartOfDay()
+                    .atOffset(now.getOffset());
+        }
+        return OffsetDateTime.MIN;
+    }
+
+    private int levelFromXp(long xp) {
+        return (int) (xp / GrowthProfile.XP_PER_LEVEL) + 1;
+    }
+
+    private int safeInt(long value) {
+        return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
+    }
+
+    private String titleForLevel(int level) {
+        for (TitleRule rule : TITLE_RULES) {
+            if (level >= rule.minLevel()) {
+                return rule.title();
+            }
+        }
+        return "见习冒险者";
     }
 
     @Override
@@ -242,12 +324,14 @@ public class GrowthServiceImpl implements GrowthService {
         String normalized = period == null || period.isBlank()
                 ? PERIOD_ALL_TIME
                 : period.trim().toUpperCase(Locale.ROOT);
-        if (!PERIOD_ALL_TIME.equals(normalized)) {
+        if (!PERIOD_WEEKLY.equals(normalized)
+                && !PERIOD_MONTHLY.equals(normalized)
+                && !PERIOD_ALL_TIME.equals(normalized)) {
             throw new BusinessException(
                     "VALIDATION_FAILED",
                     HttpStatus.BAD_REQUEST,
                     "请求参数不合法",
-                    "period only supports ALL_TIME");
+                    "period only supports WEEKLY, MONTHLY, ALL_TIME");
         }
         return normalized;
     }
@@ -266,6 +350,9 @@ public class GrowthServiceImpl implements GrowthService {
     }
 
     /** 徽章规则：阈值条件 + 进度取值器；earned() 判断在给定快照下是否达成。 */
+    private record TitleRule(int minLevel, String title) {
+    }
+
     private record BadgeRule(
             String id,
             String name,
