@@ -67,10 +67,10 @@ class GrowthApiIntegrationTest {
 
     @Test
     void leaderboardShouldRejectUnsupportedPeriodAndInvalidLimit() throws Exception {
-        mockMvc.perform(get("/api/v1/leaderboards/xp").param("period", "WEEKLY"))
+        mockMvc.perform(get("/api/v1/leaderboards/xp").param("period", "YEARLY"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.details").value("period only supports ALL_TIME"));
+                .andExpect(jsonPath("$.details").value("period only supports WEEKLY, MONTHLY, ALL_TIME"));
 
         mockMvc.perform(get("/api/v1/leaderboards/xp").param("limit", "0"))
                 .andExpect(status().isBadRequest())
