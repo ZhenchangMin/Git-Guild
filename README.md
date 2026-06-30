@@ -2,63 +2,42 @@
 
 <div align="center">
 
-**English** | [简体中文](docs/README.zh-CN.md)
-
-</div>
-
 Git Guild is a course project for Software Engineering II. It combines a local Gitea-backed code collaboration workflow with an Adventurer's Guild style quest system: maintainers publish real engineering work as quests, adventurers complete those quests through branches and pull requests, and the platform records reviews, XP, growth profiles, notifications, and leaderboards.
 
 P4 is the current integration stage. The project is no longer a static mock: the main user flows are wired to backend APIs, backed by MySQL, and integrated with a seeded local Gitea instance.
 
-## What Works in P4
-
-### Roles
-
-- **Admin**: reviews quest publication requests, manages platform taxonomy, and monitors exception-handling pages.
-- **Maintainer**: imports or syncs repositories, publishes quests from issues, reviews submissions, merges pull requests, and can also use the adventurer-style workbench to complete quests.
-- **Adventurer**: browses the quest board, accepts quests, works on a task branch, submits results, receives feedback, and grows through XP and contribution records.
-
-### Core Flows
-
-- Login and role-based navigation.
-- Quest board with live quest, category, tag, difficulty, and technology filters.
-- Repository import and synchronization through Gitea.
-- Quest publishing from repository issues, with admin approval before listing.
-- Quest acceptance, task branch preparation, and submission draft generation.
-- Submission creation with automatic pull request creation or reuse.
-- Maintainer review with approve / request changes / reject decisions.
-- Pull request merge as a separate action from review approval.
-- Growth profile, XP transactions, contribution records, avatar updates, notifications, and leaderboard views.
-- CI/CD with static checks, frontend build, backend verify, backend artifact upload, and JaCoCo report upload.
-
 ## Tech Stack
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | Vue 3, Vite, Vue Router |
-| Backend | Spring Boot 3, Spring Security, Spring Data JPA |
-| Database | MySQL 8 for local development, H2 for backend tests |
-| Code host | Gitea 1.22 local container |
-| Infra | Docker Compose, Redis, GitHub Actions |
-| Tests | JUnit 5, Mockito, Spring MVC tests, integration tests |
+
+| Layer     | Technology                                            |
+| ----------- | ------------------------------------------------------- |
+| Frontend  | Vue 3, Vite, Vue Router                               |
+| Backend   | Spring Boot 3, Spring Security, Spring Data JPA       |
+| Database  | MySQL 8 for local development, H2 for backend tests   |
+| Code host | Gitea 1.22 local container                            |
+| Infra     | Docker Compose, Redis, GitHub Actions                 |
+| Tests     | JUnit 5, Mockito, Spring MVC tests, integration tests |
 
 ## Repository Layout
 
 ```text
 Git-Guild/
 ├── README.md                    # English project README
-├── docs/README.zh-CN.md         # Chinese project README
-├── CONTEXT.md                   # Domain glossary
-├── .github/workflows/           # GitHub Actions CI
+├── docs/                        # Course deliverables and design docs
+│   ├── README.zh-CN.md          # Chinese project README
+│   ├── P0/ … P4/                # Milestone deliverables (charter, ADRs, design, logs)
+│   ├── hci/                     # HCI / interaction design notes
+│   └── 演示数据/                # Demo data notes
+├── .github/workflows/           # GitHub Actions CI (ci.yml)
 ├── .gitlab-ci.yml               # GitLab CI mirror
 ├── docker-compose.yml           # Local dev
 ├── docker-compose.prod.yml      # Production compose
 ├── .env.example                 # Optional local environment overrides
 ├── deploy/                      # Dockerfiles, nginx.conf, probe.sh
-├── scripts/                     # CI helper scripts (ci-static-check.mjs)
+├── scripts/                     # CI static check + Python demo-seed scripts
 ├── seed/                        # Seeded MySQL dump + Gitea snapshot
-├── backend/                     # Spring Boot 3 backend
-└── frontend/                    # Vue 3 + Vite frontend
+├── backend/                     # Spring Boot 3 backend (own README)
+└── frontend/                    # Vue 3 + Vite frontend (own README)
 ```
 
 ## Prerequisites
@@ -78,11 +57,12 @@ docker compose up -d
 
 This starts:
 
-| Service | URL / Port | Notes |
-| --- | --- | --- |
-| Gitea | http://localhost:3000 | Seeded demo code host |
-| MySQL | localhost:3307 | Database `gitguild` |
-| Redis | localhost:6379 | Notification/session support |
+
+| Service | URL / Port            | Notes                        |
+| --------- | ----------------------- | ------------------------------ |
+| Gitea   | http://localhost:3000 | Seeded demo code host        |
+| MySQL   | localhost:3307        | Database`gitguild`           |
+| Redis   | localhost:6379        | Notification/session support |
 
 Start the backend:
 
@@ -123,11 +103,12 @@ http://localhost:8080/api-docs
 
 All seeded accounts use password `admin123`.
 
-| Role | Username | Typical Use |
-| --- | --- | --- |
-| Admin | `admin` | Approve quest publication and manage platform configuration |
-| Maintainer | `guild` | Import repositories, publish quests, review submissions, merge PRs |
-| Adventurer | `advent` | Accept quests, push work, submit results, gain XP |
+
+| Role       | Username | Typical Use                                                        |
+| ------------ | ---------- | -------------------------------------------------------------------- |
+| Admin      | `admin`  | Approve quest publication and manage platform configuration        |
+| Maintainer | `guild`  | Import repositories, publish quests, review submissions, merge PRs |
+| Adventurer | `advent` | Accept quests, push work, submit results, gain XP                  |
 
 ## Recommended Demo Walkthrough
 
@@ -230,12 +211,13 @@ Change local service ports or stop conflicting processes if a port is occupied.
 
 ## Team
 
-| Member | Responsibility |
-| --- | --- |
-| Zhenchang Min | Requirements |
-| Lvfan Yang | Architecture |
-| Wei Wang | Development |
-| Yongjun Tan | Testing |
+
+| Member        | Responsibility |
+| --------------- | ---------------- |
+| Zhenchang Min | Requirements   |
+| Lvfan Yang    | Architecture   |
+| Wei Wang      | Development    |
+| Yongjun Tan   | Testing        |
 
 ---
 

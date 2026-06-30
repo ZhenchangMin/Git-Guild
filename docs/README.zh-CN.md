@@ -2,63 +2,42 @@
 
 <div align="center">
 
-[English](../README.md) | **简体中文**
-
-</div>
-
 Git Guild 是 Software Engineering II 课程项目。项目把本地 Gitea 代码协作流程与“冒险者公会”式委托系统结合起来：委托人把真实工程任务发布为委托，冒险家通过分支和 Pull Request 完成委托，平台记录审核、XP、成长档案、通知和排行榜。
 
 当前项目处于 P4 集成阶段。主要流程已经接入真实后端接口，数据落在 MySQL 中，并与本地种子 Gitea 实例集成，不再只是前端 mock 。
 
-## P4 当前能力
-
-### 角色
-
-- **管理员**：审核委托上架申请，维护平台分类与标签配置，查看异常处理页面。
-- **委托人**：导入或同步仓库，基于 Issue 发布委托，审核冒险家提交成果，合并 Pull Request，也可以进入完成工作台像冒险家一样接取并完成委托。
-- **冒险家**：浏览委托板，接取委托，基于任务分支完成代码，提交成果，接收反馈，并通过 XP 与贡献记录成长。
-
-### 核心流程
-
-- 登录与基于角色的导航。
-- 委托板使用真实委托、分类、标签、难度和技术栈过滤。
-- 通过 Gitea 导入与同步仓库。
-- 从仓库 Issue 发布委托，并经过管理员审核后上架。
-- 接取委托、准备 task branch、生成提交草稿。
-- 提交成果时自动创建或复用 Pull Request。
-- 委托人审核成果，支持通过、要求修改、拒绝。
-- Pull Request 合并与审核通过拆分为两个独立动作。
-- 成长档案、XP 流水、贡献记录、头像同步、通知与排行榜。
-- CI/CD 覆盖静态检查、前端构建、后端 verify、后端制品与 JaCoCo 报告上传。
-
 ## 技术栈
 
-| 层级 | 技术 |
-| --- | --- |
-| 前端 | Vue 3、Vite、Vue Router |
-| 后端 | Spring Boot 3、Spring Security、Spring Data JPA |
-| 数据库 | 本地 MySQL 8、后端测试 H2 |
-| 代码托管 | 本地 Gitea 1.22 容器 |
-| 基础设施 | Docker Compose、Redis、GitHub Actions |
-| 测试 | JUnit 5、Mockito、Spring MVC 测试、集成测试 |
+
+| 层级     | 技术                                            |
+| ---------- | ------------------------------------------------- |
+| 前端     | Vue 3、Vite、Vue Router                         |
+| 后端     | Spring Boot 3、Spring Security、Spring Data JPA |
+| 数据库   | 本地 MySQL 8、后端测试 H2                       |
+| 代码托管 | 本地 Gitea 1.22 容器                            |
+| 基础设施 | Docker Compose、Redis、GitHub Actions           |
+| 测试     | JUnit 5、Mockito、Spring MVC 测试、集成测试     |
 
 ## 项目结构
 
 ```text
 Git-Guild/
 ├── README.md                    # 英文 README
-├── docs/README.zh-CN.md         # 中文 README
-├── CONTEXT.md                   # 领域语言词典
-├── .github/workflows/           # GitHub Actions CI
+├── docs/                        # 课程交付物与设计文档
+│   ├── README.zh-CN.md          # 中文 README
+│   ├── P0/ … P4/                # 各阶段交付物（章程、ADR、设计、反思日志等）
+│   ├── hci/                     # 人机交互 / 交互设计说明
+│   └── 演示数据/                # 演示数据说明
+├── .github/workflows/           # GitHub Actions CI（ci.yml）
 ├── .gitlab-ci.yml               # GitLab CI 镜像
 ├── docker-compose.yml           # 本地开发
 ├── docker-compose.prod.yml      # 生产环境 compose
 ├── .env.example                 # 可选本地环境变量覆盖
 ├── deploy/                      # Dockerfile、nginx.conf、probe.sh
-├── scripts/                     # CI 辅助脚本（ci-static-check.mjs）
+├── scripts/                     # CI 静态检查 + Python 演示数据脚本
 ├── seed/                        # MySQL 种子数据 + Gitea 快照
-├── backend/                     # Spring Boot 3 后端
-└── frontend/                    # Vue 3 + Vite 前端
+├── backend/                     # Spring Boot 3 后端（含独立 README）
+└── frontend/                    # Vue 3 + Vite 前端（含独立 README）
 ```
 
 ## 环境要求
@@ -78,11 +57,12 @@ docker compose up -d
 
 该命令会启动：
 
-| 服务 | 地址 / 端口 | 说明 |
-| --- | --- | --- |
+
+| 服务  | 地址 / 端口           | 说明                       |
+| ------- | ----------------------- | ---------------------------- |
 | Gitea | http://localhost:3000 | 已带种子数据的本地代码托管 |
-| MySQL | localhost:3307 | 数据库 `gitguild` |
-| Redis | localhost:6379 | 通知与会话辅助服务 |
+| MySQL | localhost:3307        | 数据库`gitguild`           |
+| Redis | localhost:6379        | 通知与会话辅助服务         |
 
 启动后端：
 
@@ -123,10 +103,11 @@ http://localhost:8080/api-docs
 
 所有种子账号密码均为 `admin123`。
 
-| 角色 | 用户名 | 用途 |
-| --- | --- | --- |
-| 管理员 | `admin` | 审核委托上架，维护平台配置 |
-| 委托人 | `guild` | 导入仓库，发布委托，审核提交，合并 PR |
+
+| 角色   | 用户名   | 用途                                  |
+| -------- | ---------- | --------------------------------------- |
+| 管理员 | `admin`  | 审核委托上架，维护平台配置            |
+| 委托人 | `guild`  | 导入仓库，发布委托，审核提交，合并 PR |
 | 冒险家 | `advent` | 接取委托，推送代码，提交成果，获得 XP |
 
 ## 推荐演示路径
@@ -230,12 +211,13 @@ networkingMode=mirrored
 
 ## 团队
 
-| 成员  | 职责  |
-| --- | --- |
-| 闵振昌 | 需求  |
-| 阳旅帆 | 架构  |
-| 王炜  | 开发  |
-| 谭咏俊 | 测试  |
+
+| 成员   | 职责 |
+| -------- | ------ |
+| 闵振昌 | 需求 |
+| 阳旅帆 | 架构 |
+| 王炜   | 开发 |
+| 谭咏俊 | 测试 |
 
 ---
 
