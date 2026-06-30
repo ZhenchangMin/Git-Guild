@@ -19,6 +19,12 @@ public interface QuestService {
 
     SubmitQuestResponse submitQuest(Long questId, Long publisherId);
 
+    /**
+     * 删除发布者自己的委托（仅限可删除的终态：草稿 / 被退回 / 已下架），并级联清理其牵连数据。
+     * 进行中、待审、已上架、已完成等"活跃或含已发放 XP"的委托不允许删除。
+     */
+    void deleteQuest(Long questId, Long publisherId);
+
     QuestPageResponse searchQuests(QuestSearchCriteria criteria);
 
     QuestDetailResponse getQuestDetail(Long questId, Long currentUserId);

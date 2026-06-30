@@ -89,6 +89,15 @@ class QuestServiceImplTest {
     @Mock
     private com.gitguild.backend.notification.service.NotificationService notificationService;
 
+    @Mock
+    private com.gitguild.backend.message.repository.MessageThreadRepository messageThreadRepository;
+
+    @Mock
+    private com.gitguild.backend.message.repository.MessageRepository messageRepository;
+
+    @Mock
+    private com.gitguild.backend.message.repository.MessageReadStateRepository messageReadStateRepository;
+
     private QuestServiceImpl questService;
 
     @BeforeEach
@@ -109,7 +118,10 @@ class QuestServiceImplTest {
                 adminReviewRecordRepository,
                 submissionRepository,
                 reviewRecordRepository,
-                notificationService);
+                notificationService,
+                messageThreadRepository,
+                messageRepository,
+                messageReadStateRepository);
     }
 
     @Test

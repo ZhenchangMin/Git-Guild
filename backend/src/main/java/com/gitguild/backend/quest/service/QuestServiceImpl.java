@@ -47,6 +47,10 @@ import com.gitguild.backend.review.domain.Submission;
 import com.gitguild.backend.review.domain.SubmissionStatus;
 import com.gitguild.backend.review.repository.ReviewRecordRepository;
 import com.gitguild.backend.review.repository.SubmissionRepository;
+import com.gitguild.backend.message.domain.MessageThread;
+import com.gitguild.backend.message.repository.MessageReadStateRepository;
+import com.gitguild.backend.message.repository.MessageRepository;
+import com.gitguild.backend.message.repository.MessageThreadRepository;
 import com.gitguild.backend.user.domain.User;
 import com.gitguild.backend.user.domain.UserRole;
 import com.gitguild.backend.user.repository.UserRepository;
@@ -56,6 +60,7 @@ import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -109,6 +114,9 @@ public class QuestServiceImpl implements QuestService {
     private final SubmissionRepository submissionRepository;
     private final ReviewRecordRepository reviewRecordRepository;
     private final NotificationService notificationService;
+    private final MessageThreadRepository messageThreadRepository;
+    private final MessageRepository messageRepository;
+    private final MessageReadStateRepository messageReadStateRepository;
 
     public QuestServiceImpl(
             QuestRepository questRepository,
@@ -126,7 +134,10 @@ public class QuestServiceImpl implements QuestService {
             AdminReviewRecordRepository adminReviewRecordRepository,
             SubmissionRepository submissionRepository,
             ReviewRecordRepository reviewRecordRepository,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            MessageThreadRepository messageThreadRepository,
+            MessageRepository messageRepository,
+            MessageReadStateRepository messageReadStateRepository) {
         this.questRepository = questRepository;
         this.assignmentRepository = assignmentRepository;
         this.categoryRepository = categoryRepository;
@@ -143,6 +154,9 @@ public class QuestServiceImpl implements QuestService {
         this.submissionRepository = submissionRepository;
         this.reviewRecordRepository = reviewRecordRepository;
         this.notificationService = notificationService;
+        this.messageThreadRepository = messageThreadRepository;
+        this.messageRepository = messageRepository;
+        this.messageReadStateRepository = messageReadStateRepository;
     }
 
     @Override
@@ -223,6 +237,56 @@ public class QuestServiceImpl implements QuestService {
         quest.submitForReview();
         questRepository.save(quest);
         return new SubmitQuestResponse(quest.getQuestId(), quest.getStatus(), quest.getUpdatedAt());
+    }
+
+    /** 允许发布者删除的委托状态：终态且不含已发放 XP / 冒险者进行中进度。 */
+    private static final Set<QuestStatus> DELETABLE_STATUSES =
+            EnumSet.of(QuestStatus.DRAFT, QuestStatus.REJECTED, QuestStatus.CLOSED);
+
+    @Override
+    @Transactional
+    public void deleteQuest(Long questId, Long publisherId) {
+        Quest quest = findQuest(questId);
+        if (!quest.getPublisher().getUserId().equals(publisherId)) {
+            throw new BusinessException("FORBIDDEN", HttpStatus.FORBIDDEN, "当前用户无权限", "只有发布者可以删除自己的委托");
+        }
+        if (!DELETABLE_STATUSES.contains(quest.getStatus())) {
+            throw new BusinessException("QUEST_NOT_DELETABLE", HttpStatus.CONFLICT,
+                    "仅草稿、被退回或已下架的委托可删除",
+                    "currentStatus=" + quest.getStatus());
+        }
+
+        Long qid = quest.getQuestId();
+
+        // 站内信会话（若有）：read_states → messages → thread。message_threads 无 DB 级联，须先清。
+        messageThreadRepository.findByQuestQuestId(qid).ifPresent((MessageThread thread) -> {
+            Long threadId = thread.getThreadId();
+            messageReadStateRepository.deleteAll(messageReadStateRepository.findByThreadThreadId(threadId));
+            messageRepository.deleteAll(messageRepository.findByThreadThreadIdOrderByCreatedAtAsc(threadId));
+            messageReadStateRepository.flush();
+            messageRepository.flush();
+            messageThreadRepository.delete(thread);
+            messageThreadRepository.flush();
+        });
+
+        // 成果提交链：review_records（经 submission）→ submissions（释放 pull_request 外键引用）。
+        List<Submission> submissions = submissionRepository.findByQuestQuestIdIn(List.of(qid));
+        if (!submissions.isEmpty()) {
+            List<Long> submissionIds = submissions.stream().map(Submission::getSubmissionId).toList();
+            reviewRecordRepository.deleteAll(reviewRecordRepository.findBySubmissionSubmissionIdIn(submissionIds));
+            reviewRecordRepository.flush();
+            submissionRepository.deleteAll(submissions);
+            submissionRepository.flush();
+        }
+
+        // 直接挂在 quest 上的子表（草稿/退回/已下架不含 xp_transactions / contribution_records）。
+        assignmentRepository.deleteAll(assignmentRepository.findByQuestQuestIdIn(List.of(qid)));
+        adminReviewRecordRepository.deleteAll(adminReviewRecordRepository.findByQuestQuestIdIn(List.of(qid)));
+        assignmentRepository.flush();
+
+        // 委托本体（顺带删 quest_tag_relations 关联行，释放 quest→issue 外键）。
+        questRepository.delete(quest);
+        questRepository.flush();
     }
 
     @Override

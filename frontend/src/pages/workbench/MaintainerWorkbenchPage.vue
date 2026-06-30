@@ -181,6 +181,36 @@ async function loadMyQuests({ silent = false } = {}) {
   }
 }
 
+// 委托删除：仅草稿 / 被退回 / 已下架可删（与后端一致）。
+const DELETABLE_QUEST_STATUSES = new Set(['DRAFT', 'REJECTED', 'CLOSED'])
+function canDeleteQuest(quest) {
+  return DELETABLE_QUEST_STATUSES.has(quest?.status)
+}
+const deleteQuestConfirm = ref(null) // { quest, error } | null
+const deletingQuestId = ref(null)
+function requestDeleteQuest(quest) {
+  if (deletingQuestId.value) return
+  deleteQuestConfirm.value = { quest, error: '' }
+}
+function cancelDeleteQuest() {
+  if (deletingQuestId.value) return
+  deleteQuestConfirm.value = null
+}
+async function confirmDeleteQuest() {
+  const quest = deleteQuestConfirm.value?.quest
+  if (!quest || deletingQuestId.value) return
+  deletingQuestId.value = quest.questId
+  try {
+    await questApi.remove(quest.questId)
+    deleteQuestConfirm.value = null
+    await loadMyQuests()
+  } catch (err) {
+    if (deleteQuestConfirm.value) deleteQuestConfirm.value.error = err?.message || '删除失败，请稍后重试。'
+  } finally {
+    deletingQuestId.value = null
+  }
+}
+
 function isPendingReviewSubmission(item) {
   return item?.status === 'PENDING_REVIEW'
 }
@@ -353,6 +383,18 @@ onUnmounted(() => {
               <span v-else class="office-quest-badge" :class="questStatus(effectiveStatus(q)).tone">
                 {{ questStatus(effectiveStatus(q)).label }}
               </span>
+              <button
+                v-if="canDeleteQuest(q)"
+                type="button"
+                class="office-quest-delete"
+                :disabled="deletingQuestId === q.questId"
+                :title="`删除委托「${q.title}」`"
+                aria-label="删除委托"
+                @click="requestDeleteQuest(q)"
+              >
+                {{ deletingQuestId === q.questId ? '…' : '删除' }}
+              </button>
+              <span v-else class="office-quest-delete-spacer" aria-hidden="true"></span>
             </li>
           </ul>
         </section>
@@ -464,6 +506,40 @@ onUnmounted(() => {
             <button class="quiet-action" type="button" :disabled="!!deletingRepoId" @click="cancelDeleteRepo">取消</button>
             <button class="danger-action" type="button" :disabled="!!deletingRepoId" @click="confirmDeleteRepo">
               {{ deletingRepoId ? '删除中…' : '确认删除' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 删除委托二次确认：仅草稿 / 被退回 / 已下架可达此处。 -->
+    <transition name="reject-pop">
+      <div
+        v-if="deleteQuestConfirm"
+        class="delete-repo-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-quest-title"
+        @click.self="cancelDeleteQuest"
+      >
+        <div class="delete-repo-card">
+          <button class="reject-close" type="button" aria-label="关闭" :disabled="!!deletingQuestId" @click="cancelDeleteQuest">×</button>
+          <span class="reject-icon" aria-hidden="true">⊘</span>
+          <p class="kicker">Delete Commission</p>
+          <h2 id="delete-quest-title">确认删除这个委托？</h2>
+          <p class="reject-quest-title">{{ deleteQuestConfirm.quest?.title }}</p>
+
+          <div class="reject-reason-box">
+            <p class="reject-reason">
+              该委托及其关联的提交、审核与接取记录将被一并删除，且<strong>不可恢复</strong>。
+            </p>
+            <p v-if="deleteQuestConfirm.error" class="reject-reason danger">{{ deleteQuestConfirm.error }}</p>
+          </div>
+
+          <div class="reject-actions">
+            <button class="quiet-action" type="button" :disabled="!!deletingQuestId" @click="cancelDeleteQuest">取消</button>
+            <button class="danger-action" type="button" :disabled="!!deletingQuestId" @click="confirmDeleteQuest">
+              {{ deletingQuestId ? '删除中…' : '确认删除' }}
             </button>
           </div>
         </div>
@@ -614,13 +690,38 @@ onUnmounted(() => {
 }
 .office-quest-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
   border: 1px solid rgba(238, 184, 91, 0.24);
   border-radius: 8px;
   background: rgba(20, 11, 6, 0.42);
+}
+.office-quest-delete {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(202, 104, 88, 0.5);
+  border-radius: 999px;
+  color: #ffd9d2;
+  font-size: 0.74rem;
+  background: rgba(110, 42, 36, 0.34);
+  transition: border-color 150ms ease, background 150ms ease, filter 150ms ease;
+}
+.office-quest-delete:hover:not(:disabled),
+.office-quest-delete:focus-visible {
+  outline: none;
+  border-color: rgba(226, 128, 110, 0.9);
+  background: rgba(140, 52, 44, 0.5);
+  filter: brightness(1.05);
+}
+.office-quest-delete:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+/* 不可删除的委托：占位保持网格列对齐。 */
+.office-quest-delete-spacer {
+  width: 0;
 }
 .office-quest-title {
   font-family: var(--font-display);

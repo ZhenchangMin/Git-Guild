@@ -416,6 +416,32 @@ const filteredApplications = computed(() => {
   return applications.value.filter((application) => application.questStatus === statusFilter.value)
 })
 
+// 队列分组：把不同状态的任务分开放置，每组带标题与计数。
+// "全部"筛选时按业务优先级顺序展示各组（待审核在最前，便于先处理）；选了具体状态时仅显示该组。
+const QUEUE_GROUPS = [
+  { key: 'PENDING_ADMIN_REVIEW', label: '待审核', tone: 'pending', match: (s) => s === 'PENDING_ADMIN_REVIEW' },
+  { key: 'PUBLISHED', label: '已上架', tone: 'approved', match: (s) => s === 'PUBLISHED' },
+  { key: 'TAKEN', label: '已接取', tone: 'approved', match: (s) => TAKEN_STATUSES.includes(s) },
+  { key: 'COMPLETED', label: '已完成', tone: 'approved', match: (s) => s === 'COMPLETED' },
+  { key: 'RETURNED', label: '已退回', tone: 'return', match: (s) => s === 'REJECTED' || s === 'DRAFT' },
+  { key: 'CLOSED', label: '已下架', tone: 'danger', match: (s) => s === 'CLOSED' },
+]
+const groupedApplications = computed(() =>
+  QUEUE_GROUPS.map((group) => ({
+    ...group,
+    items: filteredApplications.value.filter((application) => group.match(application.questStatus)),
+  })).filter((group) => group.items.length > 0),
+)
+
+// 分组折叠：记录被收起的分组 key。默认全部展开；点击分组标题切换。
+const collapsedGroups = ref({})
+function toggleGroup(key) {
+  collapsedGroups.value = { ...collapsedGroups.value, [key]: !collapsedGroups.value[key] }
+}
+function isGroupCollapsed(key) {
+  return !!collapsedGroups.value[key]
+}
+
 const activeApplication = computed(
   () => filteredApplications.value.find((application) => application.id === activeId.value) ?? null,
 )
@@ -661,22 +687,41 @@ async function submitDecision(decision) {
           </div>
 
           <div class="admin-application-list">
-            <button
-              v-for="application in filteredApplications"
-              :key="application.id"
-              class="admin-application-card"
-              :class="[{ active: activeApplication?.id === application.id }, statusOf(application).tone]"
-              type="button"
-              @click="selectApplication(application)"
+            <section
+              v-for="group in groupedApplications"
+              :key="group.key"
+              class="admin-queue-group"
+              :aria-label="group.label"
             >
-              <span>{{ application.id }} · {{ application.submittedAt }}</span>
-              <strong>{{ application.questCode }} · {{ application.title }}</strong>
-              <small>{{ application.publisher }}</small>
-              <em>
-                {{ statusOf(application).label }}
-                <template v-if="application.questStatus === 'PUBLISHED' && application.assignmentActive"> · 已接取</template>
-              </em>
-            </button>
+              <button
+                type="button"
+                class="admin-queue-group-head"
+                :class="[group.tone, { collapsed: isGroupCollapsed(group.key) }]"
+                :aria-expanded="!isGroupCollapsed(group.key)"
+                @click="toggleGroup(group.key)"
+              >
+                <span class="admin-queue-group-chevron" aria-hidden="true">▾</span>
+                <span class="admin-queue-group-label">{{ group.label }}</span>
+                <span class="admin-queue-group-count">{{ group.items.length }}</span>
+              </button>
+              <button
+                v-for="application in group.items"
+                v-show="!isGroupCollapsed(group.key)"
+                :key="application.id"
+                class="admin-application-card"
+                :class="[{ active: activeApplication?.id === application.id }, statusOf(application).tone]"
+                type="button"
+                @click="selectApplication(application)"
+              >
+                <span>{{ application.id }} · {{ application.submittedAt }}</span>
+                <strong>{{ application.questCode }} · {{ application.title }}</strong>
+                <small>{{ application.publisher }}</small>
+                <em>
+                  {{ statusOf(application).label }}
+                  <template v-if="application.questStatus === 'PUBLISHED' && application.assignmentActive"> · 已接取</template>
+                </em>
+              </button>
+            </section>
             <p v-if="filteredApplications.length === 0" class="admin-empty-queue">
               {{ loading ? '正在读取真实审核队列...' : loadError || '当前筛选下没有任务发布申请。' }}
             </p>

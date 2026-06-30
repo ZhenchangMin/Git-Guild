@@ -22,6 +22,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,6 +55,15 @@ public class QuestController {
             @PathVariable Long questId,
             Authentication authentication) {
         return ApiResponse.success("已提交审核", questService.submitQuest(questId, SecurityPrincipalUtils.currentUserId(authentication)));
+    }
+
+    /** 删除发布者自己的委托（仅草稿 / 被退回 / 已下架，含级联清理）。 */
+    @DeleteMapping("/{questId}")
+    public ApiResponse<Void> deleteQuest(
+            @PathVariable Long questId,
+            Authentication authentication) {
+        questService.deleteQuest(questId, SecurityPrincipalUtils.currentUserId(authentication));
+        return ApiResponse.success("委托已删除", null);
     }
 
     @GetMapping

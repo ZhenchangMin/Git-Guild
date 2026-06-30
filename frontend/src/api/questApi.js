@@ -20,6 +20,9 @@ export const questApi = {
   submitForReview(questId) {
     return request(`/quests/${questId}/submit`, { method: 'POST' })
   },
+  remove(questId) {
+    return request(`/quests/${questId}`, { method: 'DELETE' })
+  },
   detail(questId) {
     return request(`/quests/${questId}`)
   },

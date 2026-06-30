@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { questApi } from '../../api/questApi'
@@ -57,6 +57,37 @@ const selectedIssueLabel = computed(() => {
   const num = found.externalIssueId ?? found.issueId
   return [num ? `#${num}` : '', found.title ?? ''].filter(Boolean).join(' · ')
 })
+
+// ── 关联 Issue 自定义下拉（仓库 Issue 多时，弹层内滚轮滚动，而非原生 select 一长串）──
+const issuePickerOpen = ref(false)
+const issuePickerEl = ref(null)
+// 触发按钮上展示的文案：加载中 / 已选 Issue / 占位提示。
+const issueTriggerLabel = computed(() => {
+  if (loadingIssues.value) return '加载中…'
+  return selectedIssueLabel.value || '请选择 Issue'
+})
+function toggleIssuePicker() {
+  if (loadingIssues.value || !issues.value.length) return
+  issuePickerOpen.value = !issuePickerOpen.value
+}
+function chooseIssue(issue) {
+  form.value.issueId = String(issue.issueId)
+  issuePickerOpen.value = false
+}
+function closeIssuePicker() {
+  issuePickerOpen.value = false
+}
+// 点击下拉之外关闭。
+function onDocumentPointerDown(event) {
+  if (issuePickerOpen.value && issuePickerEl.value && !issuePickerEl.value.contains(event.target)) {
+    issuePickerOpen.value = false
+  }
+}
+onMounted(() => document.addEventListener('pointerdown', onDocumentPointerDown))
+onUnmounted(() => document.removeEventListener('pointerdown', onDocumentPointerDown))
+// 切换仓库重新加载 Issue 或切到新建模式时收起弹层。
+watch(issues, () => { issuePickerOpen.value = false })
+watch(() => form.value.issueMode, () => { issuePickerOpen.value = false })
 
 // 难度选项复用 admin 平台配置的同一份枚举，附带分级说明，
 // 让委托人一眼看懂 A=最难、D=最易，而非只见字母。
@@ -353,12 +384,38 @@ function unwrapItems(payload) {
               >新建 Gitea Issue</button>
             </div>
             <template v-if="form.issueMode === 'existing'">
-              <select v-model="form.issueId" :disabled="loadingIssues">
-                <option v-if="loadingIssues" value="">加载中…</option>
-                <option v-for="i in issues" :key="i.issueId" :value="String(i.issueId)">
-                  #{{ i.externalIssueId }} · {{ i.title }}
-                </option>
-              </select>
+              <div ref="issuePickerEl" class="writ-issue-picker">
+                <button
+                  type="button"
+                  class="writ-issue-trigger"
+                  :class="{ open: issuePickerOpen, placeholder: !selectedIssueLabel }"
+                  :disabled="loadingIssues || !issues.length"
+                  :aria-expanded="issuePickerOpen"
+                  aria-haspopup="listbox"
+                  @click="toggleIssuePicker"
+                >
+                  <span class="writ-issue-trigger-text">{{ issueTriggerLabel }}</span>
+                  <span class="writ-issue-caret" aria-hidden="true">▾</span>
+                </button>
+                <ul v-if="issuePickerOpen" class="writ-issue-menu" role="listbox" aria-label="选择已有 Issue">
+                  <li
+                    v-for="i in issues"
+                    :key="i.issueId"
+                    role="option"
+                    :aria-selected="String(i.issueId) === form.issueId"
+                  >
+                    <button
+                      type="button"
+                      class="writ-issue-option"
+                      :class="{ active: String(i.issueId) === form.issueId }"
+                      @click="chooseIssue(i)"
+                    >
+                      <span class="writ-issue-num">#{{ i.externalIssueId }}</span>
+                      <span class="writ-issue-title">{{ i.title }}</span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
               <small v-if="!loadingIssues && !issues.length" class="writ-hint">该仓库暂无 OPEN Issue，请切换为新建。</small>
             </template>
             <template v-else>
@@ -628,6 +685,134 @@ function unwrapItems(payload) {
 @keyframes writ-loading-pulse {
   0%, 100% { background: rgba(255, 244, 210, 0.4); }
   50% { background: rgba(255, 244, 210, 0.66); }
+}
+
+/* 关联 Issue 自定义下拉：触发按钮沿用输入框外观，弹层为可滚动列表（Issue 多时滚轮浏览）。 */
+.writ-issue-picker {
+  position: relative;
+  width: 100%;
+}
+.writ-issue-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid rgba(98, 55, 20, 0.26);
+  border-radius: 4px;
+  padding: 9px 10px;
+  color: #3b210f;
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  text-align: left;
+  cursor: pointer;
+  background: rgba(255, 244, 210, 0.56);
+  box-shadow: inset 0 1px 6px rgba(70, 34, 10, 0.12);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+.writ-issue-trigger:hover:not(:disabled) {
+  border-color: var(--gold);
+}
+.writ-issue-trigger.open,
+.writ-issue-trigger:focus-visible {
+  outline: none;
+  border-color: var(--gold);
+  background: rgba(255, 244, 210, 0.72);
+  box-shadow: inset 0 1px 6px rgba(70, 34, 10, 0.1), 0 0 0 2px rgba(216, 154, 50, 0.18);
+}
+.writ-issue-trigger:disabled {
+  cursor: not-allowed;
+  color: rgba(91, 53, 29, 0.55);
+}
+.writ-issue-trigger.placeholder .writ-issue-trigger-text {
+  color: rgba(91, 53, 29, 0.5);
+}
+.writ-issue-trigger-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.writ-issue-caret {
+  flex: none;
+  font-size: 0.7rem;
+  color: rgba(91, 53, 29, 0.7);
+  transition: transform 160ms ease;
+}
+.writ-issue-trigger.open .writ-issue-caret {
+  transform: rotate(180deg);
+}
+.writ-issue-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  /* Issue 多时弹层内滚轮滚动，约束高度避免一长串铺满。 */
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid rgba(98, 55, 20, 0.32);
+  border-radius: 6px;
+  background: #fcf3da;
+  box-shadow: 0 18px 40px rgba(46, 24, 8, 0.28);
+}
+.writ-issue-menu::-webkit-scrollbar {
+  width: 9px;
+}
+.writ-issue-menu::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(120, 74, 28, 0.12);
+}
+.writ-issue-menu::-webkit-scrollbar-thumb {
+  border: 2px solid #fcf3da;
+  border-radius: 999px;
+  background: rgba(176, 110, 38, 0.6);
+  background-clip: padding-box;
+}
+.writ-issue-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  padding: 8px 9px;
+  color: #3b210f;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  transition: background 130ms ease, color 130ms ease;
+}
+.writ-issue-option:hover,
+.writ-issue-option:focus-visible {
+  outline: none;
+  background: rgba(216, 154, 50, 0.18);
+}
+.writ-issue-option.active {
+  color: #221205;
+  font-weight: 700;
+  background: linear-gradient(180deg, #ffd98a, #d8a23f);
+}
+.writ-issue-num {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: rgba(120, 74, 28, 0.9);
+}
+.writ-issue-option.active .writ-issue-num {
+  color: #4a2c10;
+}
+.writ-issue-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .writ-tag-options {

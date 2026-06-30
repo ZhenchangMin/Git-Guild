@@ -1594,7 +1594,9 @@ h2 {
   grid-template-columns: minmax(250px, 320px) minmax(460px, 1fr) minmax(260px, 330px);
   gap: 16px;
   width: 100%;
-  min-height: min(720px, calc(100svh - 132px));
+  /* 确定高度（而非 min-height）：让两侧面板各自的 minmax(0,1fr) 行真正生效——
+     左侧队列填满到面板底部并内部滚动、底部精确贴合，右侧详情同样内部滚动，不再相互撑高留白。 */
+  height: min(720px, calc(100svh - 132px));
   color: #ffe7b5;
 }
 
@@ -1620,6 +1622,8 @@ h2 {
   grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 14px;
   padding: 18px;
+  /* 允许在固定高度的 workspace 内收缩，使末行 minmax(0,1fr) 把队列约束在面板内滚动。 */
+  min-height: 0;
 }
 
 .admin-panel-head,
@@ -1679,10 +1683,110 @@ h2 {
   display: grid;
   align-content: start;
   gap: 10px;
+  /* 高度由父面板的 minmax(0,1fr) 行约束（workspace 现为确定高度），列表填满剩余空间并在面板内滚动，
+     底部精确贴合面板底，不再用魔法数字 max-height 估算高度。 */
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   /* 顶部留白：避免 active 卡片的 translateY(-1px) 抬升 + 1px 边框被滚动容器顶边裁掉。 */
   padding: 4px 4px 4px 0;
+}
+
+.admin-application-list::-webkit-scrollbar {
+  width: 9px;
+}
+.admin-application-list::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: var(--scrollbar-track);
+}
+.admin-application-list::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scrollbar-thumb-border);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--scrollbar-thumb-hover), var(--scrollbar-thumb));
+  background-clip: padding-box;
+}
+
+/* 队列按状态分组：每组一个标题块 + 该状态下的卡片。 */
+.admin-queue-group {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+/* 分组标题：可点击折叠/展开；粘在滚动容器顶部，队列很长时也能始终看清当前所处的状态分组。 */
+.admin-queue-group-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid rgba(238, 184, 91, 0.32);
+  border-left-width: 3px;
+  border-radius: 5px;
+  color: #ffe8bb;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-align: left;
+  cursor: pointer;
+  /* 不透明背景：卡片 sticky 滚过时标题不被透出来。 */
+  background: linear-gradient(180deg, #25140a, #1a0e06);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.34);
+  transition: border-color 150ms ease, filter 150ms ease;
+}
+
+.admin-queue-group-head:hover,
+.admin-queue-group-head:focus-visible {
+  border-color: var(--gold-bright);
+  filter: brightness(1.08);
+  outline: none;
+}
+
+.admin-queue-group-label {
+  flex: 1 1 auto;
+}
+
+.admin-queue-group-chevron {
+  flex: none;
+  font-size: 0.7rem;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.admin-queue-group-head.collapsed .admin-queue-group-chevron {
+  transform: rotate(-90deg);
+}
+
+.admin-queue-group-head.pending {
+  border-left-color: rgba(238, 184, 91, 0.85);
+}
+.admin-queue-group-head.approved {
+  border-left-color: rgba(119, 160, 91, 0.85);
+}
+.admin-queue-group-head.return {
+  border-left-color: rgba(214, 142, 56, 0.85);
+}
+.admin-queue-group-head.danger {
+  border-left-color: rgba(202, 104, 88, 0.88);
+}
+
+.admin-queue-group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #221205;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  background: linear-gradient(180deg, #ffd98a, #b56c22);
 }
 
 .admin-application-card {
@@ -2659,7 +2763,8 @@ h2 {
   grid-template-columns: minmax(280px, 360px) minmax(420px, 1fr) minmax(260px, 320px);
   gap: 16px;
   width: 100%;
-  min-height: min(760px, calc(100svh - 132px));
+  /* 与审核台一致用确定高度，使异常队列在面板内填满并滚动，底部贴合。 */
+  height: min(760px, calc(100svh - 132px));
   color: #ffe7b5;
 }
 
@@ -2868,6 +2973,28 @@ h2 {
   margin: 0;
   padding: 0;
   list-style: none;
+  /* 分类 / 标签 / 技术栈条目变多时（可能数十条），在面板内用滚轮上下滚动，
+     避免把整页撑成一长串。max-height 用 vh 让其随窗口高度自适应。 */
+  max-height: clamp(220px, 46vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+}
+
+.admin-tax-list::-webkit-scrollbar {
+  width: 9px;
+}
+
+.admin-tax-list::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: var(--scrollbar-track);
+}
+
+.admin-tax-list::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scrollbar-thumb-border);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--scrollbar-thumb-hover), var(--scrollbar-thumb));
+  background-clip: padding-box;
 }
 
 .admin-tax-list li {
@@ -3027,6 +3154,13 @@ h2 {
   }
   .admin-taxonomy-workspace {
     grid-template-columns: 1fr;
+  }
+
+  /* 移动端整页可滚动，分类/标签/技术栈列表无需各自再开滚动容器。 */
+  .admin-tax-list {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 }
 
@@ -5723,15 +5857,19 @@ h2 {
     overflow: auto;
   }
 
-  .admin-review-workspace {
+  .admin-review-workspace,
+  .admin-exceptions-workspace {
     grid-template-columns: 1fr;
     width: calc(100vw - 32px);
+    /* 移动端整页滚动，解除桌面端的确定高度锁定。 */
+    height: auto;
     min-height: auto;
   }
 
   .admin-queue-panel,
   .admin-detail-panel {
     overflow: visible;
+    min-height: 0;
   }
 
   .admin-application-list,
