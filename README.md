@@ -1,6 +1,6 @@
 # Git Guild
 
-<div align="center">
+[English](README.md) | [简体中文](docs/README.zh-CN.md)
 
 Git Guild is a course project for Software Engineering II. It combines a local Gitea-backed code collaboration workflow with an Adventurer's Guild style quest system: maintainers publish real engineering work as quests, adventurers complete those quests through branches and pull requests, and the platform records reviews, XP, growth profiles, notifications, and leaderboards.
 
@@ -22,22 +22,22 @@ P4 is the current integration stage. The project is no longer a static mock: the
 
 ```text
 Git-Guild/
-├── README.md                    # English project README
-├── docs/                        # Course deliverables and design docs
-│   ├── README.zh-CN.md          # Chinese project README
-│   ├── P0/ … P4/                # Milestone deliverables (charter, ADRs, design, logs)
-│   ├── hci/                     # HCI / interaction design notes
-│   └── 演示数据/                # Demo data notes
-├── .github/workflows/           # GitHub Actions CI (ci.yml)
-├── .gitlab-ci.yml               # GitLab CI mirror
-├── docker-compose.yml           # Local dev
-├── docker-compose.prod.yml      # Production compose
-├── .env.example                 # Optional local environment overrides
-├── deploy/                      # Dockerfiles, nginx.conf, probe.sh
-├── scripts/                     # CI static check + Python demo-seed scripts
-├── seed/                        # Seeded MySQL dump + Gitea snapshot
-├── backend/                     # Spring Boot 3 backend (own README)
-└── frontend/                    # Vue 3 + Vite frontend (own README)
+├── README.md                 # English project README
+├── docs/                     # Course deliverables and design docs
+│   ├── README.zh-CN.md       # Chinese project README
+│   ├── P0/ ... P4/           # Milestone deliverables (charter, ADRs, design, logs)
+│   ├── hci/                  # HCI / interaction design notes
+│   └── 演示数据/             # Demo data notes
+├── .github/workflows/        # GitHub Actions CI (ci.yml)
+├── .gitlab-ci.yml            # GitLab CI mirror
+├── docker-compose.yml        # Local dev
+├── docker-compose.prod.yml   # Production compose
+├── .env.example              # Optional local environment overrides
+├── deploy/                   # Dockerfiles, nginx.conf, probe.sh
+├── scripts/                  # CI static check + Python demo-seed scripts
+├── seed/                     # Seeded MySQL dump + Gitea snapshot
+├── backend/                  # Spring Boot 3 backend (own README)
+└── frontend/                 # Vue 3 + Vite frontend (own README)
 ```
 
 ## Prerequisites
